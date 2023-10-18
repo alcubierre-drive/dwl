@@ -1,10 +1,15 @@
 .POSIX:
 .SUFFIXES:
 
+CC := gcc
+CFLAGS := -Ofast -march=native
+LIBS := -lm -Wl,-rpath=$(shell pwd)
+
 include config.mk
 
 # flags for compiling
-DWLCPPFLAGS = -I. -DWLR_USE_UNSTABLE -D_POSIX_C_SOURCE=200809L -DVERSION=\"$(VERSION)\" $(XWAYLAND)
+DWLCPPFLAGS = -I. -DWLR_USE_UNSTABLE -DVERSION=\"$(VERSION)\" $(XWAYLAND)
+DWLCPPFLAGS += -D_POSIX_C_SOURCE=200809L
 DWLDEVCFLAGS = -pedantic -Wall -Wextra -Wdeclaration-after-statement -Wno-unused-parameter -Wno-sign-compare -Wshadow -Wunused-macros\
 	-Werror=strict-prototypes -Werror=implicit -Werror=return-type -Werror=incompatible-pointer-types
 
@@ -13,11 +18,14 @@ PKGS      = wlroots wayland-server xkbcommon libinput $(XLIBS)
 DWLCFLAGS = `$(PKG_CONFIG) --cflags $(PKGS)` $(DWLCPPFLAGS) $(DWLDEVCFLAGS) $(CFLAGS)
 LDLIBS    = `$(PKG_CONFIG) --libs $(PKGS)` $(LIBS)
 
-all: dwl
-dwl: dwl.o util.o
-	$(CC) dwl.o util.o $(LDLIBS) $(LDFLAGS) $(DWLCFLAGS) -o $@
+all: dwl libdwlextend.so
+dwl: dwl.o extension.o util.o
+	$(CC) $^ $(LDLIBS) $(LDFLAGS) $(DWLCFLAGS) -o $@
 dwl.o: dwl.c config.mk config.h client.h xdg-shell-protocol.h wlr-layer-shell-unstable-v1-protocol.h
 util.o: util.c util.h
+
+libdwlextend.so: dwlextend.c
+	$(CC) $^ -fPIC -shared -o $@ $(DWLCFLAGS)
 
 # wayland-scanner is a tool which generates C headers and rigging for Wayland
 # protocols, which are specified in XML. wlroots requires you to rig these up
@@ -35,7 +43,7 @@ wlr-layer-shell-unstable-v1-protocol.h:
 config.h:
 	cp config.def.h $@
 clean:
-	rm -f dwl *.o *-protocol.h
+	rm -f dwl *.o *-protocol.h *.so
 
 dist: clean
 	mkdir -p dwl-$(VERSION)
