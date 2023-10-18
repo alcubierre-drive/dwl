@@ -16,7 +16,11 @@ typedef struct {
     printstatus_t printstatus;
     get_client_t get_client;
     get_selmon_t get_selmon;
+
     arrange_t arrange;
+    arrange_t monocle;
+    arrange_t tile;
+
     extension_call_t extension_call;
     extension_call_t extension_reload;
 
@@ -38,5 +42,3 @@ typedef struct {
     extension_call_t quit;
 } callbacks_t;
 
-
-typedef void (*extension_func_t)(void* callbacks, const Arg* arg);

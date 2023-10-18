@@ -4,22 +4,27 @@
 
 typedef Key* (*keyfunc_t)( int* );
 typedef void (*init_t)( callbacks_t* );
+typedef void (*finalize_t)( void );
 
-static extension_func_t extension_get_fun( const char* name );
+static extension_call_t extension_get_fun( const char* name );
 
 static void* lib_extension = NULL;
 static const char lib_name[] = "libdwlextend.so";
 static callbacks_t callbacks = {0};
 
 void extension_init( void ) {
-    init_t i = NULL;
+    init_t init = NULL;
     lib_extension = dlopen( lib_name, RTLD_LAZY );
     callbacks = (callbacks_t){ .focusclient = focusclient,
                                .focustop = focustop,
                                .printstatus = printstatus,
                                .get_client = get_client,
                                .get_selmon = get_selmon,
+
                                .arrange = arrange,
+                               .monocle = monocle,
+                               .tile = tile,
+
                                .extension_call = extension_call,
                                .extension_reload = extension_reload,
 
@@ -42,13 +47,17 @@ void extension_init( void ) {
     if (!lib_extension) {
         fprintf(stderr, "dl error: %s\n", dlerror());
     } else {
-        i = (init_t)dlsym( lib_extension, "EX_init" );
-        if (i) i( &callbacks );
+        init = (init_t)dlsym( lib_extension, "EX_init" );
+        if (init) init( &callbacks );
     }
 }
 
 void extension_close( void ) {
-    dlclose(lib_extension);
+    finalize_t finalize = NULL;
+    finalize = (finalize_t)dlsym( lib_extension, "EX_finalize" );
+    if (finalize) finalize();
+    if (dlclose(lib_extension))
+        fprintf(stderr, "dl error: %s\n", dlerror());
 }
 
 void extension_reload( const Arg* a ) {
@@ -57,10 +66,10 @@ void extension_reload( const Arg* a ) {
     extension_init();
 }
 
-extension_func_t extension_get_fun( const char* name ) {
-    extension_func_t fun = NULL;
+extension_call_t extension_get_fun( const char* name ) {
+    extension_call_t fun = NULL;
     char* error = NULL;
-    fun = (extension_func_t)dlsym( lib_extension, name );
+    fun = (extension_call_t)dlsym( lib_extension, name );
     error = dlerror();
     if (error != NULL) {
         fun = NULL;
@@ -70,10 +79,10 @@ extension_func_t extension_get_fun( const char* name ) {
 }
 
 void extension_call( const Arg* arg ) {
-    extension_func_t fun = NULL;
+    extension_call_t fun = NULL;
     fun = extension_get_fun( arg->ex.name );
     if (fun)
-        (*fun)( &callbacks, (const Arg*)&(arg->ex.uarg) );
+        (*fun)( (const Arg*)&(arg->ex.uarg) );
 }
 
 Key* extension_keys( int* length ) {
