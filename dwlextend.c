@@ -48,12 +48,14 @@ void EX_viewCycle( const Arg* arg ) {
 }
 
 void EX_layoutCycle( const Arg* arg ) {
+    (void)arg;
     callbacks_t* c = internal_callbacks;
     if (!c) return;
 
     internal_layouts_cur = (internal_layouts_cur + 1)%internal_layouts_len;
     Arg A = {.v = &internal_layouts[internal_layouts_cur]};
     c->setlayout( &A );
+    c->focusclient(c->focustop(c->get_selmon()), 1);
 }
 
 static const char *termcmd[] = {"kitty", "--single-instance", NULL};

@@ -10,11 +10,26 @@ static extension_call_t extension_get_fun( const char* name );
 
 static void* lib_extension = NULL;
 static const char lib_name[] = "libdwlextend.so";
+static const char LOGfile[] = "LOG.txt";
+static FILE* LOG_f = NULL;
 static callbacks_t callbacks = {0};
+
+static void LOG( const char* fmt, ... ) {
+    if (LOG_f == NULL)
+        LOG_f = fopen(LOGfile, "a");
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf( LOG_f, fmt, ap );
+    va_end(ap);
+    fflush( LOG_f );
+}
 
 void extension_init( void ) {
     init_t init = NULL;
-    lib_extension = dlopen( lib_name, RTLD_LAZY );
+    LOG("dl opening\n");
+    if (dlopen( lib_name, RTLD_NOLOAD ))
+        LOG("dl already present\n");
+    lib_extension = dlopen( lib_name, RTLD_NOW );
     callbacks = (callbacks_t){ .focusclient = focusclient,
                                .focustop = focustop,
                                .printstatus = printstatus,
@@ -45,8 +60,9 @@ void extension_init( void ) {
                                .tagmon = tagmon,
                                .quit = quit, };
     if (!lib_extension) {
-        fprintf(stderr, "dl error: %s\n", dlerror());
+        LOG("dl error: %s\n", dlerror());
     } else {
+        LOG("dl init\n");
         init = (init_t)dlsym( lib_extension, "EX_init" );
         if (init) init( &callbacks );
     }
@@ -54,14 +70,16 @@ void extension_init( void ) {
 
 void extension_close( void ) {
     finalize_t finalize = NULL;
+    LOG("dl closing\n");
     finalize = (finalize_t)dlsym( lib_extension, "EX_finalize" );
     if (finalize) finalize();
     if (dlclose(lib_extension))
-        fprintf(stderr, "dl error: %s\n", dlerror());
+        LOG("dl error: %s\n", dlerror());
 }
 
 void extension_reload( const Arg* a ) {
     (void)a;
+    LOG("dl reload\n");
     extension_close();
     extension_init();
 }
@@ -73,7 +91,7 @@ extension_call_t extension_get_fun( const char* name ) {
     error = dlerror();
     if (error != NULL) {
         fun = NULL;
-        fprintf(stderr, "dl error: %s\n", error);
+        LOG("dl error: %s\n", error);
     }
     return fun;
 }
@@ -81,13 +99,16 @@ extension_call_t extension_get_fun( const char* name ) {
 void extension_call( const Arg* arg ) {
     extension_call_t fun = NULL;
     fun = extension_get_fun( arg->ex.name );
-    if (fun)
+    if (fun) {
+        LOG("dl call: %s\n", arg->ex.name);
         (*fun)( (const Arg*)&(arg->ex.uarg) );
+    }
 }
 
 Key* extension_keys( int* length ) {
     keyfunc_t k = (keyfunc_t)dlsym( lib_extension, "EX_keys" );
     if (k) {
+        LOG("dl keys\n");
         return k(length);
     } else {
         *length = 0;
