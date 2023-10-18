@@ -19,10 +19,11 @@ DWLCFLAGS = `$(PKG_CONFIG) --cflags $(PKGS)` $(DWLCPPFLAGS) $(DWLDEVCFLAGS) $(CF
 LDLIBS    = `$(PKG_CONFIG) --libs $(PKGS)` $(LIBS)
 
 all: dwl libdwlextend.so
-dwl: dwl.o extension.o util.o
+dwl: dwl.o extension.o util.o dwl-ipc-unstable-v2-protocol.o
 	$(CC) $^ $(LDLIBS) $(LDFLAGS) $(DWLCFLAGS) -o $@
-dwl.o: dwl.c config.mk config.h client.h xdg-shell-protocol.h wlr-layer-shell-unstable-v1-protocol.h
+dwl.o: dwl.c config.mk config.h client.h xdg-shell-protocol.h wlr-layer-shell-unstable-v1-protocol.h dwl-ipc-unstable-v2-protocol.h
 util.o: util.c util.h
+dwl-ipc-unstable-v2-protocol.o: dwl-ipc-unstable-v2-protocol.h
 
 libdwlextend.so: dwlextend.c
 	$(CC) $^ -fPIC -shared -o $@ $(DWLCFLAGS)
@@ -39,6 +40,12 @@ xdg-shell-protocol.h:
 wlr-layer-shell-unstable-v1-protocol.h:
 	$(WAYLAND_SCANNER) server-header \
 		protocols/wlr-layer-shell-unstable-v1.xml $@
+dwl-ipc-unstable-v2-protocol.h:
+	$(WAYLAND_SCANNER) server-header \
+		protocols/dwl-ipc-unstable-v2.xml $@
+dwl-ipc-unstable-v2-protocol.c:
+	$(WAYLAND_SCANNER) private-code \
+		protocols/dwl-ipc-unstable-v2.xml $@
 
 config.h:
 	cp config.def.h $@

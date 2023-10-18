@@ -120,3 +120,12 @@ Key* EX_keys( int* len ) {
     *len = internal_keys_len;
     return internal_keys;
 }
+
+Layout* EX_layouts( int* len ) {
+    if (!internal_callbacks) {
+        *len = 0;
+        return NULL;
+    }
+    *len = internal_layouts_len;
+    return internal_layouts;
+}

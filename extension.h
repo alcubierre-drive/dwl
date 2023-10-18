@@ -4,6 +4,10 @@
 
 typedef struct Client Client;
 typedef struct Monitor Monitor;
+typedef struct Layout Layout;
+
+extern Layout* layouts;
+extern int n_layouts;
 
 typedef struct extension_arg_t {
     char name[128];

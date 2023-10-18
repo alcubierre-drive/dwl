@@ -3,8 +3,14 @@
 #include <dlfcn.h>
 
 typedef Key* (*keyfunc_t)( int* );
+typedef Layout* (*layoutfunc_t)( int* );
 typedef void (*init_t)( callbacks_t* );
 typedef void (*finalize_t)( void );
+
+Layout* layouts = NULL;
+int n_layouts = 0;
+
+static Layout* extension_layout( int* length );
 
 static extension_call_t extension_get_fun( const char* name );
 
@@ -65,6 +71,8 @@ void extension_init( void ) {
         LOG("dl init\n");
         init = (init_t)dlsym( lib_extension, "EX_init" );
         if (init) init( &callbacks );
+
+        layouts = extension_layout(&n_layouts);
     }
 }
 
@@ -109,6 +117,17 @@ Key* extension_keys( int* length ) {
     keyfunc_t k = (keyfunc_t)dlsym( lib_extension, "EX_keys" );
     if (k) {
         LOG("dl keys\n");
+        return k(length);
+    } else {
+        *length = 0;
+        return NULL;
+    }
+}
+
+static Layout* extension_layout( int* length ) {
+    layoutfunc_t k = (layoutfunc_t)dlsym( lib_extension, "EX_layouts" );
+    if (k) {
+        LOG("dl layouts\n");
         return k(length);
     } else {
         *length = 0;

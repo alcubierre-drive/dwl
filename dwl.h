@@ -167,13 +167,14 @@ typedef struct {
     struct wl_listener surface_commit;
 } LayerSurface;
 
-typedef struct {
+typedef struct Layout {
     const char *symbol;
     void (*arrange)(Monitor *);
 } Layout;
 
 struct Monitor {
     struct wl_list link;
+    struct wl_list dwl_ipc_outputs;
     struct wlr_output *wlr_output;
     struct wlr_scene_output *scene_output;
     struct wlr_scene_rect *fullscreen_bg; /* See createmon() for info */
@@ -184,7 +185,7 @@ struct Monitor {
     struct wlr_box m; /* monitor area, layout-relative */
     struct wlr_box w; /* window area, layout-relative */
     struct wl_list layers[4]; /* LayerSurface::link */
-    const Layout *lt[2];
+    Layout *lt[2];
     unsigned int seltags;
     unsigned int sellt;
     uint32_t tagset[2];
@@ -198,7 +199,7 @@ typedef struct {
     float mfact;
     int nmaster;
     float scale;
-    const Layout *lt;
+    Layout *lt;
     enum wl_output_transform rr;
     int x, y;
 } MonitorRule;
@@ -306,6 +307,7 @@ void togglefloating(const Arg *arg);
 void togglefullscreen(const Arg *arg);
 void toggletag(const Arg *arg);
 void toggleview(const Arg *arg);
+void togglebar(const Arg *arg);
 void unlocksession(struct wl_listener *listener, void *data);
 void unmaplayersurfacenotify(struct wl_listener *listener, void *data);
 void unmapnotify(struct wl_listener *listener, void *data);
