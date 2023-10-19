@@ -1,0 +1,3 @@
+[submodule "dwlb"]
+	path = dwlb
+	url = git@github.com:alcubierre-drive/dwlb.git

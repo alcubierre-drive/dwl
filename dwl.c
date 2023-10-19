@@ -1041,6 +1041,7 @@ dwl_ipc_output_set_client_tags(struct wl_client *client, struct wl_resource *res
 void
 dwl_ipc_output_set_layout(struct wl_client *client, struct wl_resource *resource, uint32_t index)
 {
+    return;
 	DwlIpcOutput *ipc_output;
 	Monitor *monitor;
 
