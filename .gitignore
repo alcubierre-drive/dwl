@@ -1,8 +1,5 @@
-dwl
+awl
 *.o
-*-protocol.c
-*-protocol.h
-.ccls-cache
-config.h
 *.so
+*.d
 LOG.txt

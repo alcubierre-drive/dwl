@@ -1,38 +1,45 @@
-.POSIX:
-.SUFFIXES:
-
 CC := gcc
-CFLAGS := -Ofast -march=native
-LIBS := -lm -Wl,-rpath=$(shell pwd)
+LD := gcc
 
-include config.mk
+LIBS += -lm
+CFLAGS += -Ofast -march=native -Wall -Wextra -pedantic
 
-# flags for compiling
-DWLCPPFLAGS = -I. -DWLR_USE_UNSTABLE -DVERSION=\"$(VERSION)\" $(XWAYLAND)
-DWLCPPFLAGS += -D_POSIX_C_SOURCE=200809L
-DWLDEVCFLAGS = -pedantic -Wall -Wextra -Wdeclaration-after-statement -Wno-unused-parameter -Wno-sign-compare -Wshadow -Wunused-macros\
-	-Werror=strict-prototypes -Werror=implicit -Werror=return-type -Werror=incompatible-pointer-types
+PKGS = wlroots wayland-server xkbcommon libinput xcb xcb-icccm
 
-# CFLAGS / LDFLAGS
-PKGS      = wlroots wayland-server xkbcommon libinput $(XLIBS)
-DWLCFLAGS = `$(PKG_CONFIG) --cflags $(PKGS)` $(DWLCPPFLAGS) $(DWLDEVCFLAGS) $(CFLAGS)
-LDLIBS    = `$(PKG_CONFIG) --libs $(PKGS)` $(LIBS)
+DWL_CFLAGS = $(shell pkg-config --cflags $(PKGS)) \
+	-I. -DWLR_USE_UNSTABLE -DVERSION=\"0.4\" -DXWAYLAND -D_POSIX_C_SOURCE=200809L \
+	$(CFLAGS)
+DWL_LDFLAGS = $(shell pkg-config --libs $(PKGS)) -Wl,-rpath=$(shell pwd) \
+	$(LIBS)
 
-all: dwl libdwlextend.so
-dwl: dwl.o extension.o util.o dwl-ipc-unstable-v2-protocol.o
-	$(CC) $^ $(LDLIBS) $(LDFLAGS) $(DWLCFLAGS) -o $@
-dwl.o: dwl.c config.mk config.h client.h xdg-shell-protocol.h wlr-layer-shell-unstable-v1-protocol.h dwl-ipc-unstable-v2-protocol.h
-util.o: util.c util.h
-dwl-ipc-unstable-v2-protocol.o: dwl-ipc-unstable-v2-protocol.h
+DWL_SRC := awl.c awl_state.c extension.c util.c \
+	dwl-ipc-unstable-v2-protocol.c
+PLUGIN_SRC := dwlextend.c
 
-libdwlextend.so: dwlextend.c
-	$(CC) $^ -fPIC -shared -o $@ $(DWLCFLAGS)
+DWL_OBJ := $(patsubst %.c,%.c.o,$(DWL_SRC))
+PLUGIN_OBJ := $(patsubst %.c,%.c.o,$(PLUGIN_SRC))
 
-# wayland-scanner is a tool which generates C headers and rigging for Wayland
-# protocols, which are specified in XML. wlroots requires you to rig these up
-# to your build system yourself and provide them in the include path.
-WAYLAND_SCANNER   = `$(PKG_CONFIG) --variable=wayland_scanner wayland-scanner`
-WAYLAND_PROTOCOLS = `$(PKG_CONFIG) --variable=pkgdatadir wayland-protocols`
+DEPS := $(patsubst %.c,%.c.d,$(DWL_SRC) $(PLUGIN_SRC))
+
+PROTOCOLS := xdg-shell-protocol.h wlr-layer-shell-unstable-v1-protocol.h \
+	     dwl-ipc-unstable-v2-protocol.h dwl-ipc-unstable-v2-protocol.c
+
+-include Makefile.inc
+
+.PHONY: all $(PROTOCOLS) clean
+
+all: awl libawlextend.so $(PROTOCOLS)
+
+-include $(DEPS)
+
+awl: $(DWL_OBJ)
+	$(LD) $^ -o $@ $(DWL_LDFLAGS)
+
+libawlextend.so: $(PLUGIN_OBJ)
+	$(LD) $^ -o $@ $(DWL_LDFLAGS) -shared
+
+WAYLAND_SCANNER   = $(shell pkg-config --variable=wayland_scanner wayland-scanner)
+WAYLAND_PROTOCOLS = $(shell pkg-config --variable=pkgdatadir wayland-protocols)
 
 xdg-shell-protocol.h:
 	$(WAYLAND_SCANNER) server-header \
@@ -47,32 +54,11 @@ dwl-ipc-unstable-v2-protocol.c:
 	$(WAYLAND_SCANNER) private-code \
 		protocols/dwl-ipc-unstable-v2.xml $@
 
-config.h:
-	cp config.def.h $@
+%.c.o: %.c Makefile
+	$(CC) -c $< -o $@ -MMD $(DWL_CFLAGS)
+%.c.o: %.c %.h Makefile
+	$(CC) -c $< -o $@ -MMD $(DWL_CFLAGS)
+
 clean:
-	rm -f dwl *.o *-protocol.h *.so
+	rm -f awl *.o *-protocol.h *.so *.d
 
-dist: clean
-	mkdir -p dwl-$(VERSION)
-	cp -R LICENSE* Makefile README.md client.h config.def.h\
-		config.mk protocols dwl.1 dwl.c util.c util.h dwl.desktop\
-		dwl-$(VERSION)
-	tar -caf dwl-$(VERSION).tar.gz dwl-$(VERSION)
-	rm -rf dwl-$(VERSION)
-
-install: dwl
-	mkdir -p $(DESTDIR)$(PREFIX)/bin
-	cp -f dwl $(DESTDIR)$(PREFIX)/bin
-	chmod 755 $(DESTDIR)$(PREFIX)/bin/dwl
-	mkdir -p $(DESTDIR)$(MANDIR)/man1
-	cp -f dwl.1 $(DESTDIR)$(MANDIR)/man1
-	chmod 644 $(DESTDIR)$(MANDIR)/man1/dwl.1
-	mkdir -p $(DESTDIR)$(DATADIR)/wayland-sessions
-	cp -f dwl.desktop $(DESTDIR)$(DATADIR)/wayland-sessions/dwl.desktop
-	chmod 644 $(DESTDIR)$(DATADIR)/wayland-sessions/dwl.desktop
-uninstall:
-	rm -f $(DESTDIR)$(PREFIX)/bin/dwl $(DESTDIR)$(MANDIR)/man1/dwl.1 $(DESTDIR)$(DATADIR)/wayland-sessions/dwl.desktop
-
-.SUFFIXES: .c .o
-.c.o:
-	$(CC) $(CPPFLAGS) $(DWLCFLAGS) -c $<

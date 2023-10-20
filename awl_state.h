@@ -2,13 +2,13 @@
 
 #include "dwl.h"
 
-typedef struct dwl_state_t dwl_state_t;
+typedef struct awl_state_t awl_state_t;
 
 // to read/change the state ptr after reload
-dwl_state_t** get_dwl_state_addr(void);
+awl_state_t** get_awl_state_addr(void);
 
 #define ARRAY( type, name ) type* name; int n_##name;
-struct dwl_state_t {
+struct awl_state_t {
     int sloppyfocus;
     int bypass_surface_visibility;
 
@@ -90,5 +90,5 @@ struct dwl_state_t {
     struct wlr_box sgeom;
     struct wl_list mons;
     Monitor *selmon;
-} dwl_state_t;
+};
 

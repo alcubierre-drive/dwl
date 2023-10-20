@@ -65,7 +65,8 @@
 
 #define TAGCOUNT (9)
 /* If you want to use the windows key for MODKEY, use WLR_MODIFIER_LOGO */
-#define MODKEY WLR_MODIFIER_LOGO
+// #define MODKEY WLR_MODIFIER_LOGO
+#define MODKEY WLR_MODIFIER_ALT
 
 /* macros */
 #define MAX(A, B)               ((A) > (B) ? (A) : (B))
