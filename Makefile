@@ -12,7 +12,7 @@ DWL_CFLAGS = $(shell pkg-config --cflags $(PKGS)) \
 DWL_LDFLAGS = $(shell pkg-config --libs $(PKGS)) -Wl,-rpath=$(shell pwd) \
 	$(LIBS)
 
-DWL_SRC := awl.c awl_state.c extension.c util.c \
+DWL_SRC := awl.c awl_state.c awl_extension.c extension.c util.c \
 	dwl-ipc-unstable-v2-protocol.c
 PLUGIN_SRC := dwlextend.c
 
@@ -26,9 +26,10 @@ PROTOCOLS := xdg-shell-protocol.h wlr-layer-shell-unstable-v1-protocol.h \
 
 -include Makefile.inc
 
-.PHONY: all $(PROTOCOLS) clean
+.PHONY: all protocols clean
 
-all: awl libawlextend.so $(PROTOCOLS)
+all: awl libawlextend.so protocols
+protocols: $(PROTOCOLS)
 
 -include $(DEPS)
 

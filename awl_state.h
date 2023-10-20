@@ -1,6 +1,6 @@
 #pragma once
 
-#include "dwl.h"
+#include "awl.h"
 
 typedef struct awl_state_t awl_state_t;
 

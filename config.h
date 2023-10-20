@@ -1,4 +1,4 @@
-#include "dwl.h"
+#include "awl.h"
 #include "extension.h"
 /* Taken from https://github.com/djpohly/dwl/issues/466 */
 #define COLOR(hex)    { ((hex >> 24) & 0xFF) / 255.0f, \

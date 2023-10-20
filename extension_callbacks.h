@@ -1,6 +1,6 @@
 #pragma once
 
-#include "dwl.h"
+#include "awl.h"
 
 typedef void (*focusclient_t)(Client *c, int lift);
 typedef Client* (*focustop_t)(Monitor *m);
