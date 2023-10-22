@@ -9,13 +9,14 @@
 typedef struct awl_vtable_t awl_vtable_t;
 typedef struct awl_extension_t awl_extension_t;
 
-typedef int (*awl_func_t)(awl_config_t*);
+typedef int (*awl_func_t)(awl_state_t*, awl_config_t*);
 
 struct awl_vtable_t {
     void (*init)(void);
     void (*free)(void);
 
-    awl_config_t* (*config)(void);
+    awl_config_t* config;
+    awl_state_t* state;
 };
 
 awl_extension_t* awl_extension_init( const char* lib );

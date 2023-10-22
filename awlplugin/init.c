@@ -90,17 +90,6 @@ static void awl_plugin_init(void) {
     ARRAY_APPEND(Button, buttons, MODKEY, BTN_MIDDLE, togglefloating, {0});
     ARRAY_APPEND(Button, buttons, MODKEY, BTN_RIGHT,  moveresize,     {.ui = CurResize});
 
-    S.state = NULL;
-    /* strcpy( S.broken, "broken" ); */
-    /* strcpy( S.cursor_image, "left_ptr" ); */
-    /* S.child_pid = -1; */
-    /* S.locked = 0; */
-
-    /* ARRAY_INIT(int, layermap, 16); */
-    /* ARRAY_APPEND(int, layermap, LyrBg); */
-    /* ARRAY_APPEND(int, layermap, LyrBottom); */
-    /* ARRAY_APPEND(int, layermap, LyrTop); */
-    /* ARRAY_APPEND(int, layermap, LyrOverlay); */
 }
 
 static void awl_plugin_free(void) {
@@ -109,7 +98,6 @@ static void awl_plugin_free(void) {
     free(S.monrules);
     free(S.keys);
     free(S.buttons);
-    /* free(S.layermap); */
 
     memset(&S, 0, sizeof(awl_config_t));
 }
@@ -127,12 +115,9 @@ static const Key keys[] = {
 }
 #endif
 
-static awl_config_t* awl_plugin_config(void) {
-    return &S;
-}
-
 awl_vtable_t AWL_VTABLE_SYM = {
     .init = &awl_plugin_init,
     .free = &awl_plugin_free,
-    .config = awl_plugin_config,
+    .config = &S,
+    .state = NULL,
 };

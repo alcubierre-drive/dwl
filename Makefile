@@ -9,7 +9,7 @@ CFLAGS += $(shell pkg-config --cflags $(PKGS)) \
 LDFLAGS += $(shell pkg-config --libs $(PKGS)) -Wl,-rpath=$(shell pwd) \
 	$(LIBS) -rdynamic
 
-DWL_SRC := awl.c awl_extension.c extension.c util.c \
+DWL_SRC := awl.c awl_state.c awl_extension.c extension.c util.c \
 	dwl-ipc-unstable-v2-protocol.c
 PLUGIN_SRC := $(shell find awlplugin/ -type f -iname "*.c")
 

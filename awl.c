@@ -17,13 +17,8 @@ static awl_extension_t* E = NULL;
 /* macros */
 static inline int MIN( int A, int B ) { return A < B ? A : B; }
 static inline int MAX( int A, int B ) { return A > B ? A : B; }
-#define CLEANMASK(mask)         (mask & ~WLR_MODIFIER_CAPS)
-#define VISIBLEON(C, M)         ((M) && (C)->mon == (M) && ((C)->tags & (M)->tagset[(M)->seltags]))
-#define LENGTH(X)               (sizeof X / sizeof X[0])
-#define END(A)                  ((A) + LENGTH(A))
-#define TAGMASK                 ((1u << TAGCOUNT) - 1)
-#define LISTEN(E, L, H)         wl_signal_add((E), ((L)->notify = (H), (L)))
-#define IDLE_NOTIFY_ACTIVITY    wlr_idle_notify_activity(B->idle, B->seat), wlr_idle_notifier_v1_notify_activity(B->idle_notifier, B->seat)
+#define IDLE_NOTIFY_ACTIVITY \
+    wlr_idle_notify_activity(B->idle, B->seat), wlr_idle_notifier_v1_notify_activity(B->idle_notifier, B->seat)
 
 typedef struct {
     struct wl_list link;
@@ -2483,15 +2478,17 @@ static void plugin_reload(void) {
     V->free();
     awl_extension_refresh(E);
     V = awl_extension_vtable(E);
+    V->state = B;
     V->init();
-    C = V->config();
+    C = V->config;
 }
 
 static void plugin_init(const char* lib) {
     E = awl_extension_init(lib);
     V = awl_extension_vtable(E);
+    V->state = B;
     V->init();
-    C = V->config();
+    C = V->config;
 }
 
 static void plugin_free(void) {
@@ -2499,9 +2496,7 @@ static void plugin_free(void) {
     awl_extension_free(E);
 }
 
-int
-main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     char *startup_cmd = NULL;
     int c;
 
@@ -2518,6 +2513,8 @@ main(int argc, char *argv[])
     if (optind < argc)
         goto usage;
 
+    B = awl_state_init();
+
     plugin_init(NULL);
     extension_init();
 
@@ -2530,6 +2527,8 @@ main(int argc, char *argv[])
 
     extension_close();
     plugin_free();
+
+    awl_state_free(B);
     return EXIT_SUCCESS;
 
 usage:

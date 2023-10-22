@@ -45,8 +45,6 @@ struct awl_config_t {
 
     ARRAY( Key, keys )
     ARRAY( Button, buttons )
-
-    awl_state_t* state;
 };
 
 struct awl_state_t {
@@ -97,3 +95,5 @@ struct awl_state_t {
     Monitor *selmon;
 };
 
+awl_state_t* awl_state_init( void );
+void awl_state_free( awl_state_t* state );

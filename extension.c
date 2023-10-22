@@ -15,7 +15,7 @@ static Layout* extension_layout( int* length );
 static extension_call_t extension_get_fun( const char* name );
 
 static void* lib_extension = NULL;
-static const char lib_name[] = "libawlextend.so";
+static const char lib_name[] = "libawlplugin.so";
 static const char LOGfile[] = "LOG.txt";
 static FILE* LOG_f = NULL;
 static callbacks_t callbacks = {0};
