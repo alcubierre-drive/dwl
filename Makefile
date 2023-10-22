@@ -32,7 +32,7 @@ protocols: $(PROTOCOLS)
 awl: $(DWL_OBJ)
 	$(LD) $^ -o $@ $(LDFLAGS)
 
-libawlplugin.so: $(PLUGIN_OBJ) awl_plugin/dwlb/dwlb.a
+libawlplugin.so: $(PLUGIN_OBJ) dwlb/dwlb.a
 	$(LD) $^ -o $@ $(LDFLAGS) -shared
 
 WAYLAND_SCANNER   = $(shell pkg-config --variable=wayland_scanner wayland-scanner)
