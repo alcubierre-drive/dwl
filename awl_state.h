@@ -2,13 +2,14 @@
 
 #include "awl.h"
 
-typedef struct awl_state_t awl_state_t;
+// TODO config.h missing.
 
-// to read/change the state ptr after reload
-awl_state_t** get_awl_state_addr(void);
+typedef struct awl_state_t awl_state_t;
+typedef struct awl_config_t awl_config_t;
 
 #define ARRAY( type, name ) type* name; int n_##name;
-struct awl_state_t {
+
+struct awl_config_t {
     int sloppyfocus;
     int bypass_surface_visibility;
 
@@ -45,6 +46,10 @@ struct awl_state_t {
     ARRAY( Key, keys )
     ARRAY( Button, buttons )
 
+    awl_state_t* state;
+};
+
+struct awl_state_t {
     char broken[128];
     char cursor_image[1024];
     pid_t child_pid;
@@ -55,7 +60,7 @@ struct awl_state_t {
     struct wlr_scene *scene;
     struct wlr_scene_tree *layers[NUM_LAYERS];
     struct wlr_scene_tree *drag_icon;
-    int* layermap;
+    ARRAY( int, layermap )
     struct wlr_renderer *drw;
     struct wlr_allocator *alloc;
     struct wlr_compositor *compositor;

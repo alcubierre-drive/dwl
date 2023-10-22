@@ -54,11 +54,9 @@
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 #include <xkbcommon/xkbcommon.h>
-#ifdef XWAYLAND
 #include <wlr/xwayland.h>
 #include <xcb/xcb.h>
 #include <xcb/xcb_icccm.h>
-#endif
 
 #include "util.h"
 #include "extension.h"
@@ -69,30 +67,25 @@
 #define MODKEY WLR_MODIFIER_ALT
 
 /* macros */
-#define MAX(A, B)               ((A) > (B) ? (A) : (B))
-#define MIN(A, B)               ((A) < (B) ? (A) : (B))
 #define CLEANMASK(mask)         (mask & ~WLR_MODIFIER_CAPS)
 #define VISIBLEON(C, M)         ((M) && (C)->mon == (M) && ((C)->tags & (M)->tagset[(M)->seltags]))
 #define LENGTH(X)               (sizeof X / sizeof X[0])
 #define END(A)                  ((A) + LENGTH(A))
 #define TAGMASK                 ((1u << TAGCOUNT) - 1)
 #define LISTEN(E, L, H)         wl_signal_add((E), ((L)->notify = (H), (L)))
-#define IDLE_NOTIFY_ACTIVITY    wlr_idle_notify_activity(idle, seat), wlr_idle_notifier_v1_notify_activity(idle_notifier, seat)
 
 /* enums */
 enum { CurNormal, CurPressed, CurMove, CurResize }; /* cursor */
 enum { XDGShell, LayerShell, X11Managed, X11Unmanaged }; /* client types */
 enum { LyrBg, LyrBottom, LyrTile, LyrFloat, LyrFS, LyrTop, LyrOverlay, LyrBlock, NUM_LAYERS }; /* scene layers */
-#ifdef XWAYLAND
 enum { NetWMWindowTypeDialog, NetWMWindowTypeSplash, NetWMWindowTypeToolbar,
     NetWMWindowTypeUtility, NetLast }; /* EWMH atoms */
-#endif
 
 typedef struct {
     unsigned int mod;
     unsigned int button;
     void (*func)(const Arg *);
-    const Arg arg;
+    Arg arg;
 } Button;
 
 typedef struct Monitor Monitor;
@@ -118,11 +111,9 @@ typedef struct Client {
     struct wl_listener set_title;
     struct wl_listener fullscreen;
     struct wlr_box prev; /* layout-relative, includes border */
-#ifdef XWAYLAND
     struct wl_listener activate;
     struct wl_listener configure;
     struct wl_listener set_hints;
-#endif
     unsigned int bw;
     uint32_t tags;
     int isfloating, isurgent, isfullscreen;
@@ -360,7 +351,7 @@ extern struct wlr_session_lock_manager_v1 *session_lock_mgr;
 extern struct wlr_scene_rect *locked_bg;
 extern struct wlr_session_lock_v1 *cur_lock;
 
-extern struct wlr_seat *seat;
+/* extern struct wlr_seat *seat; */
 extern struct wl_list keyboards;
 extern unsigned int cursor_mode;
 extern Client *grabc;
@@ -402,7 +393,6 @@ extern struct wl_listener start_drag;
 extern struct wl_listener session_lock_create_lock;
 extern struct wl_listener session_lock_mgr_destroy;
 
-#ifdef XWAYLAND
 void activatex11(struct wl_listener *listener, void *data);
 void configurex11(struct wl_listener *listener, void *data);
 void createnotifyx11(struct wl_listener *listener, void *data);
@@ -413,4 +403,3 @@ extern struct wl_listener new_xwayland_surface;
 extern struct wl_listener xwayland_ready;
 extern struct wlr_xwayland *xwayland;
 extern xcb_atom_t netatom[NetLast];
-#endif

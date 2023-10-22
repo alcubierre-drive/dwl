@@ -3,3 +3,4 @@ awl
 *.so
 *.d
 LOG.txt
+Makefile.inc
