@@ -58,9 +58,6 @@
 #include <xcb/xcb.h>
 #include <xcb/xcb_icccm.h>
 
-#include "util.h"
-#include "extension.h"
-
 #define TAGCOUNT (9)
 /* If you want to use the windows key for MODKEY, use WLR_MODIFIER_LOGO */
 // #define MODKEY WLR_MODIFIER_LOGO
@@ -80,6 +77,13 @@ enum { XDGShell, LayerShell, X11Managed, X11Unmanaged }; /* client types */
 enum { LyrBg, LyrBottom, LyrTile, LyrFloat, LyrFS, LyrTop, LyrOverlay, LyrBlock, NUM_LAYERS }; /* scene layers */
 enum { NetWMWindowTypeDialog, NetWMWindowTypeSplash, NetWMWindowTypeToolbar,
     NetWMWindowTypeUtility, NetLast }; /* EWMH atoms */
+
+typedef union {
+    int i;
+    uint32_t ui;
+    float f;
+    const void *v;
+} Arg;
 
 typedef struct {
     unsigned int mod;

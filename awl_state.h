@@ -22,6 +22,7 @@ struct awl_config_t {
     int log_level;
     ARRAY( Rule, rules )
     ARRAY( Layout, layouts )
+    int cur_layout;
     ARRAY( MonitorRule, monrules )
     struct xkb_rule_names xkb_rules;
 

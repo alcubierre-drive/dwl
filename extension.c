@@ -46,9 +46,6 @@ void extension_init( void ) {
                                .monocle = monocle,
                                .tile = tile,
 
-                               .extension_call = extension_call,
-                               .extension_reload = extension_reload,
-
                                .spawn = spawn,
                                .focusstack = focusstack,
                                .incnmaster = incnmaster,
@@ -85,13 +82,6 @@ void extension_close( void ) {
         LOG("dl error: %s\n", dlerror());
 }
 
-void extension_reload( const Arg* a ) {
-    (void)a;
-    LOG("dl reload\n");
-    extension_close();
-    extension_init();
-}
-
 extension_call_t extension_get_fun( const char* name ) {
     extension_call_t fun = NULL;
     char* error = NULL;
@@ -102,15 +92,6 @@ extension_call_t extension_get_fun( const char* name ) {
         LOG("dl error: %s\n", error);
     }
     return fun;
-}
-
-void extension_call( const Arg* arg ) {
-    extension_call_t fun = NULL;
-    fun = extension_get_fun( arg->ex.name );
-    if (fun) {
-        LOG("dl call: %s\n", arg->ex.name);
-        (*fun)( (const Arg*)&(arg->ex.uarg) );
-    }
 }
 
 Key* extension_keys( int* length ) {
