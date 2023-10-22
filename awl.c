@@ -2530,16 +2530,18 @@ int main(int argc, char *argv[]) {
 
     B = awl_state_init();
 
-    plugin_init(NULL);
-
     /* Wayland requires XDG_RUNTIME_DIR for creating its communications socket */
     if (!getenv("XDG_RUNTIME_DIR"))
         die("XDG_RUNTIME_DIR must be set");
     setup();
+
+    plugin_init(NULL);
+
     run(startup_cmd);
-    cleanup();
 
     plugin_free();
+
+    cleanup();
 
     awl_state_free(B);
     return EXIT_SUCCESS;

@@ -1,5 +1,7 @@
-#include "awl_state.h"
-#include "awl_extension.h"
+#include "../awl_state.h"
+#include "../awl_extension.h"
+
+void* dwlb( void* );
 
 #define COLOR_SET( C, hex ) \
     { C[0] = ((hex >> 24) & 0xFF) / 255.0f; \
@@ -146,6 +148,7 @@ static void awl_plugin_init(void) {
     ARRAY_APPEND(Button, buttons, MODKEY, BTN_MIDDLE, togglefloating, {0});
     ARRAY_APPEND(Button, buttons, MODKEY, BTN_RIGHT,  moveresize,     {.ui = CurResize});
 
+    pthread_create( &S.BarThread, NULL, dwlb, NULL );
 }
 
 static void awl_plugin_free(void) {
@@ -154,6 +157,8 @@ static void awl_plugin_free(void) {
     free(S.monrules);
     free(S.keys);
     free(S.buttons);
+
+    pthread_cancel( S.BarThread );
 
     memset(&S, 0, sizeof(awl_config_t));
 }

@@ -1,7 +1,7 @@
 CC := gcc
 LD := gcc
 
-PKGS = wlroots wayland-server xkbcommon libinput xcb xcb-icccm
+PKGS = wlroots wayland-server xkbcommon libinput xcb xcb-icccm fcft pixman-1
 
 CFLAGS += $(shell pkg-config --cflags $(PKGS)) \
 	-I. -DWLR_USE_UNSTABLE -DVERSION=\"0.4\" -D_POSIX_C_SOURCE=200809L \
@@ -32,7 +32,7 @@ protocols: $(PROTOCOLS)
 awl: $(DWL_OBJ)
 	$(LD) $^ -o $@ $(LDFLAGS)
 
-libawlplugin.so: $(PLUGIN_OBJ)
+libawlplugin.so: $(PLUGIN_OBJ) awl_plugin/dwlb/dwlb.a
 	$(LD) $^ -o $@ $(LDFLAGS) -shared
 
 WAYLAND_SCANNER   = $(shell pkg-config --variable=wayland_scanner wayland-scanner)
