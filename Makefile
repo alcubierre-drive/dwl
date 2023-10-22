@@ -1,7 +1,8 @@
 CC := gcc
 LD := gcc
 
-PKGS = wlroots wayland-server xkbcommon libinput xcb xcb-icccm fcft pixman-1
+PKGS = wlroots wayland-server xkbcommon libinput xcb xcb-icccm fcft pixman-1 \
+       wayland-client wayland-cursor
 
 CFLAGS += $(shell pkg-config --cflags $(PKGS)) \
 	-I. -DWLR_USE_UNSTABLE -DVERSION=\"0.4\" -D_POSIX_C_SOURCE=200809L \

@@ -3,7 +3,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-#define DLOPEN_MODE RTLD_GLOBAL|RTLD_LAZY 
+#define DLOPEN_MODE RTLD_GLOBAL|RTLD_NOW 
 static const char libawlextend[] = AWL_PLUGIN_NAME;
 
 struct awl_extension_t {
