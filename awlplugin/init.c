@@ -102,7 +102,7 @@ static void awl_plugin_init(void) {
     ADD_KEY( MODKEY_SH,    SKEY, tag,        {.ui = 1 << TAG} ) \
     ADD_KEY( MODKEY_CT_SH, SKEY, toggletag,  {.ui = 1 << TAG} )
 
-    //static const char *termcmd[] = {"kitty", "--single-instance", NULL};
+    /* static const char *termcmd[] = {"kitty", "--single-instance", NULL}; */
     static const char *termcmd[] = {"kitty", NULL};
     static const char *menucmd[] = {"bemenu-run", NULL};
 

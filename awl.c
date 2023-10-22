@@ -5,8 +5,6 @@
 #include "awl_state.h"
 #include "awl_extension.h"
 
-#include "extension.h"
-
 #include "dwl-ipc-unstable-v2-protocol.h"
 
 static awl_config_t* C = NULL;
@@ -2540,7 +2538,6 @@ int main(int argc, char *argv[]) {
     B = awl_state_init();
 
     plugin_init(NULL);
-    extension_init();
 
     /* Wayland requires XDG_RUNTIME_DIR for creating its communications socket */
     if (!getenv("XDG_RUNTIME_DIR"))
@@ -2549,7 +2546,6 @@ int main(int argc, char *argv[]) {
     run(startup_cmd);
     cleanup();
 
-    extension_close();
     plugin_free();
 
     awl_state_free(B);
