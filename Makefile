@@ -10,7 +10,7 @@ LDFLAGS += $(shell pkg-config --libs $(PKGS)) -Wl,-rpath=$(shell pwd) \
 	$(LIBS) -rdynamic
 
 DWL_SRC := $(shell find . -maxdepth 1 -type f -iname "*.c") dwl-ipc-unstable-v2-protocol.c
-PLUGIN_SRC := $(shell find awlplugin/ -maxdepth 1 -type f -iname "*.c")
+PLUGIN_SRC := $(shell find awl_plugin/ -maxdepth 1 -type f -iname "*.c")
 
 DWL_OBJ := $(patsubst %.c,%.c.o,$(DWL_SRC))
 PLUGIN_OBJ := $(patsubst %.c,%.c.o,$(PLUGIN_SRC))
@@ -57,5 +57,6 @@ dwl-ipc-unstable-v2-protocol.c:
 	$(CC) -c $< -o $@ -MMD $(CFLAGS)
 
 clean:
-	rm -f awl *.o *-protocol.h *.so *.d
+	rm -f awl *.o *-protocol.h *.so *.d \
+		awl_plugin/*.o awl_plugin/*.d
 

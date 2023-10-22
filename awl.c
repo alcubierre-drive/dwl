@@ -1,6 +1,6 @@
 #include "awl.h"
-#include "util.h"
-#include "client.h"
+#include "awl_util.h"
+#include "awl_client.h"
 
 #include "awl_state.h"
 #include "awl_extension.h"
@@ -957,23 +957,16 @@ void dwl_ipc_output_set_client_tags(struct wl_client *client, struct wl_resource
 
 void dwl_ipc_output_set_layout(struct wl_client *client, struct wl_resource *resource, uint32_t index) {
     (void)client;
-    // TODO
-    return;
     DwlIpcOutput *ipc_output;
-    Monitor *monitor;
 
     ipc_output = wl_resource_get_user_data(resource);
     if (!ipc_output)
         return;
-
-    monitor = ipc_output->mon;
     if (index >= (unsigned)C->n_layouts)
         return;
-    if (index != monitor->lt[monitor->sellt] - C->layouts)
-        monitor->sellt ^= 1;
 
-    monitor->lt[monitor->sellt] = &C->layouts[index];
-    arrange(monitor);
+    Arg A = {.v = C->layouts + index};
+    setlayout(&A);
     printstatus();
 }
 
