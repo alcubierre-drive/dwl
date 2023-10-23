@@ -1,9 +1,11 @@
 #include "awl_extension.h"
+#include "awl_util.h"
 #include <dlfcn.h>
 #include <string.h>
 #include <stdlib.h>
+#include <assert.h>
 
-#define DLOPEN_MODE RTLD_GLOBAL|RTLD_NOW 
+#define DLOPEN_MODE RTLD_GLOBAL|RTLD_NOW
 static const char libawlextend[] = AWL_PLUGIN_NAME;
 
 struct awl_extension_t {
@@ -21,6 +23,11 @@ awl_extension_t* awl_extension_init( const char* lib_ ) {
 
     handle->addr = dlopen( handle->name, DLOPEN_MODE );
     handle->vt = dlsym( handle->addr, AWL_VTABLE_NAME );
+
+    if (!handle->addr)
+        die("could not open lib %s\n", lib);
+    if (!handle->vt)
+        die("could not read vtable (%s)\n", lib);
 
     return handle;
 }
@@ -42,5 +49,14 @@ awl_vtable_t* awl_extension_vtable( awl_extension_t* handle ) {
 }
 
 awl_func_t awl_extension_func( awl_extension_t* handle, const char* name ) {
-    return dlsym( handle->addr, name );
+    union {
+        awl_func_t r;
+        uintptr_t u;
+    } uresult;
+    assert(sizeof(awl_func_t) == sizeof(void*));
+    if (sizeof(uintptr_t) == sizeof(void*))
+        uresult.u = (uintptr_t)dlsym( handle->addr, name );
+    else
+        memset(&uresult, 0, sizeof(uresult));
+    return uresult.r;
 }

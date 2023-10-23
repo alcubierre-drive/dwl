@@ -1,7 +1,6 @@
 #include "../awl_state.h"
 #include "../awl_extension.h"
-
-void* dwlb( void* );
+#include "../awl_bar/awl_bar.h"
 
 #define COLOR_SET( C, hex ) \
     { C[0] = ((hex >> 24) & 0xFF) / 255.0f; \
@@ -41,7 +40,7 @@ static void awl_plugin_init(void) {
 
     /* name, mfact, nmaster, scale, layout, rotate/reflect, x, y */
     ARRAY_INIT(MonitorRule, monrules, 16);
-    ARRAY_APPEND(MonitorRule, monrules, NULL, 0.5, 1, 1.0, &S.layouts[0], WL_OUTPUT_TRANSFORM_NORMAL, -1, -1);
+    ARRAY_APPEND(MonitorRule, monrules, NULL, 0.5, 1, 1.0, 0, WL_OUTPUT_TRANSFORM_NORMAL, -1, -1);
 
     S.xkb_rules = (struct xkb_rule_names) {
         .options = NULL,
@@ -158,7 +157,12 @@ static void awl_plugin_free(void) {
     free(S.keys);
     free(S.buttons);
 
-    pthread_cancel( S.BarThread );
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    if (B) {
+        dwlb_run_display = false;
+        togglebar(NULL);
+        pthread_join( S.BarThread, NULL );
+    }
 
     memset(&S, 0, sizeof(awl_config_t));
 }
@@ -190,7 +194,7 @@ static void cycle_layout( const Arg* arg ) {
     S.cur_layout++;
     S.cur_layout %= S.n_layouts;
 
-    Arg A = {.v = S.layouts + S.cur_layout};
+    Arg A = {.i = S.cur_layout};
     setlayout( &A );
     focusclient(focustop(B->selmon), 1);
 }

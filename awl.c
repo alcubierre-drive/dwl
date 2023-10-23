@@ -12,14 +12,16 @@ static awl_state_t* B = NULL;
 static awl_vtable_t* V = NULL;
 static awl_extension_t* E = NULL;
 
-static void plugin_reload(const Arg* arg);
+static void defer_reload_fun(const Arg* arg);
+static void plugin_reload(void);
 static void plugin_init(const char* lib);
 static void plugin_free(void);
 
+static int defer_reload = 0;
 static int log_level = WLR_ERROR;
 static const Key essential_keys[] = {
-    { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_Q, quit,          {0} },
-    { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_r, plugin_reload, {0} },
+    { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_Q, quit,             {0} },
+    { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_r, defer_reload_fun, {0} },
     { WLR_MODIFIER_CTRL|WLR_MODIFIER_ALT,XKB_KEY_Terminate_Server, quit, {0} },
 #define CHVT(n) { WLR_MODIFIER_CTRL|WLR_MODIFIER_ALT,XKB_KEY_XF86Switch_VT_##n, chvt, {.ui = (n)} }
     CHVT(1), CHVT(2), CHVT(3), CHVT(4), CHVT(5), CHVT(6),
@@ -155,10 +157,10 @@ void arrange(Monitor *m) {
     wlr_scene_node_set_enabled(&m->fullscreen_bg->node,
             (c = focustop(m)) && c->isfullscreen);
 
-    strncpy(m->ltsymbol, m->lt[m->sellt]->symbol, LENGTH(m->ltsymbol)-1);
+    strncpy(m->ltsymbol, C->layouts[m->lt[m->sellt]].symbol, LENGTH(m->ltsymbol)-1);
 
-    if (m->lt[m->sellt]->arrange)
-        m->lt[m->sellt]->arrange(m);
+    if (C->layouts[m->lt[m->sellt]].arrange)
+        C->layouts[m->lt[m->sellt]].arrange(m);
     motionnotify(0);
     checkidleinhibitor(NULL);
 }
@@ -615,7 +617,7 @@ void createmon(struct wl_listener *listener, void *data) {
         wlr_output_layout_add_auto(B->output_layout, wlr_output);
     else
         wlr_output_layout_add(B->output_layout, wlr_output, m->m.x, m->m.y);
-    strncpy(m->ltsymbol, m->lt[m->sellt]->symbol, LENGTH(m->ltsymbol)-1);
+    strncpy(m->ltsymbol, C->layouts[m->lt[m->sellt]].symbol, LENGTH(m->ltsymbol)-1);
 }
 
 void createnotify(struct wl_listener *listener, void *data) {
@@ -915,7 +917,7 @@ void dwl_ipc_output_printstatus_to(DwlIpcOutput *ipc_output) {
     title = focused ? client_get_title(focused) : "";
     appid = focused ? client_get_appid(focused) : "";
 
-    zdwl_ipc_output_v2_send_layout(ipc_output->resource, monitor->lt[monitor->sellt] - C->layouts);
+    zdwl_ipc_output_v2_send_layout(ipc_output->resource, monitor->lt[monitor->sellt]);
     zdwl_ipc_output_v2_send_title(ipc_output->resource, title ? title : B->broken);
     zdwl_ipc_output_v2_send_appid(ipc_output->resource, appid ? appid : B->broken);
     zdwl_ipc_output_v2_send_layout_symbol(ipc_output->resource, monitor->ltsymbol);
@@ -965,7 +967,7 @@ void dwl_ipc_output_set_layout(struct wl_client *client, struct wl_resource *res
     if (index >= (unsigned)C->n_layouts)
         return;
 
-    Arg A = {.v = C->layouts + index};
+    Arg A = {.i = index};
     setlayout(&A);
     printstatus();
 }
@@ -1197,6 +1199,11 @@ keyhandle:
         nk = C->n_keys;
         if (kstart != NULL)
             goto keyhandle;
+    }
+
+    if (defer_reload) {
+        defer_reload = 0;
+        plugin_reload();
     }
     return handled;
 }
@@ -1784,13 +1791,14 @@ void setfullscreen(Client *c, int fullscreen) {
 }
 
 void setlayout(const Arg *arg) {
-    if (!B->selmon)
+    if (!B->selmon || !arg)
         return;
-    if (!arg || !arg->v || arg->v != B->selmon->lt[B->selmon->sellt])
+    if (arg->i < C->n_layouts && arg->i >= 0) {
         B->selmon->sellt ^= 1;
-    if (arg && arg->v)
-        B->selmon->lt[B->selmon->sellt] = (Layout *)arg->v;
-    strncpy(B->selmon->ltsymbol, B->selmon->lt[B->selmon->sellt]->symbol, LENGTH(B->selmon->ltsymbol)-1);
+        B->selmon->lt[B->selmon->sellt] = arg->i;
+    }
+    strncpy(B->selmon->ltsymbol, C->layouts[B->selmon->lt[B->selmon->sellt]].symbol,
+            LENGTH(B->selmon->ltsymbol)-1);
     arrange(B->selmon);
     printstatus();
 }
@@ -1799,7 +1807,7 @@ void setlayout(const Arg *arg) {
 void setmfact(const Arg *arg) {
     float f;
 
-    if (!arg || !B->selmon || !B->selmon->lt[B->selmon->sellt]->arrange)
+    if (!arg || !B->selmon || !C->layouts[B->selmon->lt[B->selmon->sellt]].arrange)
         return;
     f = arg->f < 1.0 ? arg->f + B->selmon->mfact : arg->f - 1.0;
     if (f < 0.1 || f > 0.9)
@@ -2099,6 +2107,7 @@ void tile(Monitor *m) {
 
 void togglebar(const Arg *arg) {
     (void)arg;
+    printf("toggle bar!\n");
     DwlIpcOutput *ipc_output;
     wl_list_for_each(ipc_output, &B->selmon->dwl_ipc_outputs, link)
         zdwl_ipc_output_v2_send_toggle_visibility(ipc_output->resource);
@@ -2358,7 +2367,7 @@ void zoom(const Arg *arg) {
     (void)arg;
     Client *c, *sel = focustop(B->selmon);
 
-    if (!sel || !B->selmon || !B->selmon->lt[B->selmon->sellt]->arrange || sel->isfloating)
+    if (!sel || !B->selmon || !C->layouts[B->selmon->lt[B->selmon->sellt]].arrange || sel->isfloating)
         return;
 
     /* Search for the first tiled window that is not sel, marking sel as
@@ -2488,8 +2497,12 @@ void xwaylandready(struct wl_listener *listener, void *data) {
     xcb_disconnect(xc);
 }
 
-static void plugin_reload(const Arg* arg) {
+static void defer_reload_fun(const Arg* arg) {
     (void)arg;
+    defer_reload = 1;
+}
+
+static void plugin_reload(void) {
     V->free();
     awl_extension_refresh(E);
     V = awl_extension_vtable(E);

@@ -181,7 +181,8 @@ struct Monitor {
     struct wlr_box m; /* monitor area, layout-relative */
     struct wlr_box w; /* window area, layout-relative */
     struct wl_list layers[4]; /* LayerSurface::link */
-    Layout *lt[2];
+    int lt[2];
+    /* Layout *lt[2]; */
     unsigned int seltags;
     unsigned int sellt;
     uint32_t tagset[2];
@@ -195,7 +196,8 @@ typedef struct {
     float mfact;
     int nmaster;
     float scale;
-    Layout *lt;
+    int lt;
+    /* Layout *lt; */
     enum wl_output_transform rr;
     int x, y;
 } MonitorRule;
