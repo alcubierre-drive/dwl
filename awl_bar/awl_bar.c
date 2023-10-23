@@ -929,216 +929,42 @@ static const struct wl_registry_listener registry_listener = {
     .global_remove = handle_global_remove
 };
 
-static int advance_word(char **beg, char **end) {
-    for (*beg = *end; **beg == ' '; (*beg)++);
-    for (*end = *beg; **end && **end != ' '; (*end)++);
-    if (!**end)
-        /* last word */
-        return -1;
-    **end = '\0';
-    (*end)++;
-    return 0;
-}
+/* static void set_top(Bar *bar) { */
+/*     if (!bar->hidden) { */
+/*         zwlr_layer_surface_v1_set_anchor(bar->layer_surface, */
+/*                          ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP */
+/*                          | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT */
+/*                          | ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT); */
+/*         bar->redraw = true; */
+/*     } */
+/*     bar->bottom = false; */
+/* } */
 
-#define ADVANCE() advance_word(&wordbeg, &wordend)
-#define ADVANCE_IF_LAST_CONT() if (ADVANCE() == -1) continue
-#define ADVANCE_IF_LAST_RET() if (ADVANCE() == -1) return
-
-static void set_top(Bar *bar) {
-    if (!bar->hidden) {
-        zwlr_layer_surface_v1_set_anchor(bar->layer_surface,
-                         ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP
-                         | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT
-                         | ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
-        bar->redraw = true;
-    }
-    bar->bottom = false;
-}
-
-static void set_bottom(Bar *bar) {
-    if (!bar->hidden) {
-        zwlr_layer_surface_v1_set_anchor(bar->layer_surface,
-                         ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM
-                         | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT
-                         | ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
-        bar->redraw = true;
-    }
-    bar->bottom = true;
-}
-
-/* Color parsing logic adapted from [sway] */
-static int parse_color(const char *str, pixman_color_t *clr) {
-    if (*str == '#')
-        str++;
-    int len = strlen(str);
-
-    // Disallows "0x" prefix that strtoul would ignore
-    if ((len != 6 && len != 8) || !isxdigit(str[0]) || !isxdigit(str[1]))
-        return -1;
-
-    char *ptr;
-    uint32_t parsed = strtoul(str, &ptr, 16);
-    if (*ptr)
-        return -1;
-
-    if (len == 8) {
-        clr->alpha = (parsed & 0xff) * 0x101;
-        parsed >>= 8;
-    } else {
-        clr->alpha = 0xffff;
-    }
-    clr->red =   ((parsed >> 16) & 0xff) * 0x101;
-    clr->green = ((parsed >>  8) & 0xff) * 0x101;
-    clr->blue =  ((parsed >>  0) & 0xff) * 0x101;
-    return 0;
-}
-
-static void parse_into_customtext(CustomText *ct, char *text) {
-    ct->colors_l = ct->buttons_l = 0;
-
-    if (status_commands) {
-        uint32_t codepoint;
-        uint32_t state = UTF8_ACCEPT;
-        uint32_t last_cp = 0;
-        uint32_t x = 0;
-        size_t str_pos = 0;
-
-        Button *left_button = NULL;
-        Button *middle_button = NULL;
-        Button *right_button = NULL;
-
-        for (char *p = text; *p && str_pos < sizeof(ct->text) - 1; p++) {
-            if (state == UTF8_ACCEPT && *p == '^') {
-                p++;
-                if (*p != '^') {
-                    char *arg, *end;
-                    if (!(arg = strchr(p, '(')) || !(end = strchr(arg + 1, ')')))
-                        continue;
-                    *arg++ = '\0';
-                    *end = '\0';
-
-                    if (!strcmp(p, "bg")) {
-                        Color *color;
-                        ARRAY_APPEND(ct->colors, ct->colors_l, ct->colors_c, color);
-                        if (!*arg)
-                            color->color = inactive_bg_color;
-                        else
-                            parse_color(arg, &color->color);
-                        color->bg = true;
-                        color->start = ct->text + str_pos;
-                    } else if (!strcmp(p, "fg")) {
-                        Color *color;
-                        ARRAY_APPEND(ct->colors, ct->colors_l, ct->colors_c, color);
-                        if (!*arg)
-                            color->color = inactive_fg_color;
-                        else
-                            parse_color(arg, &color->color);
-                        color->bg = false;
-                        color->start = ct->text + str_pos;
-                    } else if (!strcmp(p, "lm")) {
-                        if (left_button) {
-                            left_button->x2 = x;
-                            left_button = NULL;
-                        } else if (*arg) {
-                            ARRAY_APPEND(ct->buttons, ct->buttons_l, ct->buttons_c, left_button);
-                            left_button->btn = BTN_LEFT;
-                            snprintf(left_button->command, sizeof left_button->command, "%s", arg);
-                            left_button->x1 = x;
-                        }
-                    } else if (!strcmp(p, "mm")) {
-                        if (middle_button) {
-                            middle_button->x2 = x;
-                            middle_button = NULL;
-                        } else if (*arg) {
-                            ARRAY_APPEND(ct->buttons, ct->buttons_l, ct->buttons_c, middle_button);
-                            middle_button->btn = BTN_MIDDLE;
-                            snprintf(middle_button->command, sizeof middle_button->command, "%s", arg);
-                            middle_button->x1 = x;
-                        }
-                    } else if (!strcmp(p, "rm")) {
-                        if (right_button) {
-                            right_button->x2 = x;
-                            right_button = NULL;
-                        } else if (*arg) {
-                            ARRAY_APPEND(ct->buttons, ct->buttons_l, ct->buttons_c, right_button);
-                            right_button->btn = BTN_RIGHT;
-                            snprintf(right_button->command, sizeof right_button->command, "%s", arg);
-                            right_button->x1 = x;
-                        }
-                    } 
-
-                    *--arg = '(';
-                    *end = ')';
-
-                    p = end;
-                    continue;
-                }
-            }
-
-            ct->text[str_pos++] = *p;
-
-            if (utf8decode(&state, &codepoint, *p))
-                continue;
-
-            const struct fcft_glyph *glyph = fcft_rasterize_char_utf32(font, codepoint, FCFT_SUBPIXEL_NONE);
-            if (!glyph)
-                continue;
-
-            long kern = 0;
-            if (last_cp)
-                fcft_kerning(font, last_cp, codepoint, &kern, NULL);
-            last_cp = codepoint;
-
-            x += kern + glyph->advance.x;
-        }
-
-        if (left_button)
-            left_button->x2 = x;
-        if (middle_button)
-            middle_button->x2 = x;
-        if (right_button)
-            right_button->x2 = x;
-
-        ct->text[str_pos] = '\0';
-    } else {
-        snprintf(ct->text, sizeof ct->text, "%s", text);
-    }
-}
-
-static void
-copy_customtext(CustomText *from, CustomText *to)
-{
-    snprintf(to->text, sizeof to->text, "%s", from->text);
-    to->colors_l = to->buttons_l = 0;
-    for (uint32_t i = 0; i < from->colors_l; i++) {
-        Color *color;
-        ARRAY_APPEND(to->colors, to->colors_l, to->colors_c, color);
-        color->color = from->colors[i].color;
-        color->bg = from->colors[i].bg;
-        color->start = from->colors[i].start - (char *)&from->text + (char *)&to->text;
-    }
-    for (uint32_t i = 0; i < from->buttons_l; i++) {
-        Button *button;
-        ARRAY_APPEND(to->buttons, to->buttons_l, to->buttons_c, button);
-        *button = from->buttons[i];
-    }
-}
+/* static void set_bottom(Bar *bar) { */
+/*     if (!bar->hidden) { */
+/*         zwlr_layer_surface_v1_set_anchor(bar->layer_surface, */
+/*                          ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM */
+/*                          | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT */
+/*                          | ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT); */
+/*         bar->redraw = true; */
+/*     } */
+/*     bar->bottom = true; */
+/* } */
 
 static void event_loop(void) {
     int wl_fd = wl_display_get_fd(display);
 
     while (dwlb_run_display) {
-        printf("%i\n", dwlb_run_display);
         fd_set rfds;
         FD_ZERO(&rfds);
         FD_SET(wl_fd, &rfds);
 
-        if (select(wl_fd, &rfds, NULL, NULL, NULL) == -1) {
-            if (errno == EINTR)
-                continue;
-            else
-                EDIE("select");
-        }
+        /* if (select(wl_fd, &rfds, NULL, NULL, NULL) == -1) { */
+        /*     if (errno == EINTR) */
+        /*         continue; */
+        /*     else */
+        /*         EDIE("select"); */
+        /* } */
 
         wl_display_flush(display);
 

@@ -161,7 +161,7 @@ static void awl_plugin_free(void) {
     if (B) {
         dwlb_run_display = false;
         togglebar(NULL);
-        pthread_join( S.BarThread, NULL );
+        /* pthread_join( S.BarThread, NULL ); */
     }
 
     memset(&S, 0, sizeof(awl_config_t));
