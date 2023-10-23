@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#include <pthread.h>
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
@@ -29,14 +30,8 @@
 #include "wlr-layer-shell-unstable-v1-protocol.h"
 #include "dwl-ipc-unstable-v2-protocol.h"
 
-#define DIE(fmt, ...)                       \
-    do {                            \
-        cleanup();                  \
-        fprintf(stderr, fmt "\n", ##__VA_ARGS__);   \
-        \
-    } while (0)
-#define EDIE(fmt, ...)                      \
-    DIE(fmt ": %s", ##__VA_ARGS__, strerror(errno));
+#define DIE(fmt, ...) fprintf(stderr, fmt "\n", ##__VA_ARGS__);
+#define EDIE(fmt, ...) DIE(fmt ": %s", ##__VA_ARGS__, strerror(errno));
 
 #define MIN(a, b)               \
     ((a) < (b) ? (a) : (b))
@@ -66,8 +61,6 @@
         (ptr) = &(arr)[(len) - 1];      \
     } while (0)
 
-#define PROGRAM "dwlb"
-#define VERSION "0.2"
 #define TEXT_MAX 2048
 
 bool dwlb_run_display = false;
@@ -453,8 +446,6 @@ static const struct zwlr_layer_surface_v1_listener layer_surface_listener = {
     .closed = layer_surface_closed,
 };
 
-static void cleanup(void) { }
-
 static void output_name(void *data, struct zxdg_output_v1 *xdg_output, const char *name) {
     Bar *bar = (Bar *)data;
 
@@ -676,7 +667,7 @@ static void show_bar(Bar *bar) {
         DIE("Could not create wl_surface");
 
     bar->layer_surface = zwlr_layer_shell_v1_get_layer_surface(layer_shell, bar->wl_surface, bar->wl_output,
-                                   ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM, PROGRAM);
+                                   ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM, "awl_bar");
     if (!bar->layer_surface)
         DIE("Could not create layer_surface");
     zwlr_layer_surface_v1_add_listener(bar->layer_surface, &layer_surface_listener, bar);
@@ -959,15 +950,14 @@ static void event_loop(void) {
         FD_ZERO(&rfds);
         FD_SET(wl_fd, &rfds);
 
-        /* if (select(wl_fd, &rfds, NULL, NULL, NULL) == -1) { */
-        /*     if (errno == EINTR) */
-        /*         continue; */
-        /*     else */
-        /*         EDIE("select"); */
-        /* } */
-
         wl_display_flush(display);
 
+        if (select(wl_fd+1, &rfds, NULL, NULL, NULL) == -1) {
+            if (errno == EINTR)
+                continue;
+            else
+                EDIE("select");
+        }
         if (FD_ISSET(wl_fd, &rfds))
             if (wl_display_dispatch(display) == -1)
                 break;
@@ -983,10 +973,40 @@ static void event_loop(void) {
     }
 }
 
-void* dwlb( void* addr ) {
-    (void)addr; // TODO pthread
+static void cleanup_fun(void* arg) {
+    if (tags) {
+        for (uint32_t i = 0; i < tags_l; i++)
+            free(tags[i]);
+        free(tags);
+    }
+    if (layouts) {
+        for (uint32_t i = 0; i < layouts_l; i++)
+            free(layouts[i]);
+        free(layouts);
+    }
+
     Bar *bar, *bar2;
     Seat *seat, *seat2;
+    wl_list_for_each_safe(bar, bar2, &bar_list, link)
+        teardown_bar(bar);
+    wl_list_for_each_safe(seat, seat2, &seat_list, link)
+        teardown_seat(seat);
+
+    zwlr_layer_shell_v1_destroy(layer_shell);
+    zxdg_output_manager_v1_destroy(output_manager);
+    zdwl_ipc_manager_v2_destroy(dwl_wm);
+
+    fcft_destroy(font);
+    fcft_fini();
+
+    wl_shm_destroy(shm);
+    wl_compositor_destroy(compositor);
+    wl_registry_destroy((struct wl_registry*)arg);
+    wl_display_disconnect(display);
+}
+
+void* dwlb( void* arg ) {
+    (void)arg;
 
     /* Set up display and protocols */
     display = wl_display_connect(NULL);
@@ -1015,41 +1035,17 @@ void* dwlb( void* addr ) {
     height = font->height / buffer_scale + vertical_padding * 2;
 
     /* Setup bars */
+    Bar* bar;
     wl_list_for_each(bar, &bar_list, link)
         setup_bar(bar);
     wl_display_roundtrip(display);
 
-    /* Run */
+    pthread_cleanup_push( &cleanup_fun, &registry );
     dwlb_run_display = true;
     event_loop();
+    pthread_cleanup_pop( 1 );
 
-    if (tags) {
-        for (uint32_t i = 0; i < tags_l; i++)
-            free(tags[i]);
-        free(tags);
-    }
-    if (layouts) {
-        for (uint32_t i = 0; i < layouts_l; i++)
-            free(layouts[i]);
-        free(layouts);
-    }
-
-    wl_list_for_each_safe(bar, bar2, &bar_list, link)
-        teardown_bar(bar);
-    wl_list_for_each_safe(seat, seat2, &seat_list, link)
-        teardown_seat(seat);
-
-    zwlr_layer_shell_v1_destroy(layer_shell);
-    zxdg_output_manager_v1_destroy(output_manager);
-    zdwl_ipc_manager_v2_destroy(dwl_wm);
-
-    fcft_destroy(font);
-    fcft_fini();
-
-    wl_shm_destroy(shm);
-    wl_compositor_destroy(compositor);
-    wl_registry_destroy(registry);
-    wl_display_disconnect(display);
+    cleanup_fun( registry );
 
     return NULL;
 }

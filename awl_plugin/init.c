@@ -160,8 +160,7 @@ static void awl_plugin_free(void) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
     if (B) {
         dwlb_run_display = false;
-        togglebar(NULL);
-        /* pthread_join( S.BarThread, NULL ); */
+        pthread_cancel( S.BarThread );
     }
 
     memset(&S, 0, sizeof(awl_config_t));
