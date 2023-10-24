@@ -129,6 +129,7 @@ static void awl_plugin_init(void) {
     ADD_KEY( MODKEY,    XKB_KEY_period,    focusmon,        {.i = WLR_DIRECTION_RIGHT} )
     ADD_KEY( MODKEY_SH, XKB_KEY_semicolon, tagmon,          {.i = WLR_DIRECTION_LEFT} )
     ADD_KEY( MODKEY_SH, XKB_KEY_colon,     tagmon,          {.i = WLR_DIRECTION_RIGHT} )
+    ADD_KEY( MODKEY,    XKB_KEY_b,         togglebar,       {0} )
 
     ADD_KEY( MODKEY, XKB_KEY_Right, cycle_tag,    {.i= 1} )
     ADD_KEY( MODKEY, XKB_KEY_Left,  cycle_tag,    {.i=-1} )

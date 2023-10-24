@@ -1,6 +1,7 @@
 #include "awl.h"
 #include "awl_util.h"
 #include "awl_client.h"
+#include "awl_title.h"
 
 #include "awl_state.h"
 #include "awl_extension.h"
@@ -64,11 +65,16 @@ struct wl_listener cursor_frame = {.notify = cursorframe};
 struct wl_listener cursor_motion = {.notify = motionrelative};
 struct wl_listener cursor_motion_absolute = {.notify = motionabsolute};
 struct wl_listener drag_icon_destroy = {.notify = destroydragicon};
-struct zdwl_ipc_manager_v2_interface dwl_manager_implementation = {.release = dwl_ipc_manager_release,
-    .get_output = dwl_ipc_manager_get_output};
-struct zdwl_ipc_output_v2_interface dwl_output_implementation = {.release = dwl_ipc_output_release,
-    .set_tags = dwl_ipc_output_set_tags, .set_layout = dwl_ipc_output_set_layout,
-    .set_client_tags = dwl_ipc_output_set_client_tags};
+struct zdwl_ipc_manager_v2_interface dwl_manager_implementation = {
+    .release = dwl_ipc_manager_release,
+    .get_output = dwl_ipc_manager_get_output
+};
+struct zdwl_ipc_output_v2_interface dwl_output_implementation = {
+    .release = dwl_ipc_output_release,
+    .set_tags = dwl_ipc_output_set_tags,
+    .set_layout = dwl_ipc_output_set_layout,
+    .set_client_tags = dwl_ipc_output_set_client_tags
+};
 struct wl_listener idle_inhibitor_create = {.notify = createidleinhibitor};
 struct wl_listener idle_inhibitor_destroy = {.notify = destroyidleinhibitor};
 struct wl_listener layout_change = {.notify = updatemons};
@@ -894,6 +900,8 @@ void dwl_ipc_output_printstatus_to(DwlIpcOutput *ipc_output) {
     focused = focustop(monitor);
     zdwl_ipc_output_v2_send_active(ipc_output->resource, monitor == B->selmon);
 
+    struct wl_array titles;
+    wl_array_init(&titles);
     for (tag = 0 ; tag < TAGCOUNT; tag++) {
         numclients = state = focused_client = 0;
         tagmask = 1 << tag;
@@ -910,6 +918,21 @@ void dwl_ipc_output_printstatus_to(DwlIpcOutput *ipc_output) {
             if (c->isurgent)
                 state |= ZDWL_IPC_OUTPUT_V2_TAG_STATE_URGENT;
 
+            if (c->tags & monitor->tagset[monitor->seltags]) {
+                awl_title_t* ttl = wl_array_add(&titles, sizeof(awl_title_t));
+
+                memset(ttl, 0, sizeof(awl_title_t));
+
+                const char* t = client_get_title(c);
+                if (!t) t = B->broken;
+
+                strcpy( ttl->name, t );
+
+                if (c == focused)
+                    ttl->focused = 1;
+                if (c->isurgent)
+                    ttl->urgent = 1;
+            }
             numclients++;
         }
         zdwl_ipc_output_v2_send_tag(ipc_output->resource, tag, state, numclients, focused_client);
@@ -918,7 +941,9 @@ void dwl_ipc_output_printstatus_to(DwlIpcOutput *ipc_output) {
     appid = focused ? client_get_appid(focused) : "";
 
     zdwl_ipc_output_v2_send_layout(ipc_output->resource, monitor->lt[monitor->sellt]);
-    zdwl_ipc_output_v2_send_title(ipc_output->resource, title ? title : B->broken);
+    /* zdwl_ipc_output_v2_send_title(ipc_output->resource, title ? title : B->broken); */
+    zdwl_ipc_output_v2_send_title_ary(ipc_output->resource, &titles);
+    wl_array_release(&titles);
     zdwl_ipc_output_v2_send_appid(ipc_output->resource, appid ? appid : B->broken);
     zdwl_ipc_output_v2_send_layout_symbol(ipc_output->resource, monitor->ltsymbol);
     if (wl_resource_get_version(ipc_output->resource) >= ZDWL_IPC_OUTPUT_V2_FULLSCREEN_SINCE_VERSION) {
@@ -2107,7 +2132,6 @@ void tile(Monitor *m) {
 
 void togglebar(const Arg *arg) {
     (void)arg;
-    printf("toggle bar!\n");
     DwlIpcOutput *ipc_output;
     wl_list_for_each(ipc_output, &B->selmon->dwl_ipc_outputs, link)
         zdwl_ipc_output_v2_send_toggle_visibility(ipc_output->resource);
@@ -2415,8 +2439,7 @@ void configurex11(struct wl_listener *listener, void *data) {
         arrange(c->mon);
 }
 
-void
-createnotifyx11(struct wl_listener *listener, void *data) {
+void createnotifyx11(struct wl_listener *listener, void *data) {
     (void)listener;
     struct wlr_xwayland_surface *xsurface = data;
     Client *c;
@@ -2438,9 +2461,7 @@ createnotifyx11(struct wl_listener *listener, void *data) {
     LISTEN(&xsurface->events.request_fullscreen, &c->fullscreen, fullscreennotify);
 }
 
-xcb_atom_t
-getatom(xcb_connection_t *xc, const char *name)
-{
+xcb_atom_t getatom(xcb_connection_t *xc, const char *name) {
     xcb_atom_t atom = 0;
     xcb_intern_atom_reply_t *reply;
     xcb_intern_atom_cookie_t cookie = xcb_intern_atom(xc, 0, strlen(name), name);

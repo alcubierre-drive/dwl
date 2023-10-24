@@ -23,6 +23,31 @@
 #include <wayland-util.h>
 
 #include "bar.h"
+#include "../awl_title.h"
+
+bool hidden = false;
+bool bottom = true;
+bool hide_vacant = false;
+uint32_t vertical_padding = 2;
+bool center_title = false;
+bool custom_title = false;
+uint32_t buffer_scale = 2;
+char *fontstr;
+char **tags_names;
+uint32_t n_tags_names = 9;
+
+static char fontstr_priv[] = "monospace:size=10";
+/* static char *tags_names_priv[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9" }; */
+static char *tags_names_priv[] = { "1", "2", "3", "4", "5", "6", "7", "✉ 8", "✉ 9" };
+
+pixman_color_t active_fg_color = { .red = 0xeeee, .green = 0xeeee, .blue = 0xeeee, .alpha = 0xffff, };
+pixman_color_t active_bg_color = { .red = 0x0000, .green = 0x5555, .blue = 0x7777, .alpha = 0x4444, };
+pixman_color_t occupied_fg_color = { .red = 0xeeee, .green = 0xeeee, .blue = 0xeeee, .alpha = 0xffff, };
+pixman_color_t occupied_bg_color = { .red = 0x4444, .green = 0x5555, .blue = 0x7777, .alpha = 0x4444, };
+pixman_color_t inactive_fg_color = { .red = 0xbbbb, .green = 0xbbbb, .blue = 0xbbbb, .alpha = 0xffff, };
+pixman_color_t inactive_bg_color = { .red = 0x2222, .green = 0x2222, .blue = 0x2222, .alpha = 0x4444, };
+pixman_color_t urgent_fg_color = { .red = 0x2222, .green = 0x2222, .blue = 0x2222, .alpha = 0xffff, };
+pixman_color_t urgent_bg_color = { .red = 0xeeee, .green = 0xeeee, .blue = 0xeeee, .alpha = 0xffff, };
 
 #include "utf8.h"
 #include "xdg-shell-protocol.h"
@@ -86,7 +111,7 @@ typedef struct {
     uint32_t buttons_l, buttons_c;
 } CustomText;
 
-typedef struct {
+struct Bar {
     struct wl_output *wl_output;
     struct wl_surface *wl_surface;
     struct zwlr_layer_surface_v1 *layer_surface;
@@ -110,7 +135,7 @@ typedef struct {
     bool redraw;
 
     struct wl_list link;
-} Bar;
+};
 
 typedef struct {
     struct wl_seat *wl_seat;
@@ -142,9 +167,7 @@ static char **layouts;
 static uint32_t layouts_l, layouts_c;
 
 static struct fcft_font *font;
-static uint32_t height, textpadding, buffer_scale;
-
-#include "config.h"
+static uint32_t height, textpadding;
 
 static void wl_buffer_release(void *data, struct wl_buffer *wl_buffer) {
     /* Sent by the compositor when it's no longer using this buffer */
@@ -353,8 +376,15 @@ static int draw_frame(Bar *bar) {
             }
         }
 
-        x = draw_text(tags[i], x, y, foreground, background, fg_color, bg_color,
-                  bar->width, bar->height, bar->textpadding, NULL, 0);
+        uint32_t xcur = x;
+        x = draw_text(tags[i], xcur, y, foreground, background, &inactive_fg_color, &inactive_bg_color,
+                bar->width, bar->height, bar->textpadding, NULL, 0);
+        if (active)
+            x = draw_text(tags[i], xcur, y, foreground, background, &active_fg_color, &active_bg_color,
+                bar->width, bar->height, bar->textpadding, NULL, 0);
+        if (occupied)
+            x = draw_text(tags[i], xcur, y, foreground, background, &occupied_fg_color, &occupied_bg_color,
+                bar->width, bar->height, bar->textpadding, NULL, 0);
     }
 
     x = draw_text(bar->layout, x, y, foreground, background,
@@ -698,7 +728,7 @@ static void dwl_wm_tags(void *data, struct zdwl_ipc_manager_v2 *dwl_wm,
     uint32_t i = tags_l;
     ARRAY_EXPAND(tags, tags_l, tags_c, MAX(0, (int)amount - (int)tags_l));
     for (; i < amount; i++)
-        if (!(tags[i] = strdup(tags_names[MIN(i, LENGTH(tags_names)-1)])))
+        if (!(tags[i] = strdup(tags_names[MIN(i, n_tags_names-1)])))
             EDIE("strdup");
 }
 
@@ -758,8 +788,15 @@ static void dwl_wm_output_layout(void *data, struct zdwl_ipc_output_v2 *dwl_wm_o
     bar->layout_idx = layout;
 }
 
-static void dwl_wm_output_title(void *data, struct zdwl_ipc_output_v2 *dwl_wm_output,
-    const char *title) {
+void bar_set_title( Bar* bar, const char* title ) {
+    if (!bar || custom_title) return;
+    if (bar->window_title)
+        free(bar->window_title);
+    bar->window_title = strdup(title);
+}
+
+static void dwl_wm_output_title_ary(void *data, struct zdwl_ipc_output_v2 *dwl_wm_output,
+    struct wl_array* ary) {
     if (custom_title)
         return;
 
@@ -767,8 +804,28 @@ static void dwl_wm_output_title(void *data, struct zdwl_ipc_output_v2 *dwl_wm_ou
 
     if (bar->window_title)
         free(bar->window_title);
+
+    char title[1024] = "|";
+    awl_title_t* titles = ary->data;
+    int n_titles = ary->size / sizeof(awl_title_t);
+    for (int i=0; i<n_titles; ++i) {
+        if (titles[i].urgent)
+            strcat( title, "%U" );
+        if (titles[i].focused)
+            strcat( title, "%F" );
+        strcat(title, titles[i].name);
+        strcat(title, "|");
+    }
+
     if (!(bar->window_title = strdup(title)))
         EDIE("strdup");
+}
+
+static void dwl_wm_output_title(void *data, struct zdwl_ipc_output_v2 *dwl_wm_output,
+    const char *title) {
+    (void)data;
+    (void)dwl_wm_output;
+    (void)title;
 }
 
 static void dwl_wm_output_appid(void *data, struct zdwl_ipc_output_v2 *dwl_wm_output,
@@ -805,6 +862,7 @@ static const struct zdwl_ipc_output_v2_listener dwl_wm_output_listener = {
     .tag = dwl_wm_output_tag,
     .layout = dwl_wm_output_layout,
     .title = dwl_wm_output_title,
+    .title_ary = dwl_wm_output_title_ary,
     .appid = dwl_wm_output_appid,
     .layout_symbol = dwl_wm_output_layout_symbol,
     .frame = dwl_wm_output_frame,
@@ -1009,6 +1067,9 @@ static void cleanup_fun(void* arg) {
 
 void* dwlb( void* arg ) {
     (void)arg;
+
+    fontstr = fontstr_priv;
+    tags_names = tags_names_priv;
 
     /* Set up display and protocols */
     display = wl_display_connect(NULL);

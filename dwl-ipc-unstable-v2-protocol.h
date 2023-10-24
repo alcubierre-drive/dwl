@@ -231,11 +231,12 @@ struct zdwl_ipc_output_v2_interface {
 #define ZDWL_IPC_OUTPUT_V2_TAG 2
 #define ZDWL_IPC_OUTPUT_V2_LAYOUT 3
 #define ZDWL_IPC_OUTPUT_V2_TITLE 4
-#define ZDWL_IPC_OUTPUT_V2_APPID 5
-#define ZDWL_IPC_OUTPUT_V2_LAYOUT_SYMBOL 6
-#define ZDWL_IPC_OUTPUT_V2_FRAME 7
-#define ZDWL_IPC_OUTPUT_V2_FULLSCREEN 8
-#define ZDWL_IPC_OUTPUT_V2_FLOATING 9
+#define ZDWL_IPC_OUTPUT_V2_TITLE_ARY 5
+#define ZDWL_IPC_OUTPUT_V2_APPID 6
+#define ZDWL_IPC_OUTPUT_V2_LAYOUT_SYMBOL 7
+#define ZDWL_IPC_OUTPUT_V2_FRAME 8
+#define ZDWL_IPC_OUTPUT_V2_FULLSCREEN 9
+#define ZDWL_IPC_OUTPUT_V2_FLOATING 10
 
 /**
  * @ingroup iface_zdwl_ipc_output_v2
@@ -257,6 +258,10 @@ struct zdwl_ipc_output_v2_interface {
  * @ingroup iface_zdwl_ipc_output_v2
  */
 #define ZDWL_IPC_OUTPUT_V2_TITLE_SINCE_VERSION 1
+/**
+ * @ingroup iface_zdwl_ipc_output_v2
+ */
+#define ZDWL_IPC_OUTPUT_V2_TITLE_ARY_SINCE_VERSION 1
 /**
  * @ingroup iface_zdwl_ipc_output_v2
  */
@@ -354,6 +359,18 @@ static inline void
 zdwl_ipc_output_v2_send_title(struct wl_resource *resource_, const char *title)
 {
 	wl_resource_post_event(resource_, ZDWL_IPC_OUTPUT_V2_TITLE, title);
+}
+
+/**
+ * @ingroup iface_zdwl_ipc_output_v2
+ * Sends an title_ary event to the client owning the resource.
+ * @param resource_ The client's resource
+ * @param title The title structure array.
+ */
+static inline void
+zdwl_ipc_output_v2_send_title_ary(struct wl_resource *resource_, struct wl_array *title)
+{
+	wl_resource_post_event(resource_, ZDWL_IPC_OUTPUT_V2_TITLE_ARY, title);
 }
 
 /**

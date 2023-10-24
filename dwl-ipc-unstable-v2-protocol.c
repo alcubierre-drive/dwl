@@ -55,6 +55,7 @@ static const struct wl_message zdwl_ipc_output_v2_events[] = {
 	{ "tag", "uuuu", dwl_ipc_unstable_v2_types + 0 },
 	{ "layout", "u", dwl_ipc_unstable_v2_types + 0 },
 	{ "title", "s", dwl_ipc_unstable_v2_types + 0 },
+	{ "title_ary", "a", dwl_ipc_unstable_v2_types + 0 },
 	{ "appid", "s", dwl_ipc_unstable_v2_types + 0 },
 	{ "layout_symbol", "s", dwl_ipc_unstable_v2_types + 0 },
 	{ "frame", "", dwl_ipc_unstable_v2_types + 0 },
@@ -65,6 +66,6 @@ static const struct wl_message zdwl_ipc_output_v2_events[] = {
 WL_PRIVATE const struct wl_interface zdwl_ipc_output_v2_interface = {
 	"zdwl_ipc_output_v2", 2,
 	4, zdwl_ipc_output_v2_requests,
-	10, zdwl_ipc_output_v2_events,
+	11, zdwl_ipc_output_v2_events,
 };
 
