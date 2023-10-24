@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <stdint.h>
 
 #define DLOPEN_MODE RTLD_GLOBAL|RTLD_NOW
 static const char libawlextend[] = AWL_PLUGIN_NAME;
@@ -14,6 +15,12 @@ struct awl_extension_t {
     awl_vtable_t* vt;
 };
 
+static void reverse_memcpy( char* dest, const char* src, int64_t nbytes ) {
+    dest += nbytes - 1;
+    for (const char* ptr = src + nbytes - 1; ptr >= src; ptr--)
+        (*dest--) = *ptr;
+}
+
 awl_extension_t* awl_extension_init( const char* lib_ ) {
     const char* lib = lib_ ? lib_ : libawlextend;
 
@@ -22,10 +29,18 @@ awl_extension_t* awl_extension_init( const char* lib_ ) {
     strcpy( handle->name, lib );
 
     handle->addr = dlopen( handle->name, DLOPEN_MODE );
+    if (!handle->addr) {
+        fprintf(stderr, "could not open lib %s, trying with './' prefix...\n", lib);
+        handle->name = realloc(handle->name, strlen(handle->name)+3);
+        reverse_memcpy( handle->name+2, handle->name, strlen(handle->name)+1 );
+        handle->name[0] = '.';
+        handle->name[1] = '/';
+        handle->addr = dlopen( handle->name, DLOPEN_MODE );
+        if (!handle->addr)
+            die("could not open lib %s, trying with './' prefix...\n", lib);
+    }
     handle->vt = dlsym( handle->addr, AWL_VTABLE_NAME );
 
-    if (!handle->addr)
-        die("could not open lib %s\n", lib);
     if (!handle->vt)
         die("could not read vtable (%s)\n", lib);
 

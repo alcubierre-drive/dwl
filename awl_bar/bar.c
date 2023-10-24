@@ -22,7 +22,7 @@
 #include <wayland-cursor.h>
 #include <wayland-util.h>
 
-#include "awl_bar.h"
+#include "bar.h"
 
 #include "utf8.h"
 #include "xdg-shell-protocol.h"
@@ -899,6 +899,7 @@ static void handle_global_remove(void *data, struct wl_registry *registry, uint3
     Bar *bar;
     Seat *seat;
 
+    printf("in global remove\n");
     wl_list_for_each(bar, &bar_list, link) {
         if (bar->registry_name == name) {
             wl_list_remove(&bar->link);
@@ -974,6 +975,7 @@ static void event_loop(void) {
 }
 
 static void cleanup_fun(void* arg) {
+    (void)arg;
     if (tags) {
         for (uint32_t i = 0; i < tags_l; i++)
             free(tags[i]);
@@ -1001,7 +1003,7 @@ static void cleanup_fun(void* arg) {
 
     wl_shm_destroy(shm);
     wl_compositor_destroy(compositor);
-    wl_registry_destroy((struct wl_registry*)arg);
+    /* wl_registry_destroy(*preg); */
     wl_display_disconnect(display);
 }
 
@@ -1040,12 +1042,10 @@ void* dwlb( void* arg ) {
         setup_bar(bar);
     wl_display_roundtrip(display);
 
-    pthread_cleanup_push( &cleanup_fun, &registry );
+    pthread_cleanup_push( &cleanup_fun, NULL );
     dwlb_run_display = true;
     event_loop();
-    pthread_cleanup_pop( 1 );
-
-    cleanup_fun( registry );
+    pthread_cleanup_pop( true );
 
     return NULL;
 }

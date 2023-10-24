@@ -23,7 +23,7 @@ PROTOCOLS := xdg-shell-protocol.h wlr-layer-shell-unstable-v1-protocol.h \
 
 -include Makefile.inc
 
-.PHONY: all protocols clean awl_bar/awl_bar.a
+.PHONY: all protocols clean awl_bar/bar.a
 
 all: awl libawlplugin.so protocols
 protocols: $(PROTOCOLS)
@@ -33,9 +33,9 @@ protocols: $(PROTOCOLS)
 awl: $(DWL_OBJ)
 	$(LD) $^ -o $@ $(LDFLAGS)
 
-libawlplugin.so: $(PLUGIN_OBJ) awl_bar/awl_bar.a
+libawlplugin.so: $(PLUGIN_OBJ) awl_bar/bar.a
 	$(LD) $^ -o $@ $(LDFLAGS) -shared
-awl_bar/awl_bar.a:
+awl_bar/bar.a:
 	make -C awl_bar/
 
 WAYLAND_SCANNER   = $(shell pkg-config --variable=wayland_scanner wayland-scanner)

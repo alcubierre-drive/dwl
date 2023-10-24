@@ -3,7 +3,7 @@
 AR := ar
 CC := gcc
 
-LIB := awl_bar.a
+LIB := bar.a
 CFLAGS += -Wall -Wextra -Wno-unused-parameter -Wno-format-truncation \
 	  -g -ggdb -I/usr/include/pixman-1
 CFLAGS += $(shell pkg-config --cflags wayland-client wayland-cursor fcft pixman-1)
@@ -43,14 +43,14 @@ dwl-ipc-unstable-v2-protocol.c:
 	$(WAYLAND_SCANNER) private-code protocols/dwl-ipc-unstable-v2.xml $@
 dwl-ipc-unstable-v2-protocol.o: dwl-ipc-unstable-v2-protocol.h
 
-awl_bar.o: utf8.h config.h xdg-shell-protocol.h xdg-output-unstable-v1-protocol.h \
+bar.o: utf8.h config.h xdg-shell-protocol.h xdg-output-unstable-v1-protocol.h \
 	wlr-layer-shell-unstable-v1-protocol.h dwl-ipc-unstable-v2-protocol.h
 
 %.o: %.c
 	$(CC) -fPIC $(CFLAGS) -c $< -o $@
 
 # Protocol dependencies
-$(LIB): awl_bar.o xdg-shell-protocol.o xdg-output-unstable-v1-protocol.o \
+$(LIB): bar.o xdg-shell-protocol.o xdg-output-unstable-v1-protocol.o \
 	wlr-layer-shell-unstable-v1-protocol.o dwl-ipc-unstable-v2-protocol.o
 	$(AR) -crs $@ $^
 

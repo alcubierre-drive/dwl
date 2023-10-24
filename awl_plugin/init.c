@@ -1,6 +1,6 @@
 #include "../awl_state.h"
 #include "../awl_extension.h"
-#include "../awl_bar/awl_bar.h"
+#include "../awl_bar/bar.h"
 
 #define COLOR_SET( C, hex ) \
     { C[0] = ((hex >> 24) & 0xFF) / 255.0f; \
@@ -12,6 +12,9 @@
 
 #define ARRAY_INIT( type, ary, capacity ) S. ary = (type*)calloc( capacity, sizeof(type) );
 #define ARRAY_APPEND( type, ary, ... ) S. ary[S.n_##ary ++] = (type){__VA_ARGS__};
+
+#define handle_error_en(en, msg) \
+    do { errno = en; perror(msg); exit(EXIT_FAILURE); } while (0)
 
 extern awl_vtable_t AWL_VTABLE_SYM;
 static awl_config_t S = {0};
@@ -147,7 +150,9 @@ static void awl_plugin_init(void) {
     ARRAY_APPEND(Button, buttons, MODKEY, BTN_MIDDLE, togglefloating, {0});
     ARRAY_APPEND(Button, buttons, MODKEY, BTN_RIGHT,  moveresize,     {.ui = CurResize});
 
-    pthread_create( &S.BarThread, NULL, dwlb, NULL );
+    int s = pthread_create( &S.BarThread, NULL, dwlb, NULL );
+    if (s != 0)
+        handle_error_en(s, "pthread_create");
 }
 
 static void awl_plugin_free(void) {
@@ -160,7 +165,13 @@ static void awl_plugin_free(void) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
     if (B) {
         dwlb_run_display = false;
-        pthread_cancel( S.BarThread );
+        int s = pthread_cancel( S.BarThread );
+        if (s != 0)
+            handle_error_en(s, "pthread_cancel");
+        void* res = NULL;
+        s = pthread_join(S.BarThread, &res);
+        if (s != 0)
+            handle_error_en(s, "pthread_join");
     }
 
     memset(&S, 0, sizeof(awl_config_t));

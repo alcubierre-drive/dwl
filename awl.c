@@ -2552,9 +2552,8 @@ int main(int argc, char *argv[]) {
 
     run(startup_cmd);
 
-    plugin_free();
-
     cleanup();
+    plugin_free();
 
     awl_state_free(B);
     return EXIT_SUCCESS;
@@ -2563,9 +2562,3 @@ usage:
     die("Usage: %s [-v] [-d] [-s startup command]", argv[0]);
 }
 
-Monitor* get_selmon( void ) {
-    return B->selmon;
-}
-Client* get_client( void ) {
-    return B->grabc;
-}
