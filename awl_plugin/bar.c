@@ -53,7 +53,7 @@ pixman_color_t urgent_bg_color = { .red = 0xeeee, .green = 0xeeee, .blue = 0xeee
 #include "xdg-shell-protocol.h"
 #include "xdg-output-unstable-v1-protocol.h"
 #include "wlr-layer-shell-unstable-v1-protocol.h"
-#include "dwl-ipc-unstable-v2-protocol.h"
+#include "awl-ipc-unstable-v2-protocol.h"
 
 #define _ERROR(fmt, ...) fprintf(stderr, fmt "\n", ##__VA_ARGS__);
 #define ERROR(fmt, ...) _ERROR(fmt "(" __FILE__ ":%i): %s", ##__VA_ARGS__, __LINE__, strerror(errno));

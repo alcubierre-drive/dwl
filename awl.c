@@ -6,7 +6,7 @@
 #include "awl_state.h"
 #include "awl_extension.h"
 
-#include "dwl-ipc-unstable-v2-protocol.h"
+#include "awl-ipc-unstable-v2-protocol.h"
 
 static awl_config_t* C = NULL;
 static awl_state_t* B = NULL;
