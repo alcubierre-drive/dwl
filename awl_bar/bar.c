@@ -128,6 +128,8 @@ struct Bar {
 
     uint32_t mtags, ctags, urg, sel;
     char *layout, *window_title;
+    awl_title_t* window_titles;
+    int n_window_titles;
     uint32_t layout_idx, last_layout_idx;
     CustomText title, status;
 
@@ -398,34 +400,64 @@ static int draw_frame(Bar *bar) {
           bar->status.colors, bar->status.colors_l);
 
     uint32_t nx;
-    if (center_title) {
-        uint32_t title_width = TEXT_WIDTH(custom_title ? bar->title.text : bar->window_title, bar->width - status_width - x, 0);
-        nx = MAX(x, MIN((bar->width - title_width) / 2, bar->width - status_width - title_width));
+
+    uint32_t xspace = bar->width - status_width - x;
+    if (bar->n_window_titles > 0) {
+        uint32_t space_per_window = xspace / bar->n_window_titles;
+        uint32_t pad = xspace - space_per_window*bar->n_window_titles;
+
+        x += pad/2 + pad%2;
+        for (int i=0; i<bar->n_window_titles; ++i) {
+            awl_title_t* T = bar->window_titles + i;
+            nx = x + space_per_window;
+            x = draw_text( T->name, x, y, foreground, background,
+                T->urgent ? &urgent_fg_color : (T->focused ? &active_fg_color : &inactive_fg_color),
+                T->urgent ? &urgent_bg_color : (T->focused ? &active_bg_color : &inactive_bg_color),
+                nx, bar->height, 0,
+                NULL, 0 );
+            pixman_image_fill_boxes(PIXMAN_OP_SRC, background,
+                        T->urgent ? &urgent_bg_color : (T->focused ? &active_bg_color : &inactive_bg_color), 1,
+                        &(pixman_box32_t){
+                            .x1 = x, .x2 = nx,
+                            .y1 = 0, .y2 = bar->height
+                        });
+            x = nx;
+        }
+        x += pad/2;
+        nx = x;
     } else {
-        nx = MIN(x + bar->textpadding, bar->width - status_width);
+        x += xspace;
+        nx = x;
     }
-    pixman_image_fill_boxes(PIXMAN_OP_SRC, background,
-                bar->sel ? &active_bg_color : &inactive_bg_color, 1,
-                &(pixman_box32_t){
-                    .x1 = x, .x2 = nx,
-                    .y1 = 0, .y2 = bar->height
-                });
-    x = nx;
 
-    x = draw_text(custom_title ? bar->title.text : bar->window_title,
-              x, y, foreground, background,
-              bar->sel ? &active_fg_color : &inactive_fg_color,
-              bar->sel ? &active_bg_color : &inactive_bg_color,
-              bar->width - status_width, bar->height, 0,
-              custom_title ? bar->title.colors : NULL,
-              custom_title ? bar->title.colors_l : 0);
+    /* if (center_title) { */
+    /*     uint32_t title_width = TEXT_WIDTH(custom_title ? bar->title.text : bar->window_title, bar->width - status_width - x, 0); */
+    /*     nx = MAX(x, MIN((bar->width - title_width) / 2, bar->width - status_width - title_width)); */
+    /* } else { */
+    /*     nx = MIN(x + bar->textpadding, bar->width - status_width); */
+    /* } */
+    /* pixman_image_fill_boxes(PIXMAN_OP_SRC, background, */
+    /*             bar->sel ? &active_bg_color : &inactive_bg_color, 1, */
+    /*             &(pixman_box32_t){ */
+    /*                 .x1 = x, .x2 = nx, */
+    /*                 .y1 = 0, .y2 = bar->height */
+    /*             }); */
+    /* x = nx; */
 
-    pixman_image_fill_boxes(PIXMAN_OP_SRC, background,
-                bar->sel ? &active_bg_color : &inactive_bg_color, 1,
-                &(pixman_box32_t){
-                    .x1 = x, .x2 = bar->width - status_width,
-                    .y1 = 0, .y2 = bar->height
-                });
+    /* x = draw_text(custom_title ? bar->title.text : bar->window_title, */
+    /*           x, y, foreground, background, */
+    /*           bar->sel ? &active_fg_color : &inactive_fg_color, */
+    /*           bar->sel ? &active_bg_color : &inactive_bg_color, */
+    /*           bar->width - status_width, bar->height, 0, */
+    /*           custom_title ? bar->title.colors : NULL, */
+    /*           custom_title ? bar->title.colors_l : 0); */
+
+    /* pixman_image_fill_boxes(PIXMAN_OP_SRC, background, */
+    /*             bar->sel ? &active_bg_color : &inactive_bg_color, 1, */
+    /*             &(pixman_box32_t){ */
+    /*                 .x1 = x, .x2 = bar->width - status_width, */
+    /*                 .y1 = 0, .y2 = bar->height */
+    /*             }); */
 
     /* Draw background and foreground on bar */
     pixman_image_composite32(PIXMAN_OP_OVER, background, NULL, final, 0, 0, 0, 0, 0, 0, bar->width, bar->height);
@@ -788,13 +820,6 @@ static void dwl_wm_output_layout(void *data, struct zdwl_ipc_output_v2 *dwl_wm_o
     bar->layout_idx = layout;
 }
 
-void bar_set_title( Bar* bar, const char* title ) {
-    if (!bar || custom_title) return;
-    if (bar->window_title)
-        free(bar->window_title);
-    bar->window_title = strdup(title);
-}
-
 static void dwl_wm_output_title_ary(void *data, struct zdwl_ipc_output_v2 *dwl_wm_output,
     struct wl_array* ary) {
     if (custom_title)
@@ -805,17 +830,22 @@ static void dwl_wm_output_title_ary(void *data, struct zdwl_ipc_output_v2 *dwl_w
     if (bar->window_title)
         free(bar->window_title);
 
+    // TODO remove legacy window titles
     char title[1024] = "|";
     awl_title_t* titles = ary->data;
-    int n_titles = ary->size / sizeof(awl_title_t);
-    for (int i=0; i<n_titles; ++i) {
+    bar->n_window_titles = ary->size / sizeof(awl_title_t);
+    for (int i=0; i<bar->n_window_titles; ++i) {
         if (titles[i].urgent)
             strcat( title, "%U" );
         if (titles[i].focused)
             strcat( title, "%F" );
-        strcat(title, titles[i].name);
+        strncat(title, titles[i].name, 24);
         strcat(title, "|");
     }
+
+    if (!(bar->window_titles = realloc(bar->window_titles, ary->size)))
+        EDIE("realloc");
+    memcpy(bar->window_titles, titles, ary->size);
 
     if (!(bar->window_title = strdup(title)))
         EDIE("strdup");
@@ -875,6 +905,7 @@ static void setup_bar(Bar *bar) {
     bar->textpadding = textpadding;
     bar->bottom = bottom;
     bar->hidden = hidden;
+    bar->window_titles = NULL;
 
     bar->xdg_output = zxdg_output_manager_v1_get_xdg_output(output_manager, bar->wl_output);
     if (!bar->xdg_output)
@@ -934,6 +965,8 @@ static void teardown_bar(Bar *bar) {
         free(bar->title.buttons);
     if (bar->window_title)
         free(bar->window_title);
+    if (bar->window_titles)
+        free(bar->window_titles);
     zdwl_ipc_output_v2_destroy(bar->dwl_wm_output);
     if (bar->xdg_output_name)
         free(bar->xdg_output_name);

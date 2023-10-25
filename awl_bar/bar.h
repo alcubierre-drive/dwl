@@ -5,8 +5,6 @@ extern bool dwlb_run_display;
 
 typedef struct Bar Bar;
 
-void bar_set_title( Bar* bar, const char* title );
-
 // initially hide all bars
 extern bool hidden;
 // initially draw all bars at the bottom
