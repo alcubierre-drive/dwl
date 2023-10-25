@@ -7,10 +7,10 @@
 #include "awl_util.h"
 
 void die(const char *fmt, ...) {
+    if (!fmt) exit(1);
     va_list ap;
     va_start(ap, fmt);
     vfprintf(stderr, fmt, ap);
-    // TODO NULL fmt?
     va_end(ap);
 
     if (fmt[0] && fmt[strlen(fmt)-1] == ':') {

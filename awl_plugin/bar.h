@@ -1,9 +1,11 @@
 #pragma once
 
-void* dwlb( void* addr );
-extern bool dwlb_run_display;
+#include "../awl_arg.h"
 
 typedef struct Bar Bar;
+void* awl_bar_run( void* addr );
+
+extern bool awlb_run_display;
 
 // initially hide all bars
 extern bool hidden;

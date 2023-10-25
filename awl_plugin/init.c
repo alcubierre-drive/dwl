@@ -181,7 +181,7 @@ static void awl_plugin_init(void) {
     ARRAY_APPEND(Button, buttons, MODKEY, BTN_MIDDLE, togglefloating, {0});
     ARRAY_APPEND(Button, buttons, MODKEY, BTN_RIGHT,  moveresize,     {.ui = CurResize});
 
-    int s = pthread_create( &S.BarThread, NULL, dwlb, NULL );
+    int s = pthread_create( &S.BarThread, NULL, awl_bar_run, NULL );
     if (s != 0)
         handle_error_en(s, "pthread_create");
 }
@@ -195,7 +195,7 @@ static void awl_plugin_free(void) {
 
     awl_state_t* B = AWL_VTABLE_SYM.state;
     if (B) {
-        dwlb_run_display = false;
+        awlb_run_display = false;
         int s = pthread_cancel( S.BarThread );
         if (s != 0)
             handle_error_en(s, "pthread_cancel");

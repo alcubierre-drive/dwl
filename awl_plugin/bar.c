@@ -26,6 +26,8 @@
 #include "bar.h"
 #include "../awl_title.h"
 
+static bool has_init = false;
+
 enum pointer_event_mask {
     POINTER_EVENT_ENTER = 1 << 0,
     POINTER_EVENT_LEAVE = 1 << 1,
@@ -113,7 +115,7 @@ pixman_color_t urgent_bg_color = { .red = 0xeeee, .green = 0xeeee, .blue = 0xeee
 
 #define TEXT_MAX 2048
 
-bool dwlb_run_display = false;
+bool awlb_run_display = false;
 
 typedef struct {
     pixman_color_t color;
@@ -500,7 +502,7 @@ static void layer_surface_configure(void *data, struct zwlr_layer_surface_v1 *su
 static void layer_surface_closed(void *data, struct zwlr_layer_surface_v1 *surface) {
     (void)data;
     (void)surface;
-    dwlb_run_display = false;
+    awlb_run_display = false;
 }
 
 static const struct zwlr_layer_surface_v1_listener layer_surface_listener = {
@@ -670,16 +672,16 @@ static void pointer_frame(void *data, struct wl_pointer *pointer) {
 
     if (i < tags_l) {
         if (seat->pointer_button == BTN_LEFT)
-            zdwl_ipc_output_v2_set_tags(seat->bar->dwl_wm_output, 1 << i, 1);
+            view( &( (const Arg){.ui=1<<i} ) );
         else if (seat->pointer_button == BTN_MIDDLE)
-            zdwl_ipc_output_v2_set_tags(seat->bar->dwl_wm_output, ~0, 1);
+            view( &( (const Arg){.ui=~0} ) );
         else if (seat->pointer_button == BTN_RIGHT)
-            zdwl_ipc_output_v2_set_tags(seat->bar->dwl_wm_output, seat->bar->mtags ^ (1 << i), 0);
+            toggleview( &( (const Arg){.ui=1<<i} ) );
     } else if (seat->pointer_x < (x += TEXT_WIDTH(seat->bar->layout, seat->bar->width - x, seat->bar->textpadding))) {
         if (seat->pointer_button == BTN_LEFT)
-            zdwl_ipc_output_v2_set_layout(seat->bar->dwl_wm_output, seat->bar->last_layout_idx);
+            cycle_layout( &( (const Arg){.i=-1} ) );
         else if (seat->pointer_button == BTN_RIGHT)
-            zdwl_ipc_output_v2_set_layout(seat->bar->dwl_wm_output, 2);
+            cycle_layout( &( (const Arg){.i=+1} ) );
     } else {
         uint32_t status_x = seat->bar->width / buffer_scale - TEXT_WIDTH(seat->bar->status.text, seat->bar->width - x, seat->bar->textpadding) / buffer_scale;
         if (seat->pointer_x < status_x) {
@@ -1017,7 +1019,7 @@ static void handle_global(void *data, struct wl_registry *registry,
         Bar *bar = calloc(1, sizeof(Bar));
         bar->registry_name = name;
         bar->wl_output = wl_registry_bind(registry, name, &wl_output_interface, 1);
-        if (dwlb_run_display)
+        if (awlb_run_display)
             setup_bar(bar);
         wl_list_insert(&bar_list, &bar->link);
     } else if (!strcmp(interface, wl_seat_interface.name)) {
@@ -1087,32 +1089,10 @@ static const struct wl_registry_listener registry_listener = {
     .global_remove = handle_global_remove
 };
 
-/* static void set_top(Bar *bar) { */
-/*     if (!bar->hidden) { */
-/*         zwlr_layer_surface_v1_set_anchor(bar->layer_surface, */
-/*                          ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP */
-/*                          | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT */
-/*                          | ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT); */
-/*         bar->redraw = true; */
-/*     } */
-/*     bar->bottom = false; */
-/* } */
-
-/* static void set_bottom(Bar *bar) { */
-/*     if (!bar->hidden) { */
-/*         zwlr_layer_surface_v1_set_anchor(bar->layer_surface, */
-/*                          ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM */
-/*                          | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT */
-/*                          | ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT); */
-/*         bar->redraw = true; */
-/*     } */
-/*     bar->bottom = true; */
-/* } */
-
 static void event_loop(void) {
     int wl_fd = wl_display_get_fd(display);
 
-    while (dwlb_run_display) {
+    while (awlb_run_display) {
         fd_set rfds;
         FD_ZERO(&rfds);
         FD_SET(wl_fd, &rfds);
@@ -1138,6 +1118,7 @@ static void event_loop(void) {
             }
         }
     }
+
 }
 
 static void cleanup_fun(void* arg) {
@@ -1169,11 +1150,10 @@ static void cleanup_fun(void* arg) {
 
     wl_shm_destroy(shm);
     wl_compositor_destroy(compositor);
-    /* wl_registry_destroy(*preg); */
     wl_display_disconnect(display);
 }
 
-void* dwlb( void* arg ) {
+void* awl_bar_run( void* arg ) {
     (void)arg;
 
     fontstr = fontstr_priv;
@@ -1212,8 +1192,10 @@ void* dwlb( void* arg ) {
     wl_display_roundtrip(display);
 
     pthread_cleanup_push( &cleanup_fun, NULL );
-    dwlb_run_display = true;
+    awlb_run_display = true;
+    has_init = true;
     event_loop();
+    has_init = false;
     pthread_cleanup_pop( true );
 
     return NULL;
