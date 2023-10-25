@@ -10,49 +10,75 @@ CFLAGS += $(shell pkg-config --cflags $(PKGS)) \
 LDFLAGS += $(shell pkg-config --libs $(PKGS)) -Wl,-rpath=$(shell pwd) \
 	$(LIBS) -rdynamic
 
-DWL_SRC := $(shell find . -maxdepth 1 -type f -iname "*.c") dwl-ipc-unstable-v2-protocol.c
-PLUGIN_SRC := $(shell find awl_plugin/ -maxdepth 1 -type f -iname "*.c")
+DWL_SRC := $(shell find . -maxdepth 1 -type f -iname "*.c") \
+	   dwl-ipc-unstable-v2-protocol.c
+PLUGIN_SRC := $(shell find awl_plugin/ -maxdepth 1 -type f -iname "*.c") \
+	awl_plugin/xdg-shell-protocol.c \
+	awl_plugin/xdg-output-unstable-v1-protocol.c \
+	awl_plugin/wlr-layer-shell-unstable-v1-protocol.c \
+	awl_plugin/dwl-ipc-unstable-v2-protocol.c
 
 DWL_OBJ := $(patsubst %.c,%.c.o,$(DWL_SRC))
 PLUGIN_OBJ := $(patsubst %.c,%.c.o,$(PLUGIN_SRC))
 
 DEPS := $(patsubst %.c,%.c.d,$(DWL_SRC) $(PLUGIN_SRC))
 
-PROTOCOLS := xdg-shell-protocol.h wlr-layer-shell-unstable-v1-protocol.h \
-	     dwl-ipc-unstable-v2-protocol.h dwl-ipc-unstable-v2-protocol.c
+DWL_PROTOCOLS := xdg-shell-protocol.h \
+		 wlr-layer-shell-unstable-v1-protocol.h \
+		 dwl-ipc-unstable-v2-protocol.h \
+		 dwl-ipc-unstable-v2-protocol.c
+PLUGIN_PROTOCOLS := awl_plugin/xdg-shell-protocol.h \
+		awl_plugin/xdg-shell-protocol.c \
+		awl_plugin/xdg-output-unstable-v1-protocol.h \
+		awl_plugin/xdg-output-unstable-v1-protocol.c \
+		awl_plugin/wlr-layer-shell-unstable-v1-protocol.h \
+		awl_plugin/wlr-layer-shell-unstable-v1-protocol.c \
+		awl_plugin/dwl-ipc-unstable-v2-protocol.h \
+		awl_plugin/dwl-ipc-unstable-v2-protocol.c \
 
 -include Makefile.inc
 
-.PHONY: all protocols clean awl_bar/bar.a
+.PHONY: all protocols clean
 
-all: awl libawlplugin.so protocols
-protocols: $(PROTOCOLS)
+all: protocols awl libawlplugin.so
+protocols: $(DWL_PROTOCOLS) $(PLUGIN_PROTOCOLS)
 
 -include $(DEPS)
 
 awl: $(DWL_OBJ)
 	$(LD) $^ -o $@ $(LDFLAGS)
 
-libawlplugin.so: $(PLUGIN_OBJ) awl_bar/bar.a
+libawlplugin.so: $(PLUGIN_OBJ)
 	$(LD) $^ -o $@ $(LDFLAGS) -shared
-awl_bar/bar.a:
-	make -C awl_bar/
 
 WAYLAND_SCANNER   = $(shell pkg-config --variable=wayland_scanner wayland-scanner)
 WAYLAND_PROTOCOLS = $(shell pkg-config --variable=pkgdatadir wayland-protocols)
 
 xdg-shell-protocol.h:
-	$(WAYLAND_SCANNER) server-header \
-		$(WAYLAND_PROTOCOLS)/stable/xdg-shell/xdg-shell.xml $@
+	$(WAYLAND_SCANNER) server-header $(WAYLAND_PROTOCOLS)/stable/xdg-shell/xdg-shell.xml $@
 wlr-layer-shell-unstable-v1-protocol.h:
-	$(WAYLAND_SCANNER) server-header \
-		protocols/wlr-layer-shell-unstable-v1.xml $@
+	$(WAYLAND_SCANNER) server-header protocols/wlr-layer-shell-unstable-v1.xml $@
 dwl-ipc-unstable-v2-protocol.h:
-	$(WAYLAND_SCANNER) server-header \
-		protocols/dwl-ipc-unstable-v2.xml $@
+	$(WAYLAND_SCANNER) server-header protocols/dwl-ipc-unstable-v2.xml $@
 dwl-ipc-unstable-v2-protocol.c:
-	$(WAYLAND_SCANNER) private-code \
-		protocols/dwl-ipc-unstable-v2.xml $@
+	$(WAYLAND_SCANNER) private-code protocols/dwl-ipc-unstable-v2.xml $@
+
+awl_plugin/xdg-shell-protocol.h:
+	$(WAYLAND_SCANNER) client-header $(WAYLAND_PROTOCOLS)/stable/xdg-shell/xdg-shell.xml $@
+awl_plugin/xdg-shell-protocol.c:
+	$(WAYLAND_SCANNER) private-code $(WAYLAND_PROTOCOLS)/stable/xdg-shell/xdg-shell.xml $@
+awl_plugin/xdg-output-unstable-v1-protocol.h:
+	$(WAYLAND_SCANNER) client-header $(WAYLAND_PROTOCOLS)/unstable/xdg-output/xdg-output-unstable-v1.xml $@
+awl_plugin/xdg-output-unstable-v1-protocol.c:
+	$(WAYLAND_SCANNER) private-code $(WAYLAND_PROTOCOLS)/unstable/xdg-output/xdg-output-unstable-v1.xml $@
+awl_plugin/wlr-layer-shell-unstable-v1-protocol.h:
+	$(WAYLAND_SCANNER) client-header protocols/wlr-layer-shell-unstable-v1.xml $@
+awl_plugin/wlr-layer-shell-unstable-v1-protocol.c:
+	$(WAYLAND_SCANNER) private-code protocols/wlr-layer-shell-unstable-v1.xml $@
+awl_plugin/dwl-ipc-unstable-v2-protocol.h:
+	$(WAYLAND_SCANNER) client-header protocols/dwl-ipc-unstable-v2.xml $@
+awl_plugin/dwl-ipc-unstable-v2-protocol.c:
+	$(WAYLAND_SCANNER) private-code protocols/dwl-ipc-unstable-v2.xml $@
 
 %.c.o: %.c Makefile
 	$(CC) -c $< -o $@ -MMD $(CFLAGS)
@@ -60,7 +86,6 @@ dwl-ipc-unstable-v2-protocol.c:
 	$(CC) -c $< -o $@ -MMD $(CFLAGS)
 
 clean:
-	rm -f awl *.o *-protocol.h *.so *.d \
-		awl_plugin/*.o awl_plugin/*.d \
-		awl_bar/*.d awl_bar/*.a awl_bar/*.o
+	rm -f awl *.so *-protocol.c *-protocol.h *.o *.d \
+	awl_plugin/*-protocol.c awl_plugin/*-protocol.h awl_plugin/*.o awl_plugin/*.d
 

@@ -1,6 +1,6 @@
 #include "../awl_state.h"
 #include "../awl_extension.h"
-#include "../awl_bar/bar.h"
+#include "bar.h"
 
 #define COLOR_SET( C, hex ) \
     { C[0] = ((hex >> 24) & 0xFF) / 255.0f; \
