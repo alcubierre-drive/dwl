@@ -37,7 +37,7 @@ awl_extension_t* awl_extension_init( const char* lib_ ) {
         handle->name[1] = '/';
         handle->addr = dlopen( handle->name, DLOPEN_MODE );
         if (!handle->addr)
-            die("could not open lib %s, trying with './' prefix...\n", lib);
+            die("could not open lib %s\n", lib);
     }
     handle->vt = dlsym( handle->addr, AWL_VTABLE_NAME );
 

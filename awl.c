@@ -2532,7 +2532,7 @@ int main(int argc, char *argv[]) {
         else if (c == 'd')
             log_level = WLR_DEBUG;
         else if (c == 'v')
-            die("dwl " VERSION);
+            die("awl " VERSION);
         else
             goto usage;
     }
