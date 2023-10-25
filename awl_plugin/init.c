@@ -1,3 +1,4 @@
+#include "init.h"
 #include "../awl_state.h"
 #include "../awl_extension.h"
 #include "bar.h"
@@ -19,14 +20,12 @@
 extern awl_vtable_t AWL_VTABLE_SYM;
 static awl_config_t S = {0};
 
-static void cycle_tag( const Arg* arg );
-static void cycle_layout( const Arg* arg );
 static void movestack( const Arg *arg );
 
 static void awl_plugin_init(void) {
     S.sloppyfocus = 1;
     S.bypass_surface_visibility = 0;
-    S.borderpx = 2;
+    S.borderpx = 4;
     COLOR_SET( S.bordercolor, 0x444444ff );
     COLOR_SET( S.focuscolor, 0x005577ff );
     COLOR_SET( S.urgentcolor, 0xff0000ff );
@@ -209,7 +208,7 @@ static void awl_plugin_free(void) {
     memset(&S, 0, sizeof(awl_config_t));
 }
 
-static void cycle_tag( const Arg* arg ) {
+void cycle_tag( const Arg* arg ) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
     if (!B) return;
 
@@ -228,7 +227,7 @@ static void cycle_tag( const Arg* arg ) {
     printstatus();
 }
 
-static void cycle_layout( const Arg* arg ) {
+void cycle_layout( const Arg* arg ) {
     (void)arg;
     awl_state_t* B = AWL_VTABLE_SYM.state;
     if (!B) return;

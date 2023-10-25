@@ -2,8 +2,6 @@
 
 #include "awl.h"
 
-// TODO config.h missing.
-
 typedef struct awl_state_t awl_state_t;
 typedef struct awl_config_t awl_config_t;
 

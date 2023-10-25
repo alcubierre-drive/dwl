@@ -58,6 +58,8 @@
 #include <xcb/xcb.h>
 #include <xcb/xcb_icccm.h>
 
+#include "awl_arg.h"
+
 #define TAGCOUNT (9)
 /* #define MODKEY WLR_MODIFIER_LOGO */
 #define MODKEY WLR_MODIFIER_ALT
@@ -76,13 +78,6 @@ enum { XDGShell, LayerShell, X11Managed, X11Unmanaged }; /* client types */
 enum { LyrBg, LyrBottom, LyrTile, LyrFloat, LyrFS, LyrTop, LyrOverlay, LyrBlock, NUM_LAYERS }; /* scene layers */
 enum { NetWMWindowTypeDialog, NetWMWindowTypeSplash, NetWMWindowTypeToolbar,
     NetWMWindowTypeUtility, NetLast }; /* EWMH atoms */
-
-typedef union {
-    int i;
-    uint32_t ui;
-    float f;
-    const void *v;
-} Arg;
 
 typedef struct {
     unsigned int mod;

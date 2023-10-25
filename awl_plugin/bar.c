@@ -22,8 +22,34 @@
 #include <wayland-cursor.h>
 #include <wayland-util.h>
 
+#include "init.h"
 #include "bar.h"
 #include "../awl_title.h"
+
+enum pointer_event_mask {
+    POINTER_EVENT_ENTER = 1 << 0,
+    POINTER_EVENT_LEAVE = 1 << 1,
+    POINTER_EVENT_MOTION = 1 << 2,
+    POINTER_EVENT_BUTTON = 1 << 3,
+    POINTER_EVENT_AXIS = 1 << 4,
+    POINTER_EVENT_AXIS_SOURCE = 1 << 5,
+    POINTER_EVENT_AXIS_STOP = 1 << 6,
+    POINTER_EVENT_AXIS_DISCRETE = 1 << 7,
+};
+
+struct pointer_event {
+    uint32_t event_mask;
+    wl_fixed_t surface_x, surface_y;
+    uint32_t button, state;
+    uint32_t time;
+    uint32_t serial;
+    struct {
+            bool valid;
+            wl_fixed_t value;
+            int32_t discrete;
+    } axes[2];
+    uint32_t axis_source;
+};
 
 bool hidden = false;
 bool bottom = true;
@@ -126,9 +152,9 @@ struct Bar {
     uint32_t stride, bufsize;
 
     uint32_t mtags, ctags, urg, sel;
-    char *layout, *window_title;
     awl_title_t* window_titles;
     int n_window_titles;
+    char* layout;
     uint32_t layout_idx, last_layout_idx;
     CustomText title, status;
 
@@ -142,6 +168,7 @@ typedef struct {
     struct wl_seat *wl_seat;
     struct wl_pointer *wl_pointer;
     uint32_t registry_name;
+    struct pointer_event pointer_event;
 
     Bar *bar;
     uint32_t pointer_x, pointer_y;
@@ -430,35 +457,6 @@ static int draw_frame(Bar *bar) {
         nx = x;
     }
 
-    /* if (center_title) { */
-    /*     uint32_t title_width = TEXT_WIDTH(custom_title ? bar->title.text : bar->window_title, bar->width - status_width - x, 0); */
-    /*     nx = MAX(x, MIN((bar->width - title_width) / 2, bar->width - status_width - title_width)); */
-    /* } else { */
-    /*     nx = MIN(x + bar->textpadding, bar->width - status_width); */
-    /* } */
-    /* pixman_image_fill_boxes(PIXMAN_OP_SRC, background, */
-    /*             bar->sel ? &active_bg_color : &inactive_bg_color, 1, */
-    /*             &(pixman_box32_t){ */
-    /*                 .x1 = x, .x2 = nx, */
-    /*                 .y1 = 0, .y2 = bar->height */
-    /*             }); */
-    /* x = nx; */
-
-    /* x = draw_text(custom_title ? bar->title.text : bar->window_title, */
-    /*           x, y, foreground, background, */
-    /*           bar->sel ? &active_fg_color : &inactive_fg_color, */
-    /*           bar->sel ? &active_bg_color : &inactive_bg_color, */
-    /*           bar->width - status_width, bar->height, 0, */
-    /*           custom_title ? bar->title.colors : NULL, */
-    /*           custom_title ? bar->title.colors_l : 0); */
-
-    /* pixman_image_fill_boxes(PIXMAN_OP_SRC, background, */
-    /*             bar->sel ? &active_bg_color : &inactive_bg_color, 1, */
-    /*             &(pixman_box32_t){ */
-    /*                 .x1 = x, .x2 = bar->width - status_width, */
-    /*                 .y1 = 0, .y2 = bar->height */
-    /*             }); */
-
     /* Draw background and foreground on bar */
     pixman_image_composite32(PIXMAN_OP_OVER, background, NULL, final, 0, 0, 0, 0, 0, 0, bar->width, bar->height);
     pixman_image_composite32(PIXMAN_OP_OVER, foreground, NULL, final, 0, 0, 0, 0, 0, 0, bar->width, bar->height);
@@ -631,8 +629,15 @@ static void pointer_frame(void *data, struct wl_pointer *pointer) {
     (void)pointer;
     Seat *seat = (Seat *)data;
 
-    if (!seat->pointer_button || !seat->bar)
-        return;
+    if (!seat->bar) return;
+
+    int discrete_event = 0;
+    struct pointer_event* event = &seat->pointer_event;
+    if (event->event_mask & POINTER_EVENT_AXIS_DISCRETE &&
+        event->axes[WL_POINTER_AXIS_VERTICAL_SCROLL].valid) {
+        discrete_event = event->axes[WL_POINTER_AXIS_VERTICAL_SCROLL].discrete;
+    }
+    memset(event, 0, sizeof(*event));
 
     uint32_t x = 0, i = 0;
     do {
@@ -645,6 +650,23 @@ static void pointer_frame(void *data, struct wl_pointer *pointer) {
         }
         x += TEXT_WIDTH(tags[i], seat->bar->width - x, seat->bar->textpadding) / buffer_scale;
     } while (seat->pointer_x >= x && ++i < tags_l);
+
+    // scroll events!
+    if (discrete_event) {
+        if (i < tags_l) {
+            cycle_tag( &( (const Arg){.i=discrete_event} ) );
+            return;
+        } else if ((seat->pointer_x <
+                    (x + TEXT_WIDTH(seat->bar->layout, seat->bar->width - x, seat->bar->textpadding)))) {
+            cycle_layout( &( (const Arg){.i=discrete_event} ) );
+            return;
+        } else {
+            focusstack( &( (const Arg){.i=discrete_event} ) );
+            return;
+        }
+    }
+
+    if (!seat->pointer_button) return;
 
     if (i < tags_l) {
         if (seat->pointer_button == BTN_LEFT)
@@ -694,36 +716,40 @@ static void pointer_frame(void *data, struct wl_pointer *pointer) {
     seat->pointer_button = 0;
 }
 
-static void pointer_axis(void *data, struct wl_pointer *pointer,
-         uint32_t time, uint32_t axis, wl_fixed_t value) {
-    (void)data;
-    (void)pointer;
-    (void)time;
-    (void)axis;
-    (void)value;
+static void pointer_axis(void *data, struct wl_pointer *wl_pointer, uint32_t time,
+               uint32_t axis, wl_fixed_t value) {
+    (void)wl_pointer;
+    Seat *seat = (Seat*)data;
+    seat->pointer_event.event_mask |= POINTER_EVENT_AXIS;
+    seat->pointer_event.time = time;
+    seat->pointer_event.axes[axis].valid = true;
+    seat->pointer_event.axes[axis].value = value;
 }
 
-static void pointer_axis_discrete(void *data, struct wl_pointer *pointer,
-              uint32_t axis, int32_t discrete) {
-    (void)data;
-    (void)pointer;
-    (void)axis;
-    (void)discrete;
+static void pointer_axis_source(void *data, struct wl_pointer *wl_pointer,
+               uint32_t axis_source) {
+    (void)wl_pointer;
+    Seat *seat = (Seat*)data;
+    seat->pointer_event.event_mask |= POINTER_EVENT_AXIS_SOURCE;
+    seat->pointer_event.axis_source = axis_source;
 }
 
-static void pointer_axis_source(void *data, struct wl_pointer *pointer,
-            uint32_t axis_source) {
-    (void)data;
-    (void)pointer;
-    (void)axis_source;
+static void pointer_axis_stop(void *data, struct wl_pointer *wl_pointer,
+               uint32_t time, uint32_t axis) {
+    (void)wl_pointer;
+    Seat *seat = (Seat*)data;
+    seat->pointer_event.time = time;
+    seat->pointer_event.event_mask |= POINTER_EVENT_AXIS_STOP;
+    seat->pointer_event.axes[axis].valid = true;
 }
 
-static void pointer_axis_stop(void *data, struct wl_pointer *pointer,
-          uint32_t time, uint32_t axis) {
-    (void)data;
-    (void)pointer;
-    (void)time;
-    (void)axis;
+static void pointer_axis_discrete(void *data, struct wl_pointer *wl_pointer,
+               uint32_t axis, int32_t discrete) {
+    (void)wl_pointer;
+    Seat *seat = (Seat*)data;
+    seat->pointer_event.event_mask |= POINTER_EVENT_AXIS_DISCRETE;
+    seat->pointer_event.axes[axis].valid = true;
+    seat->pointer_event.axes[axis].discrete = discrete;
 }
 
 static void pointer_axis_value120(void *data, struct wl_pointer *pointer,
@@ -885,27 +911,11 @@ static void dwl_wm_output_title_ary(void *data, struct zdwl_ipc_output_v2 *dwl_w
 
     Bar *bar = (Bar *)data;
 
-    if (bar->window_title)
-        free(bar->window_title);
-
-    // TODO remove legacy window titles
-    char title[1024] = "|";
-    awl_title_t* titles = ary->data;
+    awl_title_t* titles = (awl_title_t*)ary->data;
     bar->n_window_titles = ary->size / sizeof(awl_title_t);
-    for (int i=0; i<bar->n_window_titles; ++i) {
-        if (titles[i].urgent)
-            strcat( title, "%U" );
-        if (titles[i].focused)
-            strcat( title, "%F" );
-        strncat(title, titles[i].name, 24);
-        strcat(title, "|");
-    }
-
     bar->window_titles = realloc(bar->window_titles, ary->size);
     if (bar->window_titles && titles)
         memcpy(bar->window_titles, titles, ary->size);
-
-    bar->window_title = strdup(title);
 }
 
 static void dwl_wm_output_title(void *data, struct zdwl_ipc_output_v2 *dwl_wm_output,
@@ -1028,8 +1038,6 @@ static void teardown_bar(Bar *bar) {
         free(bar->title.colors);
     if (bar->title.buttons)
         free(bar->title.buttons);
-    if (bar->window_title)
-        free(bar->window_title);
     if (bar->window_titles)
         free(bar->window_titles);
     zdwl_ipc_output_v2_destroy(bar->dwl_wm_output);
