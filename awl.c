@@ -21,9 +21,9 @@ static void plugin_free(void);
 static int defer_reload = 0;
 static int log_level = WLR_ERROR;
 static const Key essential_keys[] = {
-    { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_Q, quit,             {0} },
-    { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_r, defer_reload_fun, {0} },
-    { WLR_MODIFIER_CTRL|WLR_MODIFIER_ALT,XKB_KEY_Terminate_Server, quit, {0} },
+    { MODKEY|WLR_MODIFIER_SHIFT,         XKB_KEY_equal,            quit,             {0} },
+    { MODKEY|WLR_MODIFIER_CTRL,          XKB_KEY_r,                defer_reload_fun, {0} },
+    { WLR_MODIFIER_CTRL|WLR_MODIFIER_ALT,XKB_KEY_Terminate_Server, quit,             {0} },
 #define CHVT(n) { WLR_MODIFIER_CTRL|WLR_MODIFIER_ALT,XKB_KEY_XF86Switch_VT_##n, chvt, {.ui = (n)} }
     CHVT(1), CHVT(2), CHVT(3), CHVT(4), CHVT(5), CHVT(6),
     CHVT(7), CHVT(8), CHVT(9), CHVT(10), CHVT(11), CHVT(12),
@@ -36,27 +36,6 @@ static inline int MIN( int A, int B ) { return A < B ? A : B; }
 static inline int MAX( int A, int B ) { return A > B ? A : B; }
 #define IDLE_NOTIFY_ACTIVITY \
     wlr_idle_notify_activity(B->idle, B->seat), wlr_idle_notifier_v1_notify_activity(B->idle_notifier, B->seat)
-
-typedef struct {
-    struct wl_list link;
-    struct wl_resource *resource;
-    Monitor *mon;
-} DwlIpcOutput;
-
-static void dwl_ipc_manager_bind(struct wl_client *client, void *data, uint32_t version, uint32_t id);
-static void dwl_ipc_manager_destroy(struct wl_resource *resource);
-static void dwl_ipc_manager_get_output(struct wl_client *client, struct wl_resource *resource,
-        uint32_t id, struct wl_resource *output);
-static void dwl_ipc_manager_release(struct wl_client *client, struct wl_resource *resource);
-static void dwl_ipc_output_destroy(struct wl_resource *resource);
-static void dwl_ipc_output_printstatus(Monitor *monitor);
-static void dwl_ipc_output_printstatus_to(DwlIpcOutput *ipc_output);
-static void dwl_ipc_output_set_client_tags(struct wl_client *client, struct wl_resource *resource,
-        uint32_t and_tags, uint32_t xor_tags);
-static void dwl_ipc_output_set_layout(struct wl_client *client, struct wl_resource *resource, uint32_t index);
-static void dwl_ipc_output_set_tags(struct wl_client *client, struct wl_resource *resource,
-        uint32_t tagmask, uint32_t toggle_tagset);
-static void dwl_ipc_output_release(struct wl_client *client, struct wl_resource *resource);
 
 /* global event handlers */
 struct wl_listener cursor_axis = {.notify = axisnotify};
@@ -880,7 +859,7 @@ void dwl_ipc_manager_release(struct wl_client *client, struct wl_resource *resou
     wl_resource_destroy(resource);
 }
 
-static void dwl_ipc_output_destroy(struct wl_resource *resource) {
+void dwl_ipc_output_destroy(struct wl_resource *resource) {
     DwlIpcOutput *ipc_output = wl_resource_get_user_data(resource);
     wl_list_remove(&ipc_output->link);
     free(ipc_output);
@@ -896,7 +875,7 @@ void dwl_ipc_output_printstatus_to(DwlIpcOutput *ipc_output) {
     Monitor *monitor = ipc_output->mon;
     Client *c, *focused;
     int tagmask, state, numclients, focused_client, tag;
-    const char *title, *appid;
+    const char *appid;
     focused = focustop(monitor);
     zdwl_ipc_output_v2_send_active(ipc_output->resource, monitor == B->selmon);
 
@@ -937,11 +916,9 @@ void dwl_ipc_output_printstatus_to(DwlIpcOutput *ipc_output) {
         }
         zdwl_ipc_output_v2_send_tag(ipc_output->resource, tag, state, numclients, focused_client);
     }
-    title = focused ? client_get_title(focused) : "";
     appid = focused ? client_get_appid(focused) : "";
 
     zdwl_ipc_output_v2_send_layout(ipc_output->resource, monitor->lt[monitor->sellt]);
-    /* zdwl_ipc_output_v2_send_title(ipc_output->resource, title ? title : B->broken); */
     zdwl_ipc_output_v2_send_title_ary(ipc_output->resource, &titles);
     wl_array_release(&titles);
     zdwl_ipc_output_v2_send_appid(ipc_output->resource, appid ? appid : B->broken);

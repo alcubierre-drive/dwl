@@ -21,6 +21,7 @@ static awl_config_t S = {0};
 
 static void cycle_tag( const Arg* arg );
 static void cycle_layout( const Arg* arg );
+static void movestack( const Arg *arg );
 
 static void awl_plugin_init(void) {
     S.sloppyfocus = 1;
@@ -110,30 +111,60 @@ static void awl_plugin_init(void) {
     static const char *termcmd[] = {"kitty", NULL};
     static const char *menucmd[] = {"bemenu-run", NULL};
 
-    ADD_KEY( MODKEY,    XKB_KEY_p,         spawn,           {.v=menucmd} )
-    ADD_KEY( MODKEY,    XKB_KEY_Return,    spawn,           {.v=termcmd} )
-    ADD_KEY( MODKEY,    XKB_KEY_j,         focusstack,      {.i = +1} )
-    ADD_KEY( MODKEY,    XKB_KEY_k,         focusstack,      {.i = -1} )
-    ADD_KEY( MODKEY,    XKB_KEY_i,         incnmaster,      {.i = +1} )
-    ADD_KEY( MODKEY,    XKB_KEY_d,         incnmaster,      {.i = -1} )
-    ADD_KEY( MODKEY,    XKB_KEY_h,         setmfact,        {.f = -0.05} )
-    ADD_KEY( MODKEY,    XKB_KEY_l,         setmfact,        {.f = +0.05} )
-    ADD_KEY( MODKEY_SH, XKB_KEY_Return,    zoom,            {0} )
-    ADD_KEY( MODKEY,    XKB_KEY_Tab,       view,            {0} )
-    ADD_KEY( MODKEY_SH, XKB_KEY_C,         killclient,      {0} )
-    ADD_KEY( MODKEY_CT, XKB_KEY_space,     togglefloating,  {0} )
-    ADD_KEY( MODKEY,    XKB_KEY_f,         togglefullscreen,{0} )
-    ADD_KEY( MODKEY,    XKB_KEY_0,         view,            {.ui = ~0} )
-    ADD_KEY( MODKEY_SH, XKB_KEY_equal,     tag,             {.ui = ~0} )
-    ADD_KEY( MODKEY,    XKB_KEY_comma,     focusmon,        {.i = WLR_DIRECTION_LEFT} )
-    ADD_KEY( MODKEY,    XKB_KEY_period,    focusmon,        {.i = WLR_DIRECTION_RIGHT} )
-    ADD_KEY( MODKEY_SH, XKB_KEY_semicolon, tagmon,          {.i = WLR_DIRECTION_LEFT} )
-    ADD_KEY( MODKEY_SH, XKB_KEY_colon,     tagmon,          {.i = WLR_DIRECTION_RIGHT} )
-    ADD_KEY( MODKEY,    XKB_KEY_b,         togglebar,       {0} )
+    static const char *brightness_m_cmd[] = {"backlight-tooler", "-m", "dec", "-V", "0.05", NULL};
+    static const char *brightness_p_cmd[] = {"backlight-tooler", "-m", "inc", "-V", "0.05", NULL};
+    static const char *vol_p_cmd[] = {"pactl", "set-sink-volume", "@DEFAULT_SINK@", "+5%", NULL};
+    static const char *vol_m_cmd[] = {"pactl", "set-sink-volume", "@DEFAULT_SINK@", "-5%", NULL};
+    static const char *vol_mute_cmd[] = {"pactl", "set-sink-mute", "@DEFAULT_SINK@", "toggle", NULL};
+    static const char *mic_mute_cmd[] = {"pactl", "set-source-mute", "@DEFAULT_SOURCE@", "toggle", NULL};
+    static const char *vol_switch_cmd[] = {"pulse_port_switch", "-t", "-N", NULL};
 
-    ADD_KEY( MODKEY, XKB_KEY_Right, cycle_tag,    {.i= 1} )
-    ADD_KEY( MODKEY, XKB_KEY_Left,  cycle_tag,    {.i=-1} )
-    ADD_KEY( MODKEY, XKB_KEY_space, cycle_layout, {0} )
+    ADD_KEY( MODKEY,    XKB_KEY_p,          spawn,              {.v=menucmd} )
+    ADD_KEY( MODKEY,    XKB_KEY_Return,     spawn,              {.v=termcmd} )
+    ADD_KEY( MODKEY,    XKB_KEY_j,          focusstack,         {.i = +1} )
+    ADD_KEY( MODKEY,    XKB_KEY_k,          focusstack,         {.i = -1} )
+    ADD_KEY( MODKEY,    XKB_KEY_i,          incnmaster,         {.i = +1} )
+    ADD_KEY( MODKEY,    XKB_KEY_d,          incnmaster,         {.i = -1} )
+    ADD_KEY( MODKEY,    XKB_KEY_h,          setmfact,           {.f = -0.05} )
+    ADD_KEY( MODKEY,    XKB_KEY_l,          setmfact,           {.f = +0.05} )
+    ADD_KEY( MODKEY_SH, XKB_KEY_Return,     zoom,               {0} )
+    ADD_KEY( MODKEY,    XKB_KEY_Tab,        view,               {0} )
+    ADD_KEY( MODKEY_SH, XKB_KEY_C,          killclient,         {0} )
+    ADD_KEY( MODKEY_CT, XKB_KEY_space,      togglefloating,     {0} )
+    ADD_KEY( MODKEY,    XKB_KEY_f,          togglefullscreen,   {0} )
+    /* ADD_KEY( MODKEY,    XKB_KEY_0,          view,               {.ui = ~0} ) */
+    /* ADD_KEY( MODKEY_SH, XKB_KEY_equal,      tag,                {.ui = ~0} ) */
+    ADD_KEY( MODKEY,    XKB_KEY_comma,      focusmon,           {.i = WLR_DIRECTION_LEFT} )
+    ADD_KEY( MODKEY,    XKB_KEY_period,     focusmon,           {.i = WLR_DIRECTION_RIGHT} )
+    ADD_KEY( MODKEY_SH, XKB_KEY_semicolon,  tagmon,             {.i = WLR_DIRECTION_LEFT} )
+    ADD_KEY( MODKEY_SH, XKB_KEY_colon,      tagmon,             {.i = WLR_DIRECTION_RIGHT} )
+    ADD_KEY( MODKEY,    XKB_KEY_i,          togglebar,          {0} )
+
+    ADD_KEY( MODKEY,    XKB_KEY_Right,      cycle_tag,          {.i= 1} )
+    ADD_KEY( MODKEY,    XKB_KEY_Left,       cycle_tag,          {.i=-1} )
+    ADD_KEY( MODKEY,    XKB_KEY_space,      cycle_layout,       {0} )
+    ADD_KEY( MODKEY_SH, XKB_KEY_J,          movestack,          {.i = +1} )
+    ADD_KEY( MODKEY_SH, XKB_KEY_K,          movestack,          {.i = -1} )
+
+    ADD_KEY( 0, XKB_KEY_XF86MonBrightnessUp,    spawn,          {.v=brightness_p_cmd} )
+    ADD_KEY( 0, XKB_KEY_XF86MonBrightnessDown,  spawn,          {.v=brightness_m_cmd} )
+    ADD_KEY( 0, XKB_KEY_XF86AudioRaiseVolume,   spawn,          {.v=vol_p_cmd} )
+    ADD_KEY( 0, XKB_KEY_XF86AudioLowerVolume,   spawn,          {.v=vol_m_cmd} )
+    ADD_KEY( 0, XKB_KEY_XF86AudioMute,          spawn,          {.v=vol_mute_cmd} )
+    ADD_KEY( 0, XKB_KEY_XF86AudioMicMute,       spawn,          {.v=mic_mute_cmd} )
+    ADD_KEY( MODKEY, XKB_KEY_F1,                spawn,          {.v=vol_switch_cmd} )
+
+    // TODO missing
+    /* "killall arandr || arandr" */
+    /*   XF86Display */
+    /* "systemctl --user stop backlight-tooler.timer; backlight-tooler -m toggle" */
+    /*   XF86Favorites */
+    /* "backlight-tooler -m auto" */
+    /*   XF86Launch1 */
+    /* "backlight-tooler-service-toggle" */
+    /*   XF86Launch2 */
+    /* "bluetooth toggle" */
+    /*   XF86Launch3 */
 
     ADD_TAG( XKB_KEY_1, XKB_KEY_exclam,     0)
     ADD_TAG( XKB_KEY_2, XKB_KEY_quotedbl,   1)
@@ -208,6 +239,52 @@ static void cycle_layout( const Arg* arg ) {
     Arg A = {.i = S.cur_layout};
     setlayout( &A );
     focusclient(focustop(B->selmon), 1);
+}
+
+static void movestack( const Arg *arg ) {
+    (void)arg;
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_config_t* C = &S;
+    if (!B || !C) return;
+
+    Client *c, *sel = focustop(B->selmon);
+
+    if (!sel) {
+        return;
+    }
+
+    if (wl_list_length(&B->clients) <= 1) {
+        return;
+    }
+
+    if (arg->i > 0) {
+        wl_list_for_each(c, &sel->link, link) {
+            if (&c->link == &B->clients) {
+                c = wl_container_of(&B->clients, c, link);
+                break; /* wrap past the sentinel node */
+            }
+            if (VISIBLEON(c, B->selmon) || &c->link == &B->clients) {
+                break; /* found it */
+            }
+        }
+    } else {
+        wl_list_for_each_reverse(c, &sel->link, link) {
+            if (&c->link == &B->clients) {
+                c = wl_container_of(&B->clients, c, link);
+                break; /* wrap past the sentinel node */
+            }
+            if (VISIBLEON(c, B->selmon) || &c->link == &B->clients) {
+                break; /* found it */
+            }
+        }
+        /* backup one client */
+        c = wl_container_of(c->link.prev, c, link);
+    }
+
+    wl_list_remove(&sel->link);
+    wl_list_insert(&c->link, &sel->link);
+    arrange(B->selmon);
+    printstatus();
 }
 
 awl_vtable_t AWL_VTABLE_SYM = {

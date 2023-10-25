@@ -55,8 +55,8 @@ pixman_color_t urgent_bg_color = { .red = 0xeeee, .green = 0xeeee, .blue = 0xeee
 #include "wlr-layer-shell-unstable-v1-protocol.h"
 #include "dwl-ipc-unstable-v2-protocol.h"
 
-#define DIE(fmt, ...) fprintf(stderr, fmt "\n", ##__VA_ARGS__);
-#define EDIE(fmt, ...) DIE(fmt ": %s", ##__VA_ARGS__, strerror(errno));
+#define _ERROR(fmt, ...) fprintf(stderr, fmt "\n", ##__VA_ARGS__);
+#define ERROR(fmt, ...) _ERROR(fmt "(" __FILE__ ":%i): %s", ##__VA_ARGS__, __LINE__, strerror(errno));
 
 #define MIN(a, b)               \
     ((a) < (b) ? (a) : (b))
@@ -74,8 +74,7 @@ pixman_color_t urgent_bg_color = { .red = 0xeeee, .green = 0xeeee, .blue = 0xeee
             new_cap = new_len * 2;              \
             if (new_cap < ARRAY_INIT_CAP)           \
                 new_cap = ARRAY_INIT_CAP;       \
-            if (!((arr) = realloc((arr), sizeof(*(arr)) * new_cap))) \
-                EDIE("realloc");            \
+            (arr) = realloc((arr), sizeof(*(arr)) * new_cap); \
             (cap) = new_cap;                \
         }                           \
         (len) = new_len;                    \
@@ -172,6 +171,7 @@ static struct fcft_font *font;
 static uint32_t height, textpadding;
 
 static void wl_buffer_release(void *data, struct wl_buffer *wl_buffer) {
+    (void)data;
     /* Sent by the compositor when it's no longer using this buffer */
     wl_buffer_destroy(wl_buffer);
 }
@@ -359,7 +359,7 @@ static int draw_frame(Bar *bar) {
             continue;
 
         pixman_color_t *fg_color = urgent ? &urgent_fg_color : (active ? &active_fg_color : (occupied ? &occupied_fg_color : &inactive_fg_color));
-        pixman_color_t *bg_color = urgent ? &urgent_bg_color : (active ? &active_bg_color : (occupied ? &occupied_bg_color : &inactive_bg_color));
+        /* pixman_color_t *bg_color = urgent ? &urgent_bg_color : (active ? &active_bg_color : (occupied ? &occupied_bg_color : &inactive_bg_color)); */
 
         if (!hide_vacant && occupied) {
             pixman_image_fill_boxes(PIXMAN_OP_SRC, foreground,
@@ -500,6 +500,8 @@ static void layer_surface_configure(void *data, struct zwlr_layer_surface_v1 *su
 }
 
 static void layer_surface_closed(void *data, struct zwlr_layer_surface_v1 *surface) {
+    (void)data;
+    (void)surface;
     dwlb_run_display = false;
 }
 
@@ -509,27 +511,40 @@ static const struct zwlr_layer_surface_v1_listener layer_surface_listener = {
 };
 
 static void output_name(void *data, struct zxdg_output_v1 *xdg_output, const char *name) {
+    (void)xdg_output;
     Bar *bar = (Bar *)data;
 
     if (bar->xdg_output_name)
         free(bar->xdg_output_name);
-    if (!(bar->xdg_output_name = strdup(name)))
-        EDIE("strdup");
+    bar->xdg_output_name = strdup(name);
 }
 
 static void output_logical_position(void *data, struct zxdg_output_v1 *xdg_output,
             int32_t x, int32_t y) {
+    (void)data;
+    (void)xdg_output;
+    (void)x;
+    (void)y;
 }
 
 static void output_logical_size(void *data, struct zxdg_output_v1 *xdg_output,
             int32_t width, int32_t height) {
+    (void)data;
+    (void)xdg_output;
+    (void)width;
+    (void)height;
 }
 
 static void output_done(void *data, struct zxdg_output_v1 *xdg_output) {
+    (void)data;
+    (void)xdg_output;
 }
 
 static void output_description(void *data, struct zxdg_output_v1 *xdg_output,
            const char *description) {
+    (void)data;
+    (void)xdg_output;
+    (void)description;
 }
 
 static const struct zxdg_output_v1_listener output_listener = {
@@ -551,6 +566,8 @@ static void shell_command(char *command) {
 static void pointer_enter(void *data, struct wl_pointer *pointer,
           uint32_t serial, struct wl_surface *surface,
           wl_fixed_t surface_x, wl_fixed_t surface_y) {
+    (void)surface_x;
+    (void)surface_y;
     Seat *seat = (Seat *)data;
 
     seat->bar = NULL;
@@ -582,6 +599,9 @@ static void pointer_enter(void *data, struct wl_pointer *pointer,
 
 static void pointer_leave(void *data, struct wl_pointer *pointer,
           uint32_t serial, struct wl_surface *surface) {
+    (void)pointer;
+    (void)serial;
+    (void)surface;
     Seat *seat = (Seat *)data;
 
     seat->bar = NULL;
@@ -589,6 +609,9 @@ static void pointer_leave(void *data, struct wl_pointer *pointer,
 
 static void pointer_button(void *data, struct wl_pointer *pointer, uint32_t serial,
            uint32_t time, uint32_t button, uint32_t state) {
+    (void)pointer;
+    (void)serial;
+    (void)time;
     Seat *seat = (Seat *)data;
 
     seat->pointer_button = state == WL_POINTER_BUTTON_STATE_PRESSED ? button : 0;
@@ -596,6 +619,8 @@ static void pointer_button(void *data, struct wl_pointer *pointer, uint32_t seri
 
 static void pointer_motion(void *data, struct wl_pointer *pointer, uint32_t time,
            wl_fixed_t surface_x, wl_fixed_t surface_y) {
+    (void)pointer;
+    (void)time;
     Seat *seat = (Seat *)data;
 
     seat->pointer_x = wl_fixed_to_int(surface_x);
@@ -603,6 +628,7 @@ static void pointer_motion(void *data, struct wl_pointer *pointer, uint32_t time
 }
 
 static void pointer_frame(void *data, struct wl_pointer *pointer) {
+    (void)pointer;
     Seat *seat = (Seat *)data;
 
     if (!seat->pointer_button || !seat->bar)
@@ -670,22 +696,42 @@ static void pointer_frame(void *data, struct wl_pointer *pointer) {
 
 static void pointer_axis(void *data, struct wl_pointer *pointer,
          uint32_t time, uint32_t axis, wl_fixed_t value) {
+    (void)data;
+    (void)pointer;
+    (void)time;
+    (void)axis;
+    (void)value;
 }
 
 static void pointer_axis_discrete(void *data, struct wl_pointer *pointer,
               uint32_t axis, int32_t discrete) {
+    (void)data;
+    (void)pointer;
+    (void)axis;
+    (void)discrete;
 }
 
 static void pointer_axis_source(void *data, struct wl_pointer *pointer,
             uint32_t axis_source) {
+    (void)data;
+    (void)pointer;
+    (void)axis_source;
 }
 
 static void pointer_axis_stop(void *data, struct wl_pointer *pointer,
           uint32_t time, uint32_t axis) {
+    (void)data;
+    (void)pointer;
+    (void)time;
+    (void)axis;
 }
 
 static void pointer_axis_value120(void *data, struct wl_pointer *pointer,
               uint32_t axis, int32_t discrete) {
+    (void)data;
+    (void)pointer;
+    (void)axis;
+    (void)discrete;
 }
 
 static const struct wl_pointer_listener pointer_listener = {
@@ -703,6 +749,7 @@ static const struct wl_pointer_listener pointer_listener = {
 
 static void seat_capabilities(void *data, struct wl_seat *wl_seat,
           uint32_t capabilities) {
+    (void)wl_seat;
     Seat *seat = (Seat *)data;
 
     uint32_t has_pointer = capabilities & WL_SEAT_CAPABILITY_POINTER;
@@ -716,6 +763,9 @@ static void seat_capabilities(void *data, struct wl_seat *wl_seat,
 }
 
 static void seat_name(void *data, struct wl_seat *wl_seat, const char *name) {
+    (void)data;
+    (void)wl_seat;
+    (void)name;
 }
 
 static const struct wl_seat_listener seat_listener = {
@@ -726,12 +776,12 @@ static const struct wl_seat_listener seat_listener = {
 static void show_bar(Bar *bar) {
     bar->wl_surface = wl_compositor_create_surface(compositor);
     if (!bar->wl_surface)
-        DIE("Could not create wl_surface");
+        ERROR("Could not create wl_surface");
 
     bar->layer_surface = zwlr_layer_shell_v1_get_layer_surface(layer_shell, bar->wl_surface, bar->wl_output,
                                    ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM, "awl_bar");
     if (!bar->layer_surface)
-        DIE("Could not create layer_surface");
+        ERROR("Could not create layer_surface");
     zwlr_layer_surface_v1_add_listener(bar->layer_surface, &layer_surface_listener, bar);
 
     zwlr_layer_surface_v1_set_size(bar->layer_surface, 0, bar->height / buffer_scale);
@@ -755,21 +805,23 @@ static void hide_bar(Bar *bar) {
 
 static void dwl_wm_tags(void *data, struct zdwl_ipc_manager_v2 *dwl_wm,
     uint32_t amount) {
-    if (!tags && !(tags = malloc(amount * sizeof(char *))))
-        EDIE("malloc");
+    (void)data;
+    (void)dwl_wm;
+    if (!tags)
+        tags = malloc(amount * sizeof(char *));
     uint32_t i = tags_l;
     ARRAY_EXPAND(tags, tags_l, tags_c, MAX(0, (int)amount - (int)tags_l));
     for (; i < amount; i++)
-        if (!(tags[i] = strdup(tags_names[MIN(i, n_tags_names-1)])))
-            EDIE("strdup");
+        tags[i] = strdup(tags_names[MIN(i, n_tags_names-1)]);
 }
 
 static void dwl_wm_layout(void *data, struct zdwl_ipc_manager_v2 *dwl_wm,
     const char *name) {
+    (void)data;
+    (void)dwl_wm;
     char **ptr;
     ARRAY_APPEND(layouts, layouts_l, layouts_c, ptr);
-    if (!(*ptr = strdup(name)))
-        EDIE("strdup");
+    *ptr = strdup(name);
 }
 
 static const struct zdwl_ipc_manager_v2_listener dwl_wm_listener = {
@@ -778,6 +830,7 @@ static const struct zdwl_ipc_manager_v2_listener dwl_wm_listener = {
 };
 
 static void dwl_wm_output_toggle_visibility(void *data, struct zdwl_ipc_output_v2 *dwl_wm_output) {
+    (void)dwl_wm_output;
     Bar *bar = (Bar *)data;
 
     if (bar->hidden)
@@ -788,6 +841,7 @@ static void dwl_wm_output_toggle_visibility(void *data, struct zdwl_ipc_output_v
 
 static void dwl_wm_output_active(void *data, struct zdwl_ipc_output_v2 *dwl_wm_output,
         uint32_t active) {
+    (void)dwl_wm_output;
     Bar *bar = (Bar *)data;
 
     if (active != bar->sel)
@@ -796,6 +850,8 @@ static void dwl_wm_output_active(void *data, struct zdwl_ipc_output_v2 *dwl_wm_o
 
 static void dwl_wm_output_tag(void *data, struct zdwl_ipc_output_v2 *dwl_wm_output,
     uint32_t tag, uint32_t state, uint32_t clients, uint32_t focused) {
+    (void)dwl_wm_output;
+    (void)focused;
     Bar *bar = (Bar *)data;
 
     if (state & ZDWL_IPC_OUTPUT_V2_TAG_STATE_ACTIVE)
@@ -814,6 +870,7 @@ static void dwl_wm_output_tag(void *data, struct zdwl_ipc_output_v2 *dwl_wm_outp
 
 static void dwl_wm_output_layout(void *data, struct zdwl_ipc_output_v2 *dwl_wm_output,
         uint32_t layout) {
+    (void)dwl_wm_output;
     Bar *bar = (Bar *)data;
 
     bar->last_layout_idx = bar->layout_idx;
@@ -822,6 +879,7 @@ static void dwl_wm_output_layout(void *data, struct zdwl_ipc_output_v2 *dwl_wm_o
 
 static void dwl_wm_output_title_ary(void *data, struct zdwl_ipc_output_v2 *dwl_wm_output,
     struct wl_array* ary) {
+    (void)dwl_wm_output;
     if (custom_title)
         return;
 
@@ -843,12 +901,11 @@ static void dwl_wm_output_title_ary(void *data, struct zdwl_ipc_output_v2 *dwl_w
         strcat(title, "|");
     }
 
-    if (!(bar->window_titles = realloc(bar->window_titles, ary->size)))
-        EDIE("realloc");
-    memcpy(bar->window_titles, titles, ary->size);
+    bar->window_titles = realloc(bar->window_titles, ary->size);
+    if (bar->window_titles && titles)
+        memcpy(bar->window_titles, titles, ary->size);
 
-    if (!(bar->window_title = strdup(title)))
-        EDIE("strdup");
+    bar->window_title = strdup(title);
 }
 
 static void dwl_wm_output_title(void *data, struct zdwl_ipc_output_v2 *dwl_wm_output,
@@ -860,30 +917,40 @@ static void dwl_wm_output_title(void *data, struct zdwl_ipc_output_v2 *dwl_wm_ou
 
 static void dwl_wm_output_appid(void *data, struct zdwl_ipc_output_v2 *dwl_wm_output,
     const char *appid) {
+    (void)data;
+    (void)dwl_wm_output;
+    (void)appid;
 }
 
 static void dwl_wm_output_layout_symbol(void *data, struct zdwl_ipc_output_v2 *dwl_wm_output,
     const char *layout) {
+    (void)dwl_wm_output;
     Bar *bar = (Bar *)data;
 
     if (layouts[bar->layout_idx])
         free(layouts[bar->layout_idx]);
-    if (!(layouts[bar->layout_idx] = strdup(layout)))
-        EDIE("strdup");
+    layouts[bar->layout_idx] = strdup(layout);
     bar->layout = layouts[bar->layout_idx];
 }
 
 static void dwl_wm_output_frame(void *data, struct zdwl_ipc_output_v2 *dwl_wm_output) {
+    (void)dwl_wm_output;
     Bar *bar = (Bar *)data;
     bar->redraw = true;
 }
 
 static void dwl_wm_output_fullscreen(void *data, struct zdwl_ipc_output_v2 *dwl_wm_output,
     uint32_t is_fullscreen) {
+    (void)data;
+    (void)dwl_wm_output;
+    (void)is_fullscreen;
 }
 
 static void dwl_wm_output_floating(void *data, struct zdwl_ipc_output_v2 *dwl_wm_output,
     uint32_t is_floating) {
+    (void)data;
+    (void)dwl_wm_output;
+    (void)is_floating;
 }
 
 static const struct zdwl_ipc_output_v2_listener dwl_wm_output_listener = {
@@ -909,12 +976,12 @@ static void setup_bar(Bar *bar) {
 
     bar->xdg_output = zxdg_output_manager_v1_get_xdg_output(output_manager, bar->wl_output);
     if (!bar->xdg_output)
-        DIE("Could not create xdg_output");
+        ERROR("Could not create xdg_output");
     zxdg_output_v1_add_listener(bar->xdg_output, &output_listener, bar);
 
     bar->dwl_wm_output = zdwl_ipc_manager_v2_get_output(dwl_wm, bar->wl_output);
     if (!bar->dwl_wm_output)
-        DIE("Could not create dwl_wm_output");
+        ERROR("Could not create dwl_wm_output");
     zdwl_ipc_output_v2_add_listener(bar->dwl_wm_output, &dwl_wm_output_listener, bar);
 
     if (!bar->hidden)
@@ -923,6 +990,8 @@ static void setup_bar(Bar *bar) {
 
 static void handle_global(void *data, struct wl_registry *registry,
           uint32_t name, const char *interface, uint32_t version) {
+    (void)data;
+    (void)version;
     if (!strcmp(interface, wl_compositor_interface.name)) {
         compositor = wl_registry_bind(registry, name, &wl_compositor_interface, 4);
     } else if (!strcmp(interface, wl_shm_interface.name)) {
@@ -936,8 +1005,6 @@ static void handle_global(void *data, struct wl_registry *registry,
         zdwl_ipc_manager_v2_add_listener(dwl_wm, &dwl_wm_listener, NULL);
     } else if (!strcmp(interface, wl_output_interface.name)) {
         Bar *bar = calloc(1, sizeof(Bar));
-        if (!bar)
-            EDIE("calloc");
         bar->registry_name = name;
         bar->wl_output = wl_registry_bind(registry, name, &wl_output_interface, 1);
         if (dwlb_run_display)
@@ -945,8 +1012,6 @@ static void handle_global(void *data, struct wl_registry *registry,
         wl_list_insert(&bar_list, &bar->link);
     } else if (!strcmp(interface, wl_seat_interface.name)) {
         Seat *seat = calloc(1, sizeof(Seat));
-        if (!seat)
-            EDIE("calloc");
         seat->registry_name = name;
         seat->wl_seat = wl_registry_bind(registry, name, &wl_seat_interface, 7);
         wl_seat_add_listener(seat->wl_seat, &seat_listener, seat);
@@ -987,6 +1052,8 @@ static void teardown_seat(Seat *seat) {
 }
 
 static void handle_global_remove(void *data, struct wl_registry *registry, uint32_t name) {
+    (void)data;
+    (void)registry;
     Bar *bar;
     Seat *seat;
 
@@ -1048,7 +1115,7 @@ static void event_loop(void) {
             if (errno == EINTR)
                 continue;
             else
-                EDIE("select");
+                ERROR("select");
         }
         if (FD_ISSET(wl_fd, &rfds))
             if (wl_display_dispatch(display) == -1)
@@ -1107,7 +1174,7 @@ void* dwlb( void* arg ) {
     /* Set up display and protocols */
     display = wl_display_connect(NULL);
     if (!display)
-        DIE("Failed to create display");
+        ERROR("Failed to create display");
 
     wl_list_init(&bar_list);
     wl_list_init(&seat_list);
@@ -1116,7 +1183,7 @@ void* dwlb( void* arg ) {
     wl_registry_add_listener(registry, &registry_listener, NULL);
     wl_display_roundtrip(display);
     if (!compositor || !shm || !layer_shell || !output_manager || !dwl_wm)
-        DIE("Compositor does not support all needed protocols");
+        ERROR("Compositor does not support all needed protocols");
 
     /* Load selected font */
     fcft_init(FCFT_LOG_COLORIZE_AUTO, 0, FCFT_LOG_CLASS_ERROR);
@@ -1126,7 +1193,7 @@ void* dwlb( void* arg ) {
     char buf[10];
     snprintf(buf, sizeof buf, "dpi=%u", dpi);
     if (!(font = fcft_from_name(1, (const char *[]) {fontstr}, buf)))
-        DIE("Could not load font");
+        ERROR("Could not load font");
     textpadding = font->height / 2;
     height = font->height / buffer_scale + vertical_padding * 2;
 

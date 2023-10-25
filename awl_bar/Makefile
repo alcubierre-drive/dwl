@@ -4,9 +4,7 @@ AR := ar
 CC := gcc
 
 LIB := bar.a
-CFLAGS += -Wall -Wextra -Wno-unused-parameter -Wno-format-truncation \
-	  -g -ggdb -I/usr/include/pixman-1
-CFLAGS += $(shell pkg-config --cflags wayland-client wayland-cursor fcft pixman-1)
+CFLAGS += $(shell pkg-config --cflags wayland-client wayland-cursor fcft pixman-1) -I/usr/include/pixman-1
 LDFLAGS += $(shell pkg-config --libs wayland-client wayland-cursor fcft pixman-1) -lrt
 
 all: $(LIB)

@@ -59,8 +59,7 @@
 #include <xcb/xcb_icccm.h>
 
 #define TAGCOUNT (9)
-/* If you want to use the windows key for MODKEY, use WLR_MODIFIER_LOGO */
-// #define MODKEY WLR_MODIFIER_LOGO
+/* #define MODKEY WLR_MODIFIER_LOGO */
 #define MODKEY WLR_MODIFIER_ALT
 
 /* macros */
@@ -119,6 +118,7 @@ typedef struct Client {
     struct wl_listener configure;
     struct wl_listener set_hints;
     unsigned int bw;
+    unsigned int visible;
     uint32_t tags;
     int isfloating, isurgent, isfullscreen;
     uint32_t resize; /* configure serial of a pending resize */
@@ -218,6 +218,25 @@ typedef struct {
     struct wl_listener unlock;
     struct wl_listener destroy;
 } SessionLock;
+
+typedef struct {
+    struct wl_list link;
+    struct wl_resource *resource;
+    Monitor *mon;
+} DwlIpcOutput;
+
+// needed?
+void dwl_ipc_manager_bind(struct wl_client *client, void *data, uint32_t version, uint32_t id);
+void dwl_ipc_manager_destroy(struct wl_resource *resource);
+void dwl_ipc_manager_get_output(struct wl_client *client, struct wl_resource *resource, uint32_t id, struct wl_resource *output);
+void dwl_ipc_manager_release(struct wl_client *client, struct wl_resource *resource);
+void dwl_ipc_output_destroy(struct wl_resource *resource);
+void dwl_ipc_output_printstatus(Monitor *monitor);
+void dwl_ipc_output_printstatus_to(DwlIpcOutput *ipc_output);
+void dwl_ipc_output_set_client_tags(struct wl_client *client, struct wl_resource *resource, uint32_t and_tags, uint32_t xor_tags);
+void dwl_ipc_output_set_layout(struct wl_client *client, struct wl_resource *resource, uint32_t index);
+void dwl_ipc_output_set_tags(struct wl_client *client, struct wl_resource *resource, uint32_t tagmask, uint32_t toggle_tagset);
+void dwl_ipc_output_release(struct wl_client *client, struct wl_resource *resource);
 
 /* function declarations */
 void applybounds(Client *c, struct wlr_box *bbox);
