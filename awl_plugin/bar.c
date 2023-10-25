@@ -247,7 +247,7 @@ static uint32_t draw_text(char *text,
     bool draw_fg = foreground && fg_color;
     bool draw_bg = background && bg_color;
 
-    pixman_image_t *fg_fill;
+    pixman_image_t *fg_fill = NULL;
     pixman_color_t *cur_bg_color;
     if (draw_fg)
         fg_fill = pixman_image_create_solid_fill(fg_color);
