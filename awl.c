@@ -905,7 +905,8 @@ void dwl_ipc_output_printstatus_to(DwlIpcOutput *ipc_output) {
                 const char* t = client_get_title(c);
                 if (!t) t = B->broken;
 
-                strcpy( ttl->name, t );
+                ttl->name[sizeof(ttl->name)-1] = '\0';
+                memcpy( ttl->name, t, MIN(strlen(t), sizeof(ttl->name)-1) );
 
                 if (c == focused)
                     ttl->focused = 1;
@@ -1133,9 +1134,14 @@ void handlesig(int signo) {
          * use WNOWAIT to keep the child waitable until we know it's not
          * XWayland.
          */
-        while (!waitid(P_ALL, 0, &in, WEXITED|WNOHANG|WNOWAIT) && in.si_pid
-                && (!xwayland || in.si_pid != xwayland->server->pid))
+        while (1) {
+            int condition = !waitid(P_ALL, 0, &in, WEXITED|WNOHANG|WNOWAIT);
+            if (condition) condition = in.si_pid;
+            if (condition) condition = !xwayland;
+            if (condition) condition = (in.si_pid != xwayland->server->pid);
+            if (!condition) break;
             waitpid(in.si_pid, NULL, 0);
+        }
     } else if (signo == SIGINT || signo == SIGTERM) {
         quit(NULL);
     }
