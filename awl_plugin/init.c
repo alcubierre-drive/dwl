@@ -26,10 +26,10 @@ static void awl_plugin_init(void) {
     S.sloppyfocus = 1;
     S.bypass_surface_visibility = 0;
     S.borderpx = 4;
-    COLOR_SET( S.bordercolor, 0x444444ff );
-    COLOR_SET( S.focuscolor, 0x005577ff );
-    COLOR_SET( S.urgentcolor, 0xff0000ff );
-    COLOR_SETF( S.fullscreen_bg, 0.5, 0.5, 0.5, 1.0 );
+    COLOR_SET( S.bordercolor, molokai_light_gray );
+    COLOR_SET( S.focuscolor, molokai_blue );
+    COLOR_SET( S.urgentcolor, molokai_red );
+    COLOR_SET( S.fullscreen_bg, molokai_green );
 
     ARRAY_INIT(Rule, rules, 16);
     ARRAY_APPEND(Rule, rules, "evolution", NULL, 1<<8, 0, -1 );
