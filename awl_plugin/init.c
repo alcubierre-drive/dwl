@@ -25,7 +25,7 @@ static void movestack( const Arg *arg );
 static void awl_plugin_init(void) {
     S.sloppyfocus = 1;
     S.bypass_surface_visibility = 0;
-    S.borderpx = 4;
+    S.borderpx = 2;
     COLOR_SET( S.bordercolor, molokai_light_gray );
     COLOR_SET( S.focuscolor, molokai_blue );
     COLOR_SET( S.urgentcolor, molokai_red );
@@ -122,8 +122,8 @@ static void awl_plugin_init(void) {
     ADD_KEY( MODKEY,    XKB_KEY_Return,     spawn,              {.v=termcmd} )
     ADD_KEY( MODKEY,    XKB_KEY_j,          focusstack,         {.i = +1} )
     ADD_KEY( MODKEY,    XKB_KEY_k,          focusstack,         {.i = -1} )
-    ADD_KEY( MODKEY,    XKB_KEY_i,          incnmaster,         {.i = +1} )
-    ADD_KEY( MODKEY,    XKB_KEY_d,          incnmaster,         {.i = -1} )
+    /* ADD_KEY( MODKEY,    XKB_KEY_i,          incnmaster,         {.i = +1} ) */
+    /* ADD_KEY( MODKEY,    XKB_KEY_d,          incnmaster,         {.i = -1} ) */
     ADD_KEY( MODKEY,    XKB_KEY_h,          setmfact,           {.f = -0.05} )
     ADD_KEY( MODKEY,    XKB_KEY_l,          setmfact,           {.f = +0.05} )
     ADD_KEY( MODKEY_SH, XKB_KEY_Return,     zoom,               {0} )

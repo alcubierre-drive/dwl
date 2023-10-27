@@ -61,8 +61,10 @@
 #include "awl_arg.h"
 
 #define TAGCOUNT (9)
-/* #define MODKEY WLR_MODIFIER_LOGO */
+#ifndef MODKEY
+//#define MODKEY WLR_MODIFIER_LOGO
 #define MODKEY WLR_MODIFIER_ALT
+#endif
 
 /* macros */
 #define CLEANMASK(mask)         (mask & ~WLR_MODIFIER_CAPS)
