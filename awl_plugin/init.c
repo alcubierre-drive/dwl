@@ -30,6 +30,7 @@ static void awl_plugin_init(void) {
     COLOR_SET( S.focuscolor, molokai_blue );
     COLOR_SET( S.urgentcolor, molokai_red );
     COLOR_SET( S.fullscreen_bg, molokai_green );
+    /* PIXMAN_COLOR_SET( active_fg_color, molokai_red ); */
 
     ARRAY_INIT(Rule, rules, 16);
     ARRAY_APPEND(Rule, rules, "evolution", NULL, 1<<8, 0, -1 );
