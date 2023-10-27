@@ -10,6 +10,7 @@
       C[3] = (hex & 0xFF) / 255.0f; }
 #define COLOR_SETF( C, F0, F1, F2, F3 ) \
     { C[0] = F0; C[1] = F1; C[2] = F2; C[3] = F3; }
+#define PIXMAN_COLOR_SET( C, hex ) { C = color_8bit_to_16bit( hex ); }
 
 #define ARRAY_INIT( type, ary, capacity ) S. ary = (type*)calloc( capacity, sizeof(type) );
 #define ARRAY_APPEND( type, ary, ... ) S. ary[S.n_##ary ++] = (type){__VA_ARGS__};
@@ -30,7 +31,7 @@ static void awl_plugin_init(void) {
     COLOR_SET( S.focuscolor, molokai_blue );
     COLOR_SET( S.urgentcolor, molokai_red );
     COLOR_SET( S.fullscreen_bg, molokai_green );
-    /* PIXMAN_COLOR_SET( active_fg_color, molokai_red ); */
+    PIXMAN_COLOR_SET( active_fg_color, molokai_red );
 
     ARRAY_INIT(Rule, rules, 16);
     ARRAY_APPEND(Rule, rules, "evolution", NULL, 1<<8, 0, -1 );

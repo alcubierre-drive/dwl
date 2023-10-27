@@ -39,13 +39,15 @@ extern pixman_color_t inactive_bg_color;
 extern pixman_color_t urgent_fg_color;
 extern pixman_color_t urgent_bg_color;
 
-#define PIXMAN_COLOR_SET( var, hex ) { \
-    var.red = (hex >> 24) & 0xFF; \
-    var.green = (hex >> 16) & 0xFF; \
-    var.blue = (hex >> 8) & 0xFF; \
-    var.alpha = (hex & 0xFF); \
-    var.red += var.red >> 8; \
-    var.green += var.green >> 8; \
-    var.blue += var.blue >> 8; \
-    var.alpha += var.alpha >> 8; \
+inline pixman_color_t color_8bit_to_16bit( uint32_t c ) {
+    uint8_t red = c & 0xFF000000,
+            green = c & 0x00FF0000,
+            blue = c & 0x0000FF00,
+            alpha = c & 0x000000FF;
+    pixman_color_t r = { .red = ((uint16_t)red) << 8 | red,
+                         .green = ((uint16_t)green) << 8 | green,
+                         .blue = ((uint16_t)blue) << 8 | blue,
+                         .alpha = ((uint16_t)alpha) << 8 | alpha, };
+    return r;
 }
+
