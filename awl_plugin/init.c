@@ -50,7 +50,7 @@ static void awl_plugin_init(void) {
     fg_color_tags = alpha_blend_16( white, c16 );
 
     // status/layout colors
-    bg_color_status = bg_color_lay = color_8bit_to_16bit( molokai_gray );
+    bg_color_status = bg_color_lay = color_8bit_to_16bit( molokai_light_gray );
     fg_color_status = fg_color_lay = fg_color_tags;
 
     // window colors

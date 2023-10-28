@@ -460,6 +460,8 @@ static int draw_frame(Bar *bar) {
         x += pad/2;
         nx = x;
     } else {
+        pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &bg_color_lay, 1,
+                &(pixman_box32_t){ .x1 = x, .x2 = x+xspace, .y1 = 0, .y2 = bar->height });
         x += xspace;
         nx = x;
     }
