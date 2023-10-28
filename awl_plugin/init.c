@@ -10,7 +10,6 @@
       C[3] = (hex & 0xFF) / 255.0f; }
 #define COLOR_SETF( C, F0, F1, F2, F3 ) \
     { C[0] = F0; C[1] = F1; C[2] = F2; C[3] = F3; }
-#define PIXMAN_COLOR_SET( C, hex ) { C = color_8bit_to_16bit( hex ); }
 
 #define ARRAY_INIT( type, ary, capacity ) S. ary = (type*)calloc( capacity, sizeof(type) );
 #define ARRAY_APPEND( type, ary, ... ) S. ary[S.n_##ary ++] = (type){__VA_ARGS__};
@@ -24,6 +23,7 @@ static awl_config_t S = {0};
 static void movestack( const Arg *arg );
 
 static void awl_plugin_init(void) {
+
     S.sloppyfocus = 1;
     S.bypass_surface_visibility = 0;
     S.borderpx = 2;
@@ -31,7 +31,36 @@ static void awl_plugin_init(void) {
     COLOR_SET( S.focuscolor, molokai_blue );
     COLOR_SET( S.urgentcolor, molokai_red );
     COLOR_SET( S.fullscreen_bg, molokai_green );
-    PIXMAN_COLOR_SET( active_fg_color, molokai_red );
+
+    pixman_color_t c16 = {0};
+
+    // tag colors
+    bg_color_tags = color_8bit_to_16bit( molokai_dark_gray );
+    c16 = color_8bit_to_16bit( molokai_orange );
+    c16.alpha = 0x7777;
+    bg_color_tags_occ = c16;
+    c16 = color_8bit_to_16bit( molokai_red );
+    c16.alpha = 0x7777;
+    bg_color_tags_act = c16;
+    c16 = color_8bit_to_16bit( molokai_purple );
+    c16.alpha = 0x7777;
+    bg_color_tags_urg = c16;
+    c16 = color_8bit_to_16bit( molokai_purple );
+    c16.alpha = 0x2222;
+    fg_color_tags = alpha_blend_16( white, c16 );
+
+    // status/layout colors
+    bg_color_status = bg_color_lay = color_8bit_to_16bit( molokai_gray );
+    fg_color_status = fg_color_lay = fg_color_tags;
+
+    // window colors
+    bg_color_win = bg_color_tags;
+    c16 = color_8bit_to_16bit( molokai_purple );
+    c16.alpha = 0x7777;
+    bg_color_win_act = c16;
+    bg_color_win_urg = bg_color_tags_occ;
+    bg_color_win_min = black;
+    fg_color_win = fg_color_tags;
 
     ARRAY_INIT(Rule, rules, 16);
     ARRAY_APPEND(Rule, rules, "evolution", NULL, 1<<8, 0, -1 );

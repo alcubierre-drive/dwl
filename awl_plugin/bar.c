@@ -55,7 +55,6 @@ struct pointer_event {
 
 bool hidden = false;
 bool bottom = true;
-bool hide_vacant = false;
 uint32_t vertical_padding = 2;
 bool center_title = false;
 bool custom_title = false;
@@ -65,17 +64,25 @@ char **tags_names;
 uint32_t n_tags_names = 9;
 
 static char fontstr_priv[] = "monospace:size=10";
-/* static char *tags_names_priv[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9" }; */
 static char *tags_names_priv[] = { "1", "2", "3", "4", "5", "6", "7", "✉ 8", "✉ 9" };
 
-pixman_color_t active_fg_color = { .red = 0xeeee, .green = 0xeeee, .blue = 0xeeee, .alpha = 0xffff, };
-pixman_color_t active_bg_color = { .red = 0x0000, .green = 0x5555, .blue = 0x7777, .alpha = 0x4444, };
-pixman_color_t occupied_fg_color = { .red = 0xeeee, .green = 0xeeee, .blue = 0xeeee, .alpha = 0xffff, };
-pixman_color_t occupied_bg_color = { .red = 0x4444, .green = 0x5555, .blue = 0x7777, .alpha = 0x4444, };
-pixman_color_t inactive_fg_color = { .red = 0xbbbb, .green = 0xbbbb, .blue = 0xbbbb, .alpha = 0xffff, };
-pixman_color_t inactive_bg_color = { .red = 0x2222, .green = 0x2222, .blue = 0x2222, .alpha = 0x4444, };
-pixman_color_t urgent_fg_color = { .red = 0x2222, .green = 0x2222, .blue = 0x2222, .alpha = 0xffff, };
-pixman_color_t urgent_bg_color = { .red = 0xeeee, .green = 0xeeee, .blue = 0xeeee, .alpha = 0xffff, };
+pixman_color_t bg_color_tags = COLOR_18BIT_QUICK( 22, 22, 22, FF ),
+               bg_color_tags_occ = COLOR_18BIT_QUICK( 22, 22, 55, FF ),
+               bg_color_tags_act = COLOR_18BIT_QUICK( 22, 33, 77, FF ),
+               bg_color_tags_urg = COLOR_18BIT_QUICK( 77, 33, 22, FF ),
+               fg_color_tags = COLOR_18BIT_QUICK( EE, EE, FF, FF ),
+
+               bg_color_lay = COLOR_18BIT_QUICK( 11, 11, 11, FF ),
+               fg_color_lay = COLOR_18BIT_QUICK( FF, EE, EE, FF ),
+
+               bg_color_status = COLOR_18BIT_QUICK( 11, 11, 11, FF ),
+               fg_color_status = COLOR_18BIT_QUICK( FF, EE, EE, FF ),
+
+               bg_color_win = COLOR_18BIT_QUICK( 22, 22, 22, FF ),
+               bg_color_win_min = COLOR_18BIT_QUICK( 11, 11, 11, FF ),
+               bg_color_win_act = COLOR_18BIT_QUICK( 22, 22, 55, FF ),
+               bg_color_win_urg = COLOR_18BIT_QUICK( 55, 22, 22, FF ),
+               fg_color_win = COLOR_18BIT_QUICK( EE, EE, FF, FF );
 
 #include "utf8.h"
 #include "xdg-shell-protocol.h"
@@ -366,33 +373,31 @@ static int draw_frame(Bar *bar) {
     wl_shm_pool_destroy(pool);
     close(fd);
 
-    /* Pixman image corresponding to main buffer */
+    // pixman image
     pixman_image_t *final = pixman_image_create_bits(PIXMAN_a8r8g8b8, bar->width, bar->height, data, bar->width * 4);
 
-    /* Text background and foreground layers */
-    pixman_image_t *foreground = pixman_image_create_bits(PIXMAN_a8r8g8b8, bar->width, bar->height, NULL, bar->width * 4);
-    pixman_image_t *background = pixman_image_create_bits(PIXMAN_a8r8g8b8, bar->width, bar->height, NULL, bar->width * 4);
+    // text layers
+    pixman_image_t *foreground = pixman_image_create_bits(PIXMAN_a8r8g8b8, bar->width,
+            bar->height, NULL, bar->width * 4);
+    pixman_image_t *background = pixman_image_create_bits(PIXMAN_a8r8g8b8, bar->width,
+            bar->height, NULL, bar->width * 4);
 
-    /* Draw on images */
+    // setup drawing coordinates
     uint32_t x = 0;
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
     uint32_t boxs = font->height / 9;
     uint32_t boxw = font->height / 6 + 2;
 
+    // draw tags
     for (uint32_t i = 0; i < tags_l; i++) {
-        const bool active = bar->mtags & 1 << i;
-        const bool occupied = bar->ctags & 1 << i;
-        const bool urgent = bar->urg & 1 << i;
+        bool active = bar->mtags & 1 << i;
+        bool occupied = bar->ctags & 1 << i;
+        bool urgent = bar->urg & 1 << i;
 
-        if (hide_vacant && !active && !occupied && !urgent)
-            continue;
-
-        pixman_color_t *fg_color = urgent ? &urgent_fg_color : (active ? &active_fg_color : (occupied ? &occupied_fg_color : &inactive_fg_color));
-        /* pixman_color_t *bg_color = urgent ? &urgent_bg_color : (active ? &active_bg_color : (occupied ? &occupied_bg_color : &inactive_bg_color)); */
-
-        if (!hide_vacant && occupied) {
+        // draw small box
+        if (occupied) {
             pixman_image_fill_boxes(PIXMAN_OP_SRC, foreground,
-                        fg_color, 1, &(pixman_box32_t){
+                        &fg_color_tags, 1, &(pixman_box32_t){
                             .x1 = x + boxs, .x2 = x + boxs + boxw,
                             .y1 = boxs, .y2 = boxs + boxw
                         });
@@ -407,24 +412,24 @@ static int draw_frame(Bar *bar) {
             }
         }
 
-        uint32_t xcur = x;
-        x = draw_text(tags[i], xcur, y, foreground, background, &inactive_fg_color, &inactive_bg_color,
-                bar->width, bar->height, bar->textpadding, NULL, 0);
-        if (active)
-            x = draw_text(tags[i], xcur, y, foreground, background, &active_fg_color, &active_bg_color,
-                bar->width, bar->height, bar->textpadding, NULL, 0);
-        if (occupied)
-            x = draw_text(tags[i], xcur, y, foreground, background, &occupied_fg_color, &occupied_bg_color,
+        // find the right bg color (maybe do that with fg too?)
+        pixman_color_t bg = bg_color_tags;
+        if (occupied) bg = alpha_blend_16( bg, bg_color_tags_occ );
+        if (active) bg = alpha_blend_16( bg, bg_color_tags_act );
+        if (urgent) bg = alpha_blend_16( bg, bg_color_tags_urg );
+
+        x = draw_text(tags[i], x, y, foreground, background, &fg_color_tags, &bg,
                 bar->width, bar->height, bar->textpadding, NULL, 0);
     }
 
     x = draw_text(bar->layout, x, y, foreground, background,
-              &inactive_fg_color, &inactive_bg_color, bar->width,
+              &fg_color_lay, &bg_color_lay, bar->width,
               bar->height, bar->textpadding, NULL, 0);
 
+    // status text
     uint32_t status_width = TEXT_WIDTH(bar->status.text, bar->width - x, bar->textpadding);
     draw_text(bar->status.text, bar->width - status_width, y, foreground,
-          background, &inactive_fg_color, &inactive_bg_color,
+          background, &fg_color_status, &bg_color_status,
           bar->width, bar->height, bar->textpadding,
           bar->status.colors, bar->status.colors_l);
 
@@ -439,17 +444,17 @@ static int draw_frame(Bar *bar) {
         for (int i=0; i<bar->n_window_titles; ++i) {
             awl_title_t* T = bar->window_titles + i;
             nx = x + space_per_window;
-            x = draw_text( T->name, x, y, foreground, background,
-                T->urgent ? &urgent_fg_color : (T->focused ? &active_fg_color : &inactive_fg_color),
-                T->urgent ? &urgent_bg_color : (T->focused ? &active_bg_color : &inactive_bg_color),
-                nx, bar->height, 0,
-                NULL, 0 );
-            pixman_image_fill_boxes(PIXMAN_OP_SRC, background,
-                        T->urgent ? &urgent_bg_color : (T->focused ? &active_bg_color : &inactive_bg_color), 1,
-                        &(pixman_box32_t){
-                            .x1 = x, .x2 = nx,
-                            .y1 = 0, .y2 = bar->height
-                        });
+
+            // find the right bg color (maybe do that with fg too?)
+            pixman_color_t bg = bg_color_win;
+            if (T->focused) bg = alpha_blend_16( bg, bg_color_win_act );
+            if (T->urgent) bg = alpha_blend_16( bg, bg_color_win_urg );
+            // TODO bg_color_win_min!
+
+            x = draw_text( T->name, x, y, foreground, background, &fg_color_win, &bg,
+                nx, bar->height, 0, NULL, 0 );
+            pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &bg, 1,
+                        &(pixman_box32_t){ .x1 = x, .x2 = nx, .y1 = 0, .y2 = bar->height });
             x = nx;
         }
         x += pad/2;
@@ -643,13 +648,6 @@ static void pointer_frame(void *data, struct wl_pointer *pointer) {
 
     uint32_t x = 0, i = 0;
     do {
-        if (hide_vacant) {
-            const bool active = seat->bar->mtags & 1 << i;
-            const bool occupied = seat->bar->ctags & 1 << i;
-            const bool urgent = seat->bar->urg & 1 << i;
-            if (!active && !occupied && !urgent)
-                continue;
-        }
         x += TEXT_WIDTH(tags[i], seat->bar->width - x, seat->bar->textpadding) / buffer_scale;
     } while (seat->pointer_x >= x && ++i < tags_l);
 
