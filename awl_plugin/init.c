@@ -215,6 +215,7 @@ static void awl_plugin_init(void) {
     ARRAY_APPEND(Button, buttons, MODKEY, BTN_RIGHT,  moveresize,     {.ui = CurResize});
 
     awlb_date_txt = start_date_thread( 10 );
+    awlb_pulse_info = start_pulse_thread();
     int s = pthread_create( &S.BarThread, NULL, awl_bar_run, NULL );
     if (s != 0)
         handle_error_en(s, "pthread_create");
@@ -228,6 +229,9 @@ static void awl_plugin_free(void) {
     free(S.buttons);
 
     stop_date_thread();
+    stop_pulse_thread();
+    awlb_date_txt = NULL;
+    awlb_pulse_info = NULL;
 
     awl_state_t* B = AWL_VTABLE_SYM.state;
     if (B) {

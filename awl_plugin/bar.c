@@ -31,6 +31,8 @@ struct pointer_event {
 };
 
 char* awlb_date_txt = NULL;
+pulse_test_t* awlb_pulse_info = NULL;
+
 bool hidden = false;
 bool bottom = true;
 uint32_t vertical_padding = 2;
@@ -406,13 +408,16 @@ static int draw_frame(Bar *bar) {
               bar->height, bar->textpadding, NULL, 0);
 
     uint32_t status_width = 0;
-    if (awlb_date_txt) {
-        status_width = TEXT_WIDTH(awlb_date_txt, bar->width - x, bar->textpadding);
-        draw_text(awlb_date_txt, bar->width - status_width, y, foreground,
+    char status_txt[512] = {0};
+    if (awlb_date_txt)
+        strcat( status_txt, awlb_date_txt );
+    if (awlb_pulse_info)
+        sprintf( status_txt + strlen(status_txt), " | %.0f%%", awlb_pulse_info->value * 100.0f );
+    status_width = TEXT_WIDTH(status_txt, bar->width - x, bar->textpadding);
+    draw_text(status_txt, bar->width - status_width, y, foreground,
               background, &fg_color_status, &bg_color_status,
               bar->width, bar->height, bar->textpadding,
               bar->status.colors, bar->status.colors_l);
-    }
     // status text
     /* uint32_t status_width = TEXT_WIDTH(bar->status.text, bar->width - x, bar->textpadding); */
     /* draw_text(bar->status.text, bar->width - status_width, y, foreground, */

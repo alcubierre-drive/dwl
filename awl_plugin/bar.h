@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../awl_arg.h"
+#include "pulsetest.h"
 
 #include <pthread.h>
 #include <ctype.h>
@@ -30,6 +31,8 @@ typedef struct Bar Bar;
 void* awl_bar_run( void* addr );
 
 extern char* awlb_date_txt;
+extern pulse_test_t* awlb_pulse_info;
+
 extern struct wl_list bar_list;
 extern struct wl_list seat_list;
 
