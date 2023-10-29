@@ -1105,10 +1105,10 @@ static void event_loop(void) {
         if (FD_ISSET(wl_fd, &rfds))
             if (wl_display_dispatch(display) == -1)
                 break;
-        // TODO look at dwlb how the event loop works
-        if (FD_ISSET(redraw_fd, &rfds))
-            if (wl_display_dispatch(display) == -1)
-                break;
+        if (FD_ISSET(redraw_fd, &rfds)) {
+            uint64_t val = 0;
+            eventfd_read(redraw_fd, &val);
+        }
 
         Bar *bar;
         wl_list_for_each(bar, &bar_list, link) {
