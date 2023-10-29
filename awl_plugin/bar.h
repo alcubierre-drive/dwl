@@ -2,8 +2,36 @@
 
 #include "../awl_arg.h"
 
+#include <pthread.h>
+#include <ctype.h>
+#include <dirent.h>
+#include <errno.h>
+#include <fcft/fcft.h>
+#include <fcntl.h>
+#include <linux/input-event-codes.h>
+#include <pixman-1/pixman.h>
+#include <signal.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/un.h>
+#include <unistd.h>
+#include <wayland-client.h>
+#include <wayland-cursor.h>
+#include <wayland-util.h>
+
+
 typedef struct Bar Bar;
 void* awl_bar_run( void* addr );
+
+extern char* awlb_date_txt;
+extern struct wl_list bar_list;
+extern struct wl_list seat_list;
 
 extern bool awlb_run_display;
 

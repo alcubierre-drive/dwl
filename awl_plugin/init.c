@@ -2,6 +2,7 @@
 #include "../awl_state.h"
 #include "../awl_extension.h"
 #include "bar.h"
+#include "date.h"
 
 #define COLOR_SET( C, hex ) \
     { C[0] = ((hex >> 24) & 0xFF) / 255.0f; \
@@ -65,6 +66,7 @@ static void awl_plugin_init(void) {
     ARRAY_INIT(Rule, rules, 16);
     ARRAY_APPEND(Rule, rules, "evolution", NULL, 1<<8, 0, -1 );
     ARRAY_APPEND(Rule, rules, "telegram-desktop", NULL, 1<<7, 0, -1 );
+    /* ARRAY_APPEND(Rule, rules, "matplotlib", NULL, -1, 0, -1 ); */
 
     ARRAY_INIT(Layout, layouts, 16);
     ARRAY_APPEND(Layout, layouts, "[]=", tile );
@@ -212,6 +214,7 @@ static void awl_plugin_init(void) {
     ARRAY_APPEND(Button, buttons, MODKEY, BTN_MIDDLE, togglefloating, {0});
     ARRAY_APPEND(Button, buttons, MODKEY, BTN_RIGHT,  moveresize,     {.ui = CurResize});
 
+    awlb_date_txt = start_date_thread( 1 );
     int s = pthread_create( &S.BarThread, NULL, awl_bar_run, NULL );
     if (s != 0)
         handle_error_en(s, "pthread_create");
@@ -223,6 +226,8 @@ static void awl_plugin_free(void) {
     free(S.monrules);
     free(S.keys);
     free(S.buttons);
+
+    stop_date_thread();
 
     awl_state_t* B = AWL_VTABLE_SYM.state;
     if (B) {

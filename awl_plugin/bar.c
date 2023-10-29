@@ -1,27 +1,4 @@
 #define _GNU_SOURCE
-#include <pthread.h>
-#include <ctype.h>
-#include <dirent.h>
-#include <errno.h>
-#include <fcft/fcft.h>
-#include <fcntl.h>
-#include <linux/input-event-codes.h>
-#include <pixman-1/pixman.h>
-#include <signal.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/mman.h>
-#include <sys/select.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/un.h>
-#include <unistd.h>
-#include <wayland-client.h>
-#include <wayland-cursor.h>
-#include <wayland-util.h>
-
 #include "init.h"
 #include "bar.h"
 #include "../awl_title.h"
@@ -53,6 +30,7 @@ struct pointer_event {
     uint32_t axis_source;
 };
 
+char* awlb_date_txt = NULL;
 bool hidden = false;
 bool bottom = true;
 uint32_t vertical_padding = 2;
@@ -196,7 +174,8 @@ static struct zdwl_ipc_manager_v2 *dwl_wm;
 static struct wl_cursor_image *cursor_image;
 static struct wl_surface *cursor_surface;
 
-static struct wl_list bar_list, seat_list;
+struct wl_list bar_list;
+struct wl_list seat_list;
 
 static char **tags;
 static uint32_t tags_l, tags_c;
@@ -426,12 +405,20 @@ static int draw_frame(Bar *bar) {
               &fg_color_lay, &bg_color_lay, bar->width,
               bar->height, bar->textpadding, NULL, 0);
 
+    uint32_t status_width = 0;
+    if (awlb_date_txt) {
+        status_width = TEXT_WIDTH(awlb_date_txt, bar->width - x, bar->textpadding);
+        draw_text(awlb_date_txt, bar->width - status_width, y, foreground,
+              background, &fg_color_status, &bg_color_status,
+              bar->width, bar->height, bar->textpadding,
+              bar->status.colors, bar->status.colors_l);
+    }
     // status text
-    uint32_t status_width = TEXT_WIDTH(bar->status.text, bar->width - x, bar->textpadding);
-    draw_text(bar->status.text, bar->width - status_width, y, foreground,
-          background, &fg_color_status, &bg_color_status,
-          bar->width, bar->height, bar->textpadding,
-          bar->status.colors, bar->status.colors_l);
+    /* uint32_t status_width = TEXT_WIDTH(bar->status.text, bar->width - x, bar->textpadding); */
+    /* draw_text(bar->status.text, bar->width - status_width, y, foreground, */
+    /*       background, &fg_color_status, &bg_color_status, */
+    /*       bar->width, bar->height, bar->textpadding, */
+    /*       bar->status.colors, bar->status.colors_l); */
 
     uint32_t nx;
 
