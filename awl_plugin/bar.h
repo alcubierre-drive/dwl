@@ -33,6 +33,8 @@ void awl_bar_refresh( void );
 
 extern char* awlb_date_txt;
 extern pulse_test_t* awlb_pulse_info;
+extern float *awlb_cpu_info, *awlb_mem_info, *awlb_swp_info;
+extern int awlb_cpu_len, awlb_mem_len, awlb_swp_len;
 
 // TODO these should be accessible from the outside world
 extern struct wl_list bar_list;
@@ -74,7 +76,12 @@ extern pixman_color_t bg_color_tags,
                       bg_color_win_min,
                       bg_color_win_act,
                       bg_color_win_urg,
-                      fg_color_win;
+                      fg_color_win,
+
+                      bg_color_stats,
+                      fg_color_stats_cpu,
+                      fg_color_stats_mem,
+                      fg_color_stats_swp;
 
 static const pixman_color_t white = {.red = 0xFFFF, .green = 0xFFFF, .blue = 0xFFFF, .alpha = 0xFFFF};
 static const pixman_color_t black = {.red = 0x0000, .green = 0x0000, .blue = 0x0000, .alpha = 0x0000};

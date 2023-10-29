@@ -3,6 +3,8 @@
 #include "../awl_extension.h"
 #include "bar.h"
 #include "date.h"
+#include "stats.h"
+#include "pulsetest.h"
 
 #define COLOR_SET( C, hex ) \
     { C[0] = ((hex >> 24) & 0xFF) / 255.0f; \
@@ -23,6 +25,7 @@ static awl_config_t S = {0};
 
 static void movestack( const Arg *arg );
 
+static float _cpu[128] = {0}, _mem[128] = {0}, _swp[128] = {0};
 static void awl_plugin_init(void) {
 
     S.sloppyfocus = 1;
@@ -62,6 +65,12 @@ static void awl_plugin_init(void) {
     bg_color_win_urg = bg_color_tags_occ;
     bg_color_win_min = black;
     fg_color_win = fg_color_tags;
+
+    // widget colors
+    bg_color_stats = bg_color_tags;
+    fg_color_stats_cpu = color_8bit_to_16bit( molokai_blue );
+    fg_color_stats_mem = color_8bit_to_16bit( molokai_orange );
+    fg_color_stats_swp = color_8bit_to_16bit( molokai_green );
 
     ARRAY_INIT(Rule, rules, 16);
     ARRAY_APPEND(Rule, rules, "evolution", NULL, 1<<8, 0, -1 );
@@ -214,6 +223,12 @@ static void awl_plugin_init(void) {
     ARRAY_APPEND(Button, buttons, MODKEY, BTN_MIDDLE, togglefloating, {0});
     ARRAY_APPEND(Button, buttons, MODKEY, BTN_RIGHT,  moveresize,     {.ui = CurResize});
 
+    start_stats_thread( _cpu, 32, _mem, 32, _swp, 32, 1 );
+    awlb_mem_info = _mem;
+    awlb_cpu_info = _cpu;
+    awlb_swp_info = _swp;
+    awlb_mem_len = awlb_cpu_len = awlb_swp_len = 32;
+
     awlb_date_txt = start_date_thread( 10 );
     awlb_pulse_info = start_pulse_thread();
     int s = pthread_create( &S.BarThread, NULL, awl_bar_run, NULL );
@@ -228,6 +243,7 @@ static void awl_plugin_free(void) {
     free(S.keys);
     free(S.buttons);
 
+    stop_stats_thread();
     stop_date_thread();
     stop_pulse_thread();
     awlb_date_txt = NULL;

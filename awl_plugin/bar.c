@@ -34,6 +34,8 @@ struct pointer_event {
 
 char* awlb_date_txt = NULL;
 pulse_test_t* awlb_pulse_info = NULL;
+float *awlb_cpu_info = NULL, *awlb_mem_info = NULL, *awlb_swp_info = NULL;
+int awlb_cpu_len = 128, awlb_mem_len = 128, awlb_swp_len = 128;
 
 bool hidden = false;
 bool bottom = true;
@@ -64,7 +66,12 @@ pixman_color_t bg_color_tags = COLOR_18BIT_QUICK( 22, 22, 22, FF ),
                bg_color_win_min = COLOR_18BIT_QUICK( 11, 11, 11, FF ),
                bg_color_win_act = COLOR_18BIT_QUICK( 22, 22, 55, FF ),
                bg_color_win_urg = COLOR_18BIT_QUICK( 55, 22, 22, FF ),
-               fg_color_win = COLOR_18BIT_QUICK( EE, EE, FF, FF );
+               fg_color_win = COLOR_18BIT_QUICK( EE, EE, FF, FF ),
+
+               bg_color_stats = COLOR_18BIT_QUICK( 11, 11, 11, FF ),
+               fg_color_stats_cpu = COLOR_18BIT_QUICK( 55, 11, 11, FF ),
+               fg_color_stats_mem = COLOR_18BIT_QUICK( 11, 55, 11, FF ),
+               fg_color_stats_swp = COLOR_18BIT_QUICK( 11, 11, 55, FF );
 
 #include "utf8.h"
 #include "xdg-shell-protocol.h"
@@ -415,11 +422,46 @@ static int draw_frame(Bar *bar) {
         strcat( status_txt, awlb_date_txt );
     if (awlb_pulse_info)
         sprintf( status_txt + strlen(status_txt), " | %.0f%%", awlb_pulse_info->value * 100.0f );
-    status_width = TEXT_WIDTH(status_txt, bar->width - x, bar->textpadding);
-    draw_text(status_txt, bar->width - status_width, y, foreground,
+    uint32_t widget_width = 0;
+    if (awlb_cpu_info) widget_width += awlb_cpu_len;
+    if (awlb_mem_info) widget_width += awlb_mem_len;
+    if (awlb_swp_info) widget_width += awlb_swp_len;
+    status_width = TEXT_WIDTH(status_txt, bar->width - x, bar->textpadding) + widget_width;
+    draw_text(status_txt, bar->width - status_width + widget_width, y, foreground,
               background, &fg_color_status, &bg_color_status,
               bar->width, bar->height, bar->textpadding,
               bar->status.colors, bar->status.colors_l);
+    int xx = bar->width - status_width;
+    if (awlb_cpu_info) {
+        for (int i=0; i<awlb_cpu_len; ++i) {
+            int ydiv = bar->height - awlb_cpu_info[awlb_cpu_len-i] * bar->height;
+            pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &bg_color_stats, 1,
+                            &(pixman_box32_t){.x1=xx,.x2=xx+1,.y1=0, .y2=ydiv});
+            pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &fg_color_stats_cpu, 1,
+                            &(pixman_box32_t){.x1=xx,.x2=xx+1,.y1=ydiv,.y2=bar->height});
+            xx++;
+        }
+    }
+    if (awlb_mem_info) {
+        for (int i=0; i<awlb_mem_len; ++i) {
+            int ydiv = bar->height - awlb_mem_info[awlb_mem_len-i] * bar->height;
+            pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &bg_color_stats, 1,
+                            &(pixman_box32_t){.x1=xx,.x2=xx+1,.y1=0, .y2=ydiv});
+            pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &fg_color_stats_mem, 1,
+                            &(pixman_box32_t){.x1=xx,.x2=xx+1,.y1=ydiv,.y2=bar->height});
+            xx++;
+        }
+    }
+    if (awlb_swp_info) {
+        for (int i=0; i<awlb_swp_len; ++i) {
+            int ydiv = bar->height - awlb_swp_info[awlb_swp_len-i] * bar->height;
+            pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &bg_color_stats, 1,
+                            &(pixman_box32_t){.x1=xx,.x2=xx+1,.y1=0, .y2=ydiv});
+            pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &fg_color_stats_swp, 1,
+                            &(pixman_box32_t){.x1=xx,.x2=xx+1,.y1=ydiv,.y2=bar->height});
+            xx++;
+        }
+    }
     // status text
     /* uint32_t status_width = TEXT_WIDTH(bar->status.text, bar->width - x, bar->textpadding); */
     /* draw_text(bar->status.text, bar->width - status_width, y, foreground, */
@@ -1105,6 +1147,7 @@ static void event_loop(void) {
         if (FD_ISSET(wl_fd, &rfds))
             if (wl_display_dispatch(display) == -1)
                 break;
+        // TODO is this still a bug?
         if (FD_ISSET(redraw_fd, &rfds)) {
             uint64_t val = 0;
             eventfd_read(redraw_fd, &val);
