@@ -214,7 +214,7 @@ static void awl_plugin_init(void) {
     ARRAY_APPEND(Button, buttons, MODKEY, BTN_MIDDLE, togglefloating, {0});
     ARRAY_APPEND(Button, buttons, MODKEY, BTN_RIGHT,  moveresize,     {.ui = CurResize});
 
-    awlb_date_txt = start_date_thread( 1 );
+    awlb_date_txt = start_date_thread( 10 );
     int s = pthread_create( &S.BarThread, NULL, awl_bar_run, NULL );
     if (s != 0)
         handle_error_en(s, "pthread_create");
