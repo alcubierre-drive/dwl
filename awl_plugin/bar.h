@@ -29,10 +29,12 @@
 
 typedef struct Bar Bar;
 void* awl_bar_run( void* addr );
+void awl_bar_refresh( void );
 
 extern char* awlb_date_txt;
 extern pulse_test_t* awlb_pulse_info;
 
+// TODO these should be accessible from the outside world
 extern struct wl_list bar_list;
 extern struct wl_list seat_list;
 

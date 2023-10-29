@@ -4,6 +4,7 @@
 #include <pulse/pulseaudio.h>
 #include <pthread.h>
 #include "pulsetest.h"
+#include "bar.h"
 
 typedef struct PulseAudio {
     pa_mainloop* _mainloop;
@@ -109,9 +110,11 @@ static void sink_info_callback(pa_context *c, const pa_sink_info *i, int eol, vo
     (void)eol;
     (void)userdata;
     if (i) {
+        // XXX user code here
         float volume = (float)pa_cvolume_avg(&(i->volume)) / (float)PA_VOLUME_NORM;
         pulse_result.value = volume;
         pulse_result.muted = i->mute;
+        awl_bar_refresh();
     }
 }
 

@@ -2,8 +2,10 @@
 #include "init.h"
 #include "bar.h"
 #include "../awl_title.h"
+#include <sys/eventfd.h>
 
 static bool has_init = false;
+static int redraw_fd = -1;
 
 enum pointer_event_mask {
     POINTER_EVENT_ENTER = 1 << 0,
@@ -176,8 +178,8 @@ static struct zdwl_ipc_manager_v2 *dwl_wm;
 static struct wl_cursor_image *cursor_image;
 static struct wl_surface *cursor_surface;
 
-struct wl_list bar_list;
-struct wl_list seat_list;
+struct wl_list bar_list = {0};
+struct wl_list seat_list = {0};
 
 static char **tags;
 static uint32_t tags_l, tags_c;
@@ -647,6 +649,7 @@ static void pointer_frame(void *data, struct wl_pointer *pointer) {
 
     // scroll events!
     if (discrete_event) {
+        seat->bar->redraw = true;
         if (i < tags_l) {
             cycle_tag( &( (const Arg){.i=discrete_event} ) );
             return;
@@ -1088,16 +1091,22 @@ static void event_loop(void) {
         fd_set rfds;
         FD_ZERO(&rfds);
         FD_SET(wl_fd, &rfds);
+        FD_SET(redraw_fd, &rfds);
 
         wl_display_flush(display);
 
-        if (select(wl_fd+1, &rfds, NULL, NULL, NULL) == -1) {
+        #define MMAX(a,b) ((a) > (b) ? (a) : (b))
+        if (select(MMAX(redraw_fd,wl_fd)+1, &rfds, NULL, NULL, NULL) == -1) {
             if (errno == EINTR)
                 continue;
             else
                 ERROR("select");
         }
         if (FD_ISSET(wl_fd, &rfds))
+            if (wl_display_dispatch(display) == -1)
+                break;
+        // TODO look at dwlb how the event loop works
+        if (FD_ISSET(redraw_fd, &rfds))
             if (wl_display_dispatch(display) == -1)
                 break;
 
@@ -1183,6 +1192,8 @@ void* awl_bar_run( void* arg ) {
         setup_bar(bar);
     wl_display_roundtrip(display);
 
+    redraw_fd = eventfd(0,0);
+
     pthread_cleanup_push( &cleanup_fun, NULL );
     awlb_run_display = true;
     has_init = true;
@@ -1191,4 +1202,12 @@ void* awl_bar_run( void* arg ) {
     pthread_cleanup_pop( true );
 
     return NULL;
+}
+
+void awl_bar_refresh( void ) {
+    if (!has_init) return;
+    Bar* bar;
+    wl_list_for_each(bar, &bar_list, link)
+        bar->redraw = true;
+    eventfd_write(redraw_fd, 1);
 }

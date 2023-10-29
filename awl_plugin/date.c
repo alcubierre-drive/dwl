@@ -1,4 +1,5 @@
 #include "date.h"
+#include "bar.h"
 #include <time.h>
 #include <pthread.h>
 #include <unistd.h>
@@ -14,6 +15,7 @@ static void* date_thread_fun( void* arg ) {
         time(&t);
         struct tm* lt = localtime(&t);
         strftime( date_string, 127, "%R", lt );
+        awl_bar_refresh();
         sleep(update_sec);
     }
     return NULL;
