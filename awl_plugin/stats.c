@@ -62,7 +62,7 @@ static void* th_stats_run( void* arg ) {
             th_arg->swp[0] = 1. - (float)info.freeswap/(float)info.totalswap;
             th_arg->cpu[0] = 1. - cpu_idle();
         }
-        awl_bar_refresh();
+        /* awl_bar_refresh(); */
         sleep(A->update_sec);
     }
     return NULL;

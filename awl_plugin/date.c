@@ -17,7 +17,7 @@ static void* date_thread_fun( void* arg ) {
         struct tm* lt = localtime(&t);
         strftime( date_string, 127, "%R", lt );
         /* strftime( date_string, 127, "%T", lt ); */
-        awl_bar_refresh();
+        /* awl_bar_refresh(); */
         sleep(update_sec);
     }
     return NULL;

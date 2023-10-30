@@ -1167,6 +1167,7 @@ static void event_loop(void) {
 
 static void cleanup_fun(void* arg) {
     (void)arg;
+    if (redraw_fd != -1) close( redraw_fd );
     if (tags) {
         for (uint32_t i = 0; i < tags_l; i++)
             free(tags[i]);
@@ -1247,10 +1248,19 @@ void* awl_bar_run( void* arg ) {
     return NULL;
 }
 
-void awl_bar_refresh( void ) {
+static void awl_bar_refresh_fun( void ) {
     if (!has_init) return;
     Bar* bar;
     wl_list_for_each(bar, &bar_list, link)
         bar->redraw = true;
     eventfd_write(redraw_fd, 1);
+}
+
+void* awl_bar_refresh( void* arg ) {
+    float* prsec = (float*)arg;
+    while (1) {
+        usleep( (useconds_t)(*prsec * 1.e6) );
+        awl_bar_refresh_fun();
+    }
+    return NULL;
 }

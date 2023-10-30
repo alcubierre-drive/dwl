@@ -28,8 +28,8 @@
 
 
 typedef struct Bar Bar;
-void* awl_bar_run( void* addr );
-void awl_bar_refresh( void );
+void* awl_bar_run( void* arg );
+void* awl_bar_refresh( void* arg );
 
 extern char* awlb_date_txt;
 extern pulse_test_t* awlb_pulse_info;

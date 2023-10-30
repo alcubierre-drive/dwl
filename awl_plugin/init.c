@@ -26,6 +26,7 @@ static awl_config_t S = {0};
 static void movestack( const Arg *arg );
 
 static float _cpu[128] = {0}, _mem[128] = {0}, _swp[128] = {0};
+static float _refresh_sec = 0.2;
 static void awl_plugin_init(void) {
 
     S.sloppyfocus = 1;
@@ -228,12 +229,13 @@ static void awl_plugin_init(void) {
     awlb_cpu_info = _cpu;
     awlb_swp_info = _swp;
     awlb_mem_len = awlb_cpu_len = awlb_swp_len = 32;
-
     awlb_date_txt = start_date_thread( 10 );
     awlb_pulse_info = start_pulse_thread();
+
     int s = pthread_create( &S.BarThread, NULL, awl_bar_run, NULL );
     if (s != 0)
         handle_error_en(s, "pthread_create");
+    pthread_create( &S.BarRefreshThread, NULL, awl_bar_refresh, &_refresh_sec );
 }
 
 static void awl_plugin_free(void) {
@@ -248,6 +250,7 @@ static void awl_plugin_free(void) {
     stop_pulse_thread();
     awlb_date_txt = NULL;
     awlb_pulse_info = NULL;
+    pthread_cancel( S.BarRefreshThread );
 
     awl_state_t* B = AWL_VTABLE_SYM.state;
     if (B) {

@@ -46,6 +46,7 @@ struct awl_config_t {
     ARRAY( Button, buttons )
 
     pthread_t BarThread;
+    pthread_t BarRefreshThread;
 };
 
 struct awl_state_t {
