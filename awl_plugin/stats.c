@@ -1,7 +1,6 @@
 #include "stats.h"
 #include "bar.h"
 #include <pthread.h>
-#include <sys/sysinfo.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -23,6 +22,7 @@ static void* th_stats_run( void* arg );
 static int th_run = 0;
 static float cpu_idle( void );
 static void rotate_back( float* array, int size );
+static void getmem( float* mem, float* swp );
 
 void start_stats_thread( float* val_cpu, int nval_cpu,
                          float* val_mem, int nval_mem,
@@ -53,16 +53,11 @@ void stop_stats_thread( void ) {
 static void* th_stats_run( void* arg ) {
     th_stats_arg_t* A = (th_stats_arg_t*)arg;
     while (th_run) {
-        struct sysinfo info;
         rotate_back( A->cpu, A->ncpu );
         rotate_back( A->mem, A->nmem );
         rotate_back( A->swp, A->nswp );
-        if (!sysinfo(&info)) {
-            th_arg->mem[0] = 1. - (float)info.freeram/(float)info.totalram;
-            th_arg->swp[0] = 1. - (float)info.freeswap/(float)info.totalswap;
-            th_arg->cpu[0] = 1. - cpu_idle();
-        }
-        /* awl_bar_refresh(); */
+        getmem( th_arg->mem, th_arg->swp );
+        th_arg->cpu[0] = 1. - cpu_idle();
         sleep(A->update_sec);
     }
     return NULL;
@@ -83,4 +78,36 @@ static float cpu_idle( void ) {
     float total_time = 0.0;
     for (int i=0; i<10; ++i) total_time += sizes[i];
     return (float)sizes[3] / total_time;
+}
+
+static void getmem( float* mem, float* swp ) {
+    FILE* f = fopen("/proc/meminfo", "r");
+    long unsigned mem_total = 0,
+                  mem_avail = 0,
+                  swp_total = 0,
+                  swp_free = 0;
+    ssize_t nread = 0;
+    size_t len = 0;
+    char* line = NULL;
+    while ((nread = getline(&line, &len, f)) != -1) {
+        long unsigned buf = 0;
+        if (mem_total == 0 && sscanf(line, "MemTotal: %lu kB", &buf))
+            mem_total = buf;
+        else if (mem_avail == 0 && sscanf(line, "MemAvailable: %lu kB", &buf))
+            mem_avail = buf;
+        else if (swp_total == 0 && sscanf(line, "SwapTotal: %lu kB", &buf))
+            swp_total = buf;
+        else if (swp_free == 0 && sscanf(line, "SwapFree: %lu kB", &buf))
+            swp_free = buf;
+    }
+    free(line);
+    fclose(f);
+    if (mem_total == 0)
+        *mem = 1.0;
+    else
+        *mem = 1.0 - (float)mem_avail/(float)mem_total;
+    if (swp_total == 0)
+        *swp = 1.0;
+    else
+        *swp = 1.0 - (float)swp_free/(float)swp_total;
 }
