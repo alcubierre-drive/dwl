@@ -36,6 +36,7 @@ char* awlb_date_txt = NULL;
 pulse_test_t* awlb_pulse_info = NULL;
 float *awlb_cpu_info = NULL, *awlb_mem_info = NULL, *awlb_swp_info = NULL;
 int awlb_cpu_len = 128, awlb_mem_len = 128, awlb_swp_len = 128;
+int awlb_direction = 1;
 
 bool hidden = false;
 bool bottom = true;
@@ -434,7 +435,7 @@ static int draw_frame(Bar *bar) {
     int xx = bar->width - status_width;
     if (awlb_cpu_info) {
         for (int i=0; i<awlb_cpu_len; ++i) {
-            int ydiv = bar->height - awlb_cpu_info[awlb_cpu_len-i] * bar->height;
+            int ydiv = bar->height - awlb_cpu_info[awlb_direction ? awlb_cpu_len-i : i] * bar->height;
             pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &bg_color_stats, 1,
                             &(pixman_box32_t){.x1=xx,.x2=xx+1,.y1=0, .y2=ydiv});
             pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &fg_color_stats_cpu, 1,
@@ -444,7 +445,7 @@ static int draw_frame(Bar *bar) {
     }
     if (awlb_mem_info) {
         for (int i=0; i<awlb_mem_len; ++i) {
-            int ydiv = bar->height - awlb_mem_info[awlb_mem_len-i] * bar->height;
+            int ydiv = bar->height - awlb_mem_info[awlb_direction ? awlb_cpu_len-i : i] * bar->height;
             pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &bg_color_stats, 1,
                             &(pixman_box32_t){.x1=xx,.x2=xx+1,.y1=0, .y2=ydiv});
             pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &fg_color_stats_mem, 1,
@@ -454,7 +455,7 @@ static int draw_frame(Bar *bar) {
     }
     if (awlb_swp_info) {
         for (int i=0; i<awlb_swp_len; ++i) {
-            int ydiv = bar->height - awlb_swp_info[awlb_swp_len-i] * bar->height;
+            int ydiv = bar->height - awlb_swp_info[awlb_direction ? awlb_cpu_len-i : i] * bar->height;
             pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &bg_color_stats, 1,
                             &(pixman_box32_t){.x1=xx,.x2=xx+1,.y1=0, .y2=ydiv});
             pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &fg_color_stats_swp, 1,

@@ -231,6 +231,7 @@ static void awl_plugin_init(void) {
     awlb_mem_len = awlb_cpu_len = awlb_swp_len = 32;
     awlb_date_txt = start_date_thread( 10 );
     awlb_pulse_info = start_pulse_thread();
+    awlb_direction = 0;
 
     int s = pthread_create( &S.BarThread, NULL, awl_bar_run, NULL );
     if (s != 0)

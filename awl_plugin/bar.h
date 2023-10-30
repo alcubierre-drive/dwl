@@ -35,6 +35,7 @@ extern char* awlb_date_txt;
 extern pulse_test_t* awlb_pulse_info;
 extern float *awlb_cpu_info, *awlb_mem_info, *awlb_swp_info;
 extern int awlb_cpu_len, awlb_mem_len, awlb_swp_len;
+extern int awlb_direction;
 
 // TODO these should be accessible from the outside world
 extern struct wl_list bar_list;

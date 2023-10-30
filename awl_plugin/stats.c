@@ -16,6 +16,8 @@ typedef struct {
     int update_sec;
 } th_stats_arg_t;
 
+static uint64_t* sizes_table = NULL;
+
 static pthread_t* th_stats = NULL;
 static th_stats_arg_t* th_arg = NULL;
 static void* th_stats_run( void* arg );
@@ -46,6 +48,7 @@ void stop_stats_thread( void ) {
     pthread_cancel( *th_stats );
     free( th_stats );
     free( th_arg );
+    free( sizes_table );
     th_stats = NULL;
     th_arg = NULL;
 }
@@ -68,16 +71,28 @@ static void rotate_back( float* array, int size ) {
         array[i] = array[i-1];
 }
 
-// TODO this is broken
 static float cpu_idle( void ) {
+    if (!sizes_table)
+        sizes_table = (uint64_t*)calloc(20, sizeof(uint64_t));
+
+    // copy old values
+    memcpy( sizes_table+10, sizes_table, sizeof(uint64_t)*10 );
+    // open file and read new values
     FILE* f = fopen("/proc/stat", "r");
-    long unsigned sizes[10] = {0};
-    fscanf(f, "cpu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu", sizes+0, sizes+1,
-            sizes+2, sizes+3, sizes+4, sizes+5, sizes+6, sizes+7, sizes+8, sizes+9);
+    uint64_t* s = sizes_table;
+    fscanf(f, "cpu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu", s+0, s+1, s+2, s+3, s+4, s+5, s+6, s+7, s+8, s+9);
     fclose(f);
-    float total_time = 0.0;
-    for (int i=0; i<10; ++i) total_time += sizes[i];
-    return (float)sizes[3] / total_time;
+
+    // calculate differences
+    float diffs[10] = {0};
+    for (int i=0; i<10; ++i) {
+        diffs[i] = (s[i] - (s+10)[i]);
+        if (i != 0) diffs[0] += diffs[i];
+    }
+
+    // return idle percentage
+    float result = diffs[3]/diffs[0];
+    return result > 0.0 ? (result < 1.0 ? result : 1.0) : 0.0;
 }
 
 static void getmem( float* mem, float* swp ) {
@@ -110,4 +125,9 @@ static void getmem( float* mem, float* swp ) {
         *swp = 1.0;
     else
         *swp = 1.0 - (float)swp_free/(float)swp_total;
+
+    if (*mem < 0.0) *mem = 0.0;
+    if (*mem > 1.0) *mem = 1.0;
+    if (*swp < 0.0) *swp = 0.0;
+    if (*swp > 1.0) *swp = 1.0;
 }
