@@ -50,6 +50,7 @@ uint32_t n_tags_names = 9;
 
 static char fontstr_priv[] = "monospace:size=10";
 static char *tags_names_priv[] = { "1", "2", "3", "4", "5", "6", "7", "✉ 8", "✉ 9" };
+static pixman_box32_t* widget_boxes = NULL;
 
 pixman_color_t bg_color_tags = COLOR_18BIT_QUICK( 22, 22, 22, FF ),
                bg_color_tags_occ = COLOR_18BIT_QUICK( 22, 22, 55, FF ),
@@ -433,36 +434,49 @@ static int draw_frame(Bar *bar) {
               bar->width, bar->height, bar->textpadding,
               bar->status.colors, bar->status.colors_l);
     int xx = bar->width - status_width;
-    if (awlb_cpu_info) {
-        for (int i=0; i<awlb_cpu_len; ++i) {
-            int ydiv = bar->height - awlb_cpu_info[awlb_direction ? awlb_cpu_len-i : i] * bar->height;
-            pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &bg_color_stats, 1,
-                            &(pixman_box32_t){.x1=xx,.x2=xx+1,.y1=0, .y2=ydiv});
-            pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &fg_color_stats_cpu, 1,
-                            &(pixman_box32_t){.x1=xx,.x2=xx+1,.y1=ydiv,.y2=bar->height});
+
+    const int ncpu = awlb_cpu_len,
+              nmem = awlb_mem_len,
+              nswp = awlb_swp_len;
+    const float *icpu = awlb_cpu_info,
+                *imem = awlb_mem_info,
+                *iswp = awlb_swp_info;
+    widget_boxes = (pixman_box32_t*)realloc(widget_boxes, sizeof(pixman_box32_t)*2*(ncpu+nmem+nswp));
+
+    pixman_box32_t *b_cpu = widget_boxes;
+    pixman_box32_t *b_mem = b_cpu + ncpu;
+    pixman_box32_t *b_swp = b_mem + nmem;
+    pixman_box32_t *b_bg = b_swp + nswp;
+    pixman_box32_t *b_bg_run = b_bg;
+
+    if (icpu) {
+        for (int i=0; i<ncpu; ++i) {
+            int ydiv = bar->height - icpu[awlb_direction ? ncpu-i : i] * bar->height;
+            *b_bg_run++ = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=0, .y2=ydiv};
+            b_cpu[i] = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=ydiv,.y2=bar->height};
             xx++;
         }
     }
-    if (awlb_mem_info) {
-        for (int i=0; i<awlb_mem_len; ++i) {
-            int ydiv = bar->height - awlb_mem_info[awlb_direction ? awlb_cpu_len-i : i] * bar->height;
-            pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &bg_color_stats, 1,
-                            &(pixman_box32_t){.x1=xx,.x2=xx+1,.y1=0, .y2=ydiv});
-            pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &fg_color_stats_mem, 1,
-                            &(pixman_box32_t){.x1=xx,.x2=xx+1,.y1=ydiv,.y2=bar->height});
+    if (imem) {
+        for (int i=0; i<nmem; ++i) {
+            int ydiv = bar->height - imem[awlb_direction ? ncpu-i : i] * bar->height;
+            *b_bg_run++ = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=0, .y2=ydiv};
+            b_mem[i] = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=ydiv,.y2=bar->height};
             xx++;
         }
     }
-    if (awlb_swp_info) {
-        for (int i=0; i<awlb_swp_len; ++i) {
-            int ydiv = bar->height - awlb_swp_info[awlb_direction ? awlb_cpu_len-i : i] * bar->height;
-            pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &bg_color_stats, 1,
-                            &(pixman_box32_t){.x1=xx,.x2=xx+1,.y1=0, .y2=ydiv});
-            pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &fg_color_stats_swp, 1,
-                            &(pixman_box32_t){.x1=xx,.x2=xx+1,.y1=ydiv,.y2=bar->height});
+    if (iswp) {
+        for (int i=0; i<nswp; ++i) {
+            int ydiv = bar->height - iswp[awlb_direction ? ncpu-i : i] * bar->height;
+            *b_bg_run++ = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=0, .y2=ydiv};
+            b_swp[i] = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=ydiv,.y2=bar->height};
             xx++;
         }
     }
+    pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &bg_color_stats, b_bg_run-b_bg, b_bg);
+    pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &fg_color_stats_cpu, ncpu, b_cpu);
+    pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &fg_color_stats_mem, nmem, b_mem);
+    pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &fg_color_stats_swp, nswp, b_swp);
     // status text
     /* uint32_t status_width = TEXT_WIDTH(bar->status.text, bar->width - x, bar->textpadding); */
     /* draw_text(bar->status.text, bar->width - status_width, y, foreground, */
@@ -1179,6 +1193,7 @@ static void cleanup_fun(void* arg) {
             free(layouts[i]);
         free(layouts);
     }
+    free( widget_boxes );
 
     Bar *bar, *bar2;
     Seat *seat, *seat2;
