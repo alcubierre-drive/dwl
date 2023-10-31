@@ -81,7 +81,6 @@ static float cpu_idle( void ) {
     FILE* f = fopen("/proc/stat", "r");
     uint64_t* s = sizes_table;
     fscanf(f, "cpu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu", s+0, s+1, s+2, s+3, s+4, s+5, s+6, s+7, s+8, s+9);
-    fclose(f);
 
     // calculate differences
     float diffs[10] = {0};
@@ -90,8 +89,22 @@ static float cpu_idle( void ) {
         if (i != 0) diffs[0] += diffs[i];
     }
 
+    // find #cpus
+    float ncpus = 0.0;
+    ssize_t nread = 0;
+    size_t len = 0;
+    char* line = NULL;
+    while ((nread = getline(&line, &len, f)) != -1) {
+        int buf = 0;
+        ncpus += sscanf(line, "cpu%d", &buf);
+    }
+    free(line);
+
+    fclose(f);
+
     // return idle percentage
-    float result = diffs[3]/diffs[0];
+    if (ncpus < 1.0) ncpus = 1.0;
+    float result = diffs[3]/diffs[0] * ncpus;
     return result > 0.0 ? (result < 1.0 ? result : 1.0) : 0.0;
 }
 
