@@ -500,7 +500,7 @@ static int draw_frame(Bar *bar) {
             pixman_color_t bg = bg_color_win;
             if (T->focused) bg = alpha_blend_16( bg, bg_color_win_act );
             if (T->urgent) bg = alpha_blend_16( bg, bg_color_win_urg );
-            // TODO bg_color_win_min!
+            if (!T->visible) bg = alpha_blend_16( bg, bg_color_win_min );
 
             x = draw_text( T->name, x, y, foreground, background, &fg_color_win, &bg,
                 nx, bar->height, 0, NULL, 0 );

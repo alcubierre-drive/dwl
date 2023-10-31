@@ -24,6 +24,7 @@ extern awl_vtable_t AWL_VTABLE_SYM;
 static awl_config_t S = {0};
 
 static void movestack( const Arg *arg );
+static void client_hide( const Arg* arg );
 
 static float _cpu[128] = {0}, _mem[128] = {0}, _swp[128] = {0};
 static float _refresh_sec = 0.2;
@@ -59,12 +60,13 @@ static void awl_plugin_init(void) {
     fg_color_status = fg_color_lay = fg_color_tags;
 
     // window colors
-    bg_color_win = bg_color_tags;
     c16 = color_8bit_to_16bit( molokai_purple );
-    c16.alpha = 0x7777;
-    bg_color_win_act = c16;
+    c16.alpha = 0x4444;
+    bg_color_win = alpha_blend_16( color_8bit_to_16bit(molokai_dark_gray), c16 );
+    c16.alpha = 0x9999;
+    bg_color_win_act = alpha_blend_16( color_8bit_to_16bit(molokai_dark_gray), c16 );
     bg_color_win_urg = bg_color_tags_occ;
-    bg_color_win_min = black;
+    bg_color_win_min = bg_color_tags;
     fg_color_win = fg_color_tags;
 
     // widget colors
@@ -174,13 +176,13 @@ static void awl_plugin_init(void) {
     ADD_KEY( MODKEY_SH, XKB_KEY_C,          killclient,         {0} )
     ADD_KEY( MODKEY_CT, XKB_KEY_space,      togglefloating,     {0} )
     ADD_KEY( MODKEY,    XKB_KEY_f,          togglefullscreen,   {0} )
-    /* ADD_KEY( MODKEY,    XKB_KEY_0,          view,               {.ui = ~0} ) */
-    /* ADD_KEY( MODKEY_SH, XKB_KEY_equal,      tag,                {.ui = ~0} ) */
     ADD_KEY( MODKEY,    XKB_KEY_comma,      focusmon,           {.i = WLR_DIRECTION_LEFT} )
     ADD_KEY( MODKEY,    XKB_KEY_period,     focusmon,           {.i = WLR_DIRECTION_RIGHT} )
     ADD_KEY( MODKEY_SH, XKB_KEY_semicolon,  tagmon,             {.i = WLR_DIRECTION_LEFT} )
     ADD_KEY( MODKEY_SH, XKB_KEY_colon,      tagmon,             {.i = WLR_DIRECTION_RIGHT} )
     ADD_KEY( MODKEY,    XKB_KEY_i,          togglebar,          {0} )
+    ADD_KEY( MODKEY,    XKB_KEY_n,          client_hide,        {.ui=1} )
+    ADD_KEY( MODKEY_CT, XKB_KEY_n,          client_hide,        {.ui=0} )
 
     ADD_KEY( MODKEY,    XKB_KEY_Right,      cycle_tag,          {.i= 1} )
     ADD_KEY( MODKEY,    XKB_KEY_Left,       cycle_tag,          {.i=-1} )
@@ -343,6 +345,29 @@ static void movestack( const Arg *arg ) {
     wl_list_remove(&sel->link);
     wl_list_insert(&c->link, &sel->link);
     arrange(B->selmon);
+    printstatus();
+}
+
+static void client_hide( const Arg* arg ) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_config_t* C = &S;
+    if (!B || !C) return;
+
+    int hide = arg->ui;
+    if (hide) {
+        Client* sel = focustop(B->selmon);
+        if (sel) sel->visible = 0;
+    } else {
+        Client* c;
+        wl_list_for_each(c, &B->clients, link) {
+            if (c && !c->visible && VISIBLEON(c, B->selmon)) {
+                c->visible = 1;
+                break;
+            }
+        }
+    }
+    arrange(B->selmon);
+    focusclient(focustop(B->selmon), 0);
     printstatus();
 }
 

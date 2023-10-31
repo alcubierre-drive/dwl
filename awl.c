@@ -137,7 +137,7 @@ void arrange(Monitor *m) {
     Client *c;
     wl_list_for_each(c, &B->clients, link)
         if (c->mon == m)
-            wlr_scene_node_set_enabled(&c->scene->node, VISIBLEON(c, m));
+            wlr_scene_node_set_enabled(&c->scene->node, VISIBLEON(c, m) && c->visible);
 
     wlr_scene_node_set_enabled(&m->fullscreen_bg->node,
             (c = focustop(m)) && c->isfullscreen);
@@ -637,6 +637,7 @@ void createnotify(struct wl_listener *listener, void *data) {
     c = xdg_surface->data = ecalloc(1, sizeof(*c));
     c->surface.xdg = xdg_surface;
     c->bw = C->borderpx;
+    c->visible = 1;
 
     LISTEN(&xdg_surface->events.map, &c->map, mapnotify);
     LISTEN(&xdg_surface->events.unmap, &c->unmap, unmapnotify);
@@ -912,6 +913,8 @@ void dwl_ipc_output_printstatus_to(DwlIpcOutput *ipc_output) {
                     ttl->focused = 1;
                 if (c->isurgent)
                     ttl->urgent = 1;
+                if (c->visible)
+                    ttl->visible = 1;
             }
             numclients++;
         }
@@ -1095,14 +1098,14 @@ void focusstack(const Arg *arg) {
         wl_list_for_each(c, &sel->link, link) {
             if (&c->link == &B->clients)
                 continue; /* wrap past the sentinel node */
-            if (VISIBLEON(c, B->selmon))
+            if (VISIBLEON(c, B->selmon) && c->visible)
                 break; /* found it */
         }
     } else {
         wl_list_for_each_reverse(c, &sel->link, link) {
             if (&c->link == &B->clients)
                 continue; /* wrap past the sentinel node */
-            if (VISIBLEON(c, B->selmon))
+            if (VISIBLEON(c, B->selmon) && c->visible)
                 break; /* found it */
         }
     }
@@ -1116,7 +1119,7 @@ void focusstack(const Arg *arg) {
 Client * focustop(Monitor *m) {
     Client *c;
     wl_list_for_each(c, &B->fstack, flink)
-        if (VISIBLEON(c, m))
+        if (VISIBLEON(c, m) && c->visible)
             return c;
     return NULL;
 }
@@ -1415,7 +1418,7 @@ void monocle(Monitor *m) {
     int n = 0;
 
     wl_list_for_each(c, &B->clients, link) {
-        if (!VISIBLEON(c, m) || c->isfloating || c->isfullscreen)
+        if (!VISIBLEON(c, m) || c->isfloating || c->isfullscreen || !c->visible)
             continue;
         resize(c, m->w, 0);
         n++;
@@ -2087,7 +2090,7 @@ void tile(Monitor *m) {
     Client *c;
 
     wl_list_for_each(c, &B->clients, link)
-        if (VISIBLEON(c, m) && !c->isfloating && !c->isfullscreen)
+        if (VISIBLEON(c, m) && !c->isfloating && !c->isfullscreen && c->visible)
             n++;
     if (n == 0)
         return;
@@ -2098,7 +2101,7 @@ void tile(Monitor *m) {
         mw = m->w.width;
     i = my = ty = 0;
     wl_list_for_each(c, &B->clients, link) {
-        if (!VISIBLEON(c, m) || c->isfloating || c->isfullscreen)
+        if (!VISIBLEON(c, m) || c->isfloating || c->isfullscreen || !c->visible)
             continue;
         if (i < (unsigned)m->nmaster) {
             resize(c, (struct wlr_box){.x = m->w.x, .y = m->w.y + my, .width = mw,
@@ -2432,6 +2435,7 @@ void createnotifyx11(struct wl_listener *listener, void *data) {
     c->surface.xwayland = xsurface;
     c->type = xsurface->override_redirect ? X11Unmanaged : X11Managed;
     c->bw = C->borderpx;
+    c->visible = 1;
 
     /* Listen to the various events it can emit */
     LISTEN(&xsurface->events.map, &c->map, mapnotify);
