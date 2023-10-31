@@ -66,6 +66,8 @@
 #define MODKEY WLR_MODIFIER_ALT
 #endif
 
+void awl_change_modkey( uint32_t modkey );
+
 /* macros */
 #define CLEANMASK(mask)         (mask & ~WLR_MODIFIER_CAPS)
 #define VISIBLEON(C, M)         ((M) && (C)->mon == (M) && ((C)->tags & (M)->tagset[(M)->seltags]))

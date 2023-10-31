@@ -20,7 +20,7 @@ static void plugin_free(void);
 
 static int defer_reload = 0;
 static int log_level = WLR_ERROR;
-static const Key essential_keys[] = {
+static Key essential_keys[] = {
     { MODKEY|WLR_MODIFIER_SHIFT,         XKB_KEY_equal,            quit,             {0} },
     { MODKEY|WLR_MODIFIER_CTRL,          XKB_KEY_r,                defer_reload_fun, {0} },
     { WLR_MODIFIER_CTRL|WLR_MODIFIER_ALT,XKB_KEY_Terminate_Server, quit,             {0} },
@@ -30,6 +30,15 @@ static const Key essential_keys[] = {
 };
 static const int n_essential_keys = LENGTH(essential_keys);
 
+static uint32_t awl_last_modkey = MODKEY;
+void awl_change_modkey( uint32_t modkey ) {
+    for (int i=0; i<n_essential_keys; ++i)
+        if (essential_keys[i].mod & awl_last_modkey) {
+            essential_keys[i].mod &= ~awl_last_modkey;
+            essential_keys[i].mod |= modkey;
+        }
+    awl_last_modkey = modkey;
+}
 
 /* macros */
 static inline int MIN( int A, int B ) { return A < B ? A : B; }

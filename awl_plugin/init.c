@@ -28,7 +28,12 @@ static void client_hide( const Arg* arg );
 
 static float _cpu[128] = {0}, _mem[128] = {0}, _swp[128] = {0};
 static float _refresh_sec = 0.2;
+
 static void awl_plugin_init(void) {
+
+    setenv("MOZ_ENABLE_WAYLAND", "1", 1);
+    /* #define MODKEY WLR_MODIFIER_ALT */
+    /* awl_change_modkey(MODKEY); */
 
     S.sloppyfocus = 1;
     S.bypass_surface_visibility = 0;
