@@ -27,6 +27,13 @@ static void movestack( const Arg *arg );
 static void client_hide( const Arg* arg );
 static void tagmon_f( const Arg* arg );
 
+static void gaplessgrid(Monitor *m);
+static void grid(Monitor *m);
+static void bstackhoriz(Monitor *m);
+static void bstack(Monitor *m);
+static void dwindle(Monitor *mon);
+static void spiral(Monitor *mon);
+
 static float _cpu[128] = {0}, _mem[128] = {0}, _swp[128] = {0};
 static float _refresh_sec = 0.2;
 
@@ -95,9 +102,12 @@ static void awl_plugin_init(void) {
     /* ARRAY_APPEND(Rule, rules, "matplotlib", NULL, -1, 0, -1 ); */
 
     ARRAY_INIT(Layout, layouts, 16);
-    ARRAY_APPEND(Layout, layouts, "[]=", tile );
+    ARRAY_APPEND(Layout, layouts, "[T]", tile );
     ARRAY_APPEND(Layout, layouts, "><>", NULL );
     ARRAY_APPEND(Layout, layouts, "[M]", monocle );
+    ARRAY_APPEND(Layout, layouts, "[◻]", gaplessgrid );
+    ARRAY_APPEND(Layout, layouts, "[=]", bstack );
+    ARRAY_APPEND(Layout, layouts, "[◲]", dwindle );
     S.cur_layout = 0;
 
     /* name, mfact, nmaster, scale, layout, rotate/reflect, x, y */
@@ -394,6 +404,251 @@ static void client_hide( const Arg* arg ) {
 static void tagmon_f( const Arg* arg ) {
     tagmon( arg );
     focusmon( arg );
+}
+
+static void gaplessgrid(Monitor *m) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_config_t* C = &S;
+    if (!B || !C) return;
+
+    unsigned int n = 0, i = 0, ch, cw, cn, rn, rows, cols;
+    Client *c;
+
+    wl_list_for_each(c, &B->clients, link)
+        if (c->visible && VISIBLEON(c, m) && !c->isfloating)
+            n++;
+    if (n == 0)
+        return;
+
+    /* grid dimensions */
+    for (cols = 0; cols <= (n / 2); cols++)
+        if ((cols * cols) >= n)
+            break;
+
+    if (n == 5) /* set layout against the general calculation: not 1:2:2, but 2:3 */
+        cols = 2;
+    rows = n / cols;
+
+    /* window geometries */
+    cw = cols ? m->w.width / cols : (unsigned int)m->w.width;
+    cn = 0; /* current column number */
+    rn = 0; /* current row number */
+    wl_list_for_each(c, &B->clients, link) {
+        unsigned int cx, cy;
+        if (!c->visible || !VISIBLEON(c, m) || c->isfloating || c->isfullscreen)
+            continue;
+
+        if ((i / rows + 1) > (cols - n % cols))
+            rows = n / cols + 1;
+        ch = rows ? m->w.height / rows : (unsigned int)m->w.height;
+        cx = m->w.x + cn * cw;
+        cy = m->w.y + rn * ch;
+        /* resize(c, cx, cy, cw, ch, 0); */
+        resize(c, (struct wlr_box) { .x =  cx, .y = cy, .width = cw, .height = ch }, 0);
+        rn++;
+        if (rn >= rows) {
+            rn = 0;
+            cn++;
+        }
+        i++;
+    }
+}
+
+
+static void grid(Monitor *m) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_config_t* C = &S;
+    if (!B || !C) return;
+
+    unsigned int n = 0, i = 0, ch, cw, rows, cols;
+    Client *c;
+
+    wl_list_for_each(c, &B->clients, link)
+        if (c->visible && VISIBLEON(c, m) && !c->isfloating)
+            n++;
+    if (n == 0)
+        return;
+
+    /* grid dimensions */
+    for (rows = 0; rows <= (n / 2); rows++)
+        if ((rows * rows) >= n)
+            break;
+    cols = (rows && ((rows - 1) * rows) >= n) ? rows - 1 : rows;
+
+    /* window geoms (cell height/width) */
+    ch = m->w.height / (rows ? rows : 1);
+    cw = m->w.width / (cols ? cols : 1);
+    wl_list_for_each(c, &B->clients, link) {
+        unsigned int cx, cy, ah, aw;
+        if (!c->visible || !VISIBLEON(c, m) || c->isfloating || c->isfullscreen)
+            continue;
+
+        cx = m->w.x + (i / rows) * cw;
+        cy = m->w.y + (i % rows) * ch;
+        /* adjust height/width of last row/column's windows */
+        ah = (((i + 1) % rows) == 0) ? m->w.height - ch * rows : 0;
+        aw = (i >= (rows * (cols - 1))) ? m->w.width - cw * cols : 0;
+        resize(c, (struct wlr_box) { .x =  cx, .y = cy, .width = cw - aw, .height = ch - ah }, 0);
+        i++;
+    }
+}
+
+static void bstack(Monitor *m) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_config_t* C = &S;
+    if (!B || !C) return;
+
+    int w, h, mh, mx, tx, ty, tw;
+    unsigned int i, n = 0;
+    Client *c;
+
+    wl_list_for_each(c, &B->clients, link)
+        if (c->visible && VISIBLEON(c, m) && !c->isfloating)
+            n++;
+    if (n == 0)
+        return;
+
+    if ((int)n > m->nmaster) {
+        mh = m->nmaster ? m->mfact * m->w.height : 0;
+        tw = m->w.width / (n - m->nmaster);
+        ty = m->w.y + mh;
+    } else {
+        mh = m->w.height;
+        tw = m->w.width;
+        ty = m->w.y;
+    }
+
+    i = mx = 0;
+    tx = m-> w.x;
+    wl_list_for_each(c, &B->clients, link) {
+        if (!c->visible || !VISIBLEON(c, m) || c->isfloating)
+            continue;
+        if ((int)i < m->nmaster) {
+            w = (m->w.width - mx) / (MMIN((int)n, m->nmaster) - i);
+            resize(c, (struct wlr_box) { .x = m->w.x + mx, .y = m->w.y, .width = w - (2 * c->bw), .height = mh - (2 * c->bw) }, 0);
+            mx += c->geom.width;
+        } else {
+            h = m->w.height - mh;
+            resize(c, (struct wlr_box) { .x = tx, .y = ty, .width = tw - (2 * c->bw), .height = h - (2 * c->bw) }, 0);
+            if (tw != m->w.width)
+                tx += c->geom.width;
+        }
+        i++;
+    }
+}
+
+static void bstackhoriz(Monitor *m) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_config_t* C = &S;
+    if (!B || !C) return;
+
+    int w, mh, mx, tx, ty, th;
+    unsigned int i, n = 0;
+    Client *c;
+
+    wl_list_for_each(c, &B->clients, link)
+        if (c->visible && VISIBLEON(c, m) && !c->isfloating)
+            n ++;
+    if (n == 0)
+        return;
+
+    if ((int)n > m->nmaster) {
+        mh = m->nmaster ? m->mfact * m->w.height : 0;
+        th = (m->w.height - mh) / (n - m->nmaster);
+        ty = m->w.y + mh;
+    } else {
+        th = mh = m->w.height;
+        ty = m->w.y;
+    }
+
+    i = mx = 0;
+    tx = m-> w.x;
+    wl_list_for_each(c, &B->clients, link) {
+        if (!c->visible || !VISIBLEON(c,m) || c->isfloating)
+            continue;
+        if ((int)i < m->nmaster) {
+            w = (m->w.width - mx) / (MMIN((int)n, m->nmaster) - i);
+            resize(c, (struct wlr_box) { .x = m->w.x + mx, .y = m->w.y, .width = w - (2 * c->bw), .height = mh - (2 * c->bw) }, 0);
+            mx += c->geom.width;
+        } else {
+            resize(c, (struct wlr_box) { .x = tx, .y = ty, .width = m->w.width - (2 * c->bw), .height = th - (2 * c->bw) }, 0);
+            if (th != m->w.height)
+                ty += c->geom.height;
+        }
+        i++;
+    }
+}
+
+static void fibonacci(Monitor *mon, int s) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_config_t* C = &S;
+    if (!B || !C) return;
+
+    unsigned int i=0, n=0, nx, ny, nw, nh;
+    Client *c;
+
+    wl_list_for_each(c, &B->clients, link)
+        if (c->visible && VISIBLEON(c, mon) && !c->isfloating)
+            n++;
+    if(n == 0)
+        return;
+
+    nx = mon->w.x;
+    ny = 0;
+    nw = mon->w.width;
+    nh = mon->w.height;
+
+    wl_list_for_each(c, &B->clients, link)
+        if (c->visible && VISIBLEON(c, mon) && !c->isfloating){
+        if((i % 2 && nh / 2 > 2 * c->bw)
+           || (!(i % 2) && nw / 2 > 2 * c->bw)) {
+            if(i < n - 1) {
+                if(i % 2)
+                    nh /= 2;
+                else
+                    nw /= 2;
+                if((i % 4) == 2 && !s)
+                    nx += nw;
+                else if((i % 4) == 3 && !s)
+                    ny += nh;
+            }
+            if((i % 4) == 0) {
+                if(s)
+                    ny += nh;
+                else
+                    ny -= nh;
+            }
+            else if((i % 4) == 1)
+                nx += nw;
+            else if((i % 4) == 2)
+                ny += nh;
+            else if((i % 4) == 3) {
+                if(s)
+                    nx += nw;
+                else
+                    nx -= nw;
+            }
+            if(i == 0)
+            {
+                if(n != 1)
+                    nw = mon->w.width * mon->mfact;
+                ny = mon->w.y;
+            }
+            else if(i == 1)
+                nw = mon->w.width - nw;
+            i++;
+        }
+        resize(c, (struct wlr_box){.x = nx, .y = ny,
+            .width = nw - 2 * c->bw, .height = nh - 2 * c->bw}, 0);
+    }
+}
+
+static void dwindle(Monitor *mon) {
+    fibonacci(mon, 1);
+}
+
+static void spiral(Monitor *mon) {
+    fibonacci(mon, 0);
 }
 
 awl_vtable_t AWL_VTABLE_SYM = {
