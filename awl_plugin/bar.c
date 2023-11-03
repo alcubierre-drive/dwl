@@ -502,7 +502,10 @@ static int draw_frame(Bar *bar) {
             if (T->urgent) bg = alpha_blend_16( bg, bg_color_win_urg );
             if (!T->visible) bg = alpha_blend_16( bg, bg_color_win_min );
 
-            // TODO T->floating
+            if (T->floating) {
+                x = draw_text( "[✈✈✈] ", x, y, foreground, background, &fg_color_win, &bg,
+                        nx, bar->height, 0, NULL, 0 );
+            }
             x = draw_text( T->name, x, y, foreground, background, &fg_color_win, &bg,
                 nx, bar->height, 0, NULL, 0 );
             pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &bg, 1,
@@ -1163,7 +1166,6 @@ static void event_loop(void) {
         if (FD_ISSET(wl_fd, &rfds))
             if (wl_display_dispatch(display) == -1)
                 break;
-        // TODO is this still a bug?
         if (FD_ISSET(redraw_fd, &rfds)) {
             uint64_t val = 0;
             eventfd_read(redraw_fd, &val);
