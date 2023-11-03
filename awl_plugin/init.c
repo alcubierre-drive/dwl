@@ -25,6 +25,7 @@ static awl_config_t S = {0};
 
 static void movestack( const Arg *arg );
 static void client_hide( const Arg* arg );
+static void tagmon_f( const Arg* arg );
 
 static float _cpu[128] = {0}, _mem[128] = {0}, _swp[128] = {0};
 static float _refresh_sec = 0.2;
@@ -32,6 +33,14 @@ static float _refresh_sec = 0.2;
 static void awl_plugin_init(void) {
 
     setenv("MOZ_ENABLE_WAYLAND", "1", 1);
+    setenv("QT_STYLE_OVERRIDE","kvantum",1);
+    setenv("DESKTOP_SESSION","gnome",1);
+    setenv("QT_AUTO_SCREEN_SCALE_FACTOR","0",1);
+    setenv("EDITOR","nvim",1);
+    setenv("SYSTEMD_EDITOR","/usr/bin/nvim",1);
+    setenv("SSH_AUTH_SOCK","1",1);
+    setenv("NO_AT_BRIDGE","1",1);
+
     /* #define MODKEY WLR_MODIFIER_ALT */
     /* awl_change_modkey(MODKEY); */
 
@@ -181,10 +190,16 @@ static void awl_plugin_init(void) {
     ADD_KEY( MODKEY_SH, XKB_KEY_C,          killclient,         {0} )
     ADD_KEY( MODKEY_CT, XKB_KEY_space,      togglefloating,     {0} )
     ADD_KEY( MODKEY,    XKB_KEY_f,          togglefullscreen,   {0} )
-    ADD_KEY( MODKEY,    XKB_KEY_comma,      focusmon,           {.i = WLR_DIRECTION_LEFT} )
-    ADD_KEY( MODKEY,    XKB_KEY_period,     focusmon,           {.i = WLR_DIRECTION_RIGHT} )
-    ADD_KEY( MODKEY_SH, XKB_KEY_semicolon,  tagmon,             {.i = WLR_DIRECTION_LEFT} )
-    ADD_KEY( MODKEY_SH, XKB_KEY_colon,      tagmon,             {.i = WLR_DIRECTION_RIGHT} )
+    ADD_KEY( MODKEY_CT, XKB_KEY_j,          focusmon,           {.i = WLR_DIRECTION_LEFT} )
+    ADD_KEY( MODKEY_CT, XKB_KEY_k,          focusmon,           {.i = WLR_DIRECTION_RIGHT} )
+    /* ADD_KEY( MODKEY,    XKB_KEY_comma,      focusmon,           {.i = WLR_DIRECTION_LEFT} ) */
+    /* ADD_KEY( MODKEY,    XKB_KEY_period,     focusmon,           {.i = WLR_DIRECTION_RIGHT} ) */
+    /* ADD_KEY( MODKEY_SH, XKB_KEY_semicolon,  tagmon,             {.i = WLR_DIRECTION_LEFT} ) */
+    /* ADD_KEY( MODKEY_SH, XKB_KEY_colon,      tagmon,             {.i = WLR_DIRECTION_RIGHT} ) */
+
+    ADD_KEY( MODKEY_SH,    XKB_KEY_O,       tagmon_f,           {.i = WLR_DIRECTION_LEFT} )
+    ADD_KEY( MODKEY_CT_SH, XKB_KEY_O,       tagmon_f,           {.i = WLR_DIRECTION_RIGHT} )
+
     ADD_KEY( MODKEY,    XKB_KEY_i,          togglebar,          {0} )
     ADD_KEY( MODKEY,    XKB_KEY_n,          client_hide,        {.ui=1} )
     ADD_KEY( MODKEY_CT, XKB_KEY_n,          client_hide,        {.ui=0} )
@@ -374,6 +389,11 @@ static void client_hide( const Arg* arg ) {
     arrange(B->selmon);
     focusclient(focustop(B->selmon), 0);
     printstatus();
+}
+
+static void tagmon_f( const Arg* arg ) {
+    tagmon( arg );
+    focusmon( arg );
 }
 
 awl_vtable_t AWL_VTABLE_SYM = {

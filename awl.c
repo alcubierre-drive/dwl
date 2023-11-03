@@ -916,14 +916,12 @@ void dwl_ipc_output_printstatus_to(DwlIpcOutput *ipc_output) {
                 if (!t) t = B->broken;
 
                 ttl->name[sizeof(ttl->name)-1] = '\0';
-                memcpy( ttl->name, t, MIN(strlen(t), sizeof(ttl->name)-1) );
+                memcpy( ttl->name, t, MIN(strlen(t)+1, sizeof(ttl->name)-1) );
 
-                if (c == focused)
-                    ttl->focused = 1;
-                if (c->isurgent)
-                    ttl->urgent = 1;
-                if (c->visible)
-                    ttl->visible = 1;
+                ttl->floating = c->isfloating;
+                ttl->focused = (c == focused);
+                ttl->urgent = c->isurgent;
+                ttl->visible = c->visible;
             }
             numclients++;
         }

@@ -502,6 +502,7 @@ static int draw_frame(Bar *bar) {
             if (T->urgent) bg = alpha_blend_16( bg, bg_color_win_urg );
             if (!T->visible) bg = alpha_blend_16( bg, bg_color_win_min );
 
+            // TODO T->floating
             x = draw_text( T->name, x, y, foreground, background, &fg_color_win, &bg,
                 nx, bar->height, 0, NULL, 0 );
             pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &bg, 1,
