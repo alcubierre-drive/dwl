@@ -103,10 +103,9 @@ static void awl_plugin_init(void) {
 
     ARRAY_INIT(Layout, layouts, 16);
     ARRAY_APPEND(Layout, layouts, "[T]", tile );
-    ARRAY_APPEND(Layout, layouts, "><>", NULL );
+    ARRAY_APPEND(Layout, layouts, "[=]", bstack );
     ARRAY_APPEND(Layout, layouts, "[M]", monocle );
     ARRAY_APPEND(Layout, layouts, "[◻]", gaplessgrid );
-    ARRAY_APPEND(Layout, layouts, "[=]", bstack );
     ARRAY_APPEND(Layout, layouts, "[◲]", dwindle );
     S.cur_layout = 0;
 

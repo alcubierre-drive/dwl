@@ -349,7 +349,7 @@ static uint32_t draw_text(char *text,
 
 static int draw_frame(Bar *bar) {
     /* Allocate buffer to be attached to the surface */
-        int fd = allocate_shm_file(bar->bufsize);
+    int fd = allocate_shm_file(bar->bufsize);
     if (fd == -1)
         return -1;
 
