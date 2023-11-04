@@ -67,6 +67,7 @@
 #endif
 
 void awl_change_modkey( uint32_t modkey );
+int awl_is_ready( void );
 
 /* macros */
 #define CLEANMASK(mask)         (mask & ~WLR_MODIFIER_CAPS)

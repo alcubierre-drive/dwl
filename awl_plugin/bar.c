@@ -6,6 +6,8 @@
 #include "../awl_util.h"
 #include <sys/eventfd.h>
 
+int awl_is_ready( void );
+
 static bool has_init = false;
 static int redraw_fd = -1;
 
@@ -1212,6 +1214,7 @@ static void cleanup_fun(void* arg) {
 }
 
 void* awl_bar_run( void* arg ) {
+    while (!awl_is_ready()) usleep(1000);
     awl_log_printf( "starting bar thread" );
     (void)arg;
 
