@@ -3,23 +3,28 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 #include "awl_util.h"
+#include "awl_log.h"
 
 void die(const char *fmt, ...) {
     if (!fmt) exit(1);
+
+    char error_str[2048] = {0};
     va_list ap;
     va_start(ap, fmt);
-    vfprintf(stderr, fmt, ap);
+    vsnprintf(error_str, 1024, fmt, ap);
     va_end(ap);
 
     if (fmt[0] && fmt[strlen(fmt)-1] == ':') {
-        fputc(' ', stderr);
-        perror(NULL);
-    } else {
-        fputc('\n', stderr);
+        strcat(error_str, " ");
+        strcat(error_str, strerror(errno));
     }
 
+    if (awl_log_has_init())
+        awl_err_printf( "%s", error_str );
+    fprintf( stderr, "%s\n", error_str );
     exit(1);
 }
 

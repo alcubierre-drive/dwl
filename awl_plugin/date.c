@@ -1,5 +1,6 @@
 #include "date.h"
 #include "bar.h"
+#include "../awl_log.h"
 #include <time.h>
 #include <pthread.h>
 #include <unistd.h>
@@ -24,6 +25,7 @@ static void* date_thread_fun( void* arg ) {
 }
 
 char* start_date_thread( int update_sec ) {
+    awl_log_printf( "starting time thread" );
     date_thread_update_sec = update_sec;
     date_thread_run = 1;
     date_thread = malloc(sizeof(pthread_t));

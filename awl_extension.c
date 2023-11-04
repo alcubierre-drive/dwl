@@ -1,5 +1,6 @@
 #include "awl_extension.h"
 #include "awl_util.h"
+#include "awl_log.h"
 #include <dlfcn.h>
 #include <string.h>
 #include <stdlib.h>
@@ -23,14 +24,15 @@ static void reverse_memcpy( char* dest, const char* src, int64_t nbytes ) {
 
 awl_extension_t* awl_extension_init( const char* lib_ ) {
     const char* lib = lib_ ? lib_ : libawlextend;
+    awl_log_printf( "initialize extension" );
 
-    awl_extension_t* handle = calloc( 1, sizeof(awl_extension_t) );
-    handle->name = calloc( 1, strlen(lib)+1 );
+    awl_extension_t* handle = ecalloc( 1, sizeof(awl_extension_t) );
+    handle->name = ecalloc( 1, strlen(lib)+1 );
     strcpy( handle->name, lib );
 
     handle->addr = dlopen( handle->name, DLOPEN_MODE );
     if (!handle->addr) {
-        fprintf(stderr, "could not open lib %s, trying with './' prefix...\n", lib);
+        awl_wrn_printf("could not open lib %s, trying with './' prefix...", lib);
         handle->name = realloc(handle->name, strlen(handle->name)+3);
         reverse_memcpy( handle->name+2, handle->name, strlen(handle->name)+1 );
         handle->name[0] = '.';
@@ -48,12 +50,14 @@ awl_extension_t* awl_extension_init( const char* lib_ ) {
 }
 
 void awl_extension_free( awl_extension_t* handle ) {
+    awl_log_printf( "teardown extension" );
     dlclose( handle->addr );
     free( handle->name );
     free( handle );
 }
 
 void awl_extension_refresh( awl_extension_t* handle ) {
+    awl_log_printf( "refreshing extension %p->(%p,%p)", handle, handle->addr, handle->vt );
     dlclose( handle->addr );
     handle->addr = dlopen( handle->name, DLOPEN_MODE );
     handle->vt = dlsym( handle->addr, AWL_VTABLE_NAME );

@@ -2,6 +2,7 @@
 #include "init.h"
 #include "bar.h"
 #include "../awl_title.h"
+#include "../awl_log.h"
 #include <sys/eventfd.h>
 
 static bool has_init = false;
@@ -52,44 +53,34 @@ static char fontstr_priv[] = "monospace:size=10";
 static char *tags_names_priv[] = { "1", "2", "3", "4", "5", "6", "7", "✉ 8", "✉ 9" };
 static pixman_box32_t* widget_boxes = NULL;
 
-pixman_color_t bg_color_tags = COLOR_18BIT_QUICK( 22, 22, 22, FF ),
-               bg_color_tags_occ = COLOR_18BIT_QUICK( 22, 22, 55, FF ),
-               bg_color_tags_act = COLOR_18BIT_QUICK( 22, 33, 77, FF ),
-               bg_color_tags_urg = COLOR_18BIT_QUICK( 77, 33, 22, FF ),
-               fg_color_tags = COLOR_18BIT_QUICK( EE, EE, FF, FF ),
+pixman_color_t bg_color_tags = COLOR_16BIT_QUICK( 22, 22, 22, FF ),
+               bg_color_tags_occ = COLOR_16BIT_QUICK( 22, 22, 55, FF ),
+               bg_color_tags_act = COLOR_16BIT_QUICK( 22, 33, 77, FF ),
+               bg_color_tags_urg = COLOR_16BIT_QUICK( 77, 33, 22, FF ),
+               fg_color_tags = COLOR_16BIT_QUICK( EE, EE, FF, FF ),
 
-               bg_color_lay = COLOR_18BIT_QUICK( 11, 11, 11, FF ),
-               fg_color_lay = COLOR_18BIT_QUICK( FF, EE, EE, FF ),
+               bg_color_lay = COLOR_16BIT_QUICK( 11, 11, 11, FF ),
+               fg_color_lay = COLOR_16BIT_QUICK( FF, EE, EE, FF ),
 
-               bg_color_status = COLOR_18BIT_QUICK( 11, 11, 11, FF ),
-               fg_color_status = COLOR_18BIT_QUICK( FF, EE, EE, FF ),
+               bg_color_status = COLOR_16BIT_QUICK( 11, 11, 11, FF ),
+               fg_color_status = COLOR_16BIT_QUICK( FF, EE, EE, FF ),
 
-               bg_color_win = COLOR_18BIT_QUICK( 22, 22, 22, FF ),
-               bg_color_win_min = COLOR_18BIT_QUICK( 11, 11, 11, FF ),
-               bg_color_win_act = COLOR_18BIT_QUICK( 22, 22, 55, FF ),
-               bg_color_win_urg = COLOR_18BIT_QUICK( 55, 22, 22, FF ),
-               fg_color_win = COLOR_18BIT_QUICK( EE, EE, FF, FF ),
+               bg_color_win = COLOR_16BIT_QUICK( 22, 22, 22, FF ),
+               bg_color_win_min = COLOR_16BIT_QUICK( 11, 11, 11, FF ),
+               bg_color_win_act = COLOR_16BIT_QUICK( 22, 22, 55, FF ),
+               bg_color_win_urg = COLOR_16BIT_QUICK( 55, 22, 22, FF ),
+               fg_color_win = COLOR_16BIT_QUICK( EE, EE, FF, FF ),
 
-               bg_color_stats = COLOR_18BIT_QUICK( 11, 11, 11, FF ),
-               fg_color_stats_cpu = COLOR_18BIT_QUICK( 55, 11, 11, FF ),
-               fg_color_stats_mem = COLOR_18BIT_QUICK( 11, 55, 11, FF ),
-               fg_color_stats_swp = COLOR_18BIT_QUICK( 11, 11, 55, FF );
+               bg_color_stats = COLOR_16BIT_QUICK( 11, 11, 11, FF ),
+               fg_color_stats_cpu = COLOR_16BIT_QUICK( 55, 11, 11, FF ),
+               fg_color_stats_mem = COLOR_16BIT_QUICK( 11, 55, 11, FF ),
+               fg_color_stats_swp = COLOR_16BIT_QUICK( 11, 11, 55, FF );
 
 #include "utf8.h"
 #include "xdg-shell-protocol.h"
 #include "xdg-output-unstable-v1-protocol.h"
 #include "wlr-layer-shell-unstable-v1-protocol.h"
 #include "awl-ipc-unstable-v2-protocol.h"
-
-#define _ERROR(fmt, ...) fprintf(stderr, fmt "\n", ##__VA_ARGS__);
-#define ERROR(fmt, ...) _ERROR(fmt "(" __FILE__ ":%i): %s", ##__VA_ARGS__, __LINE__, strerror(errno));
-
-#define MIN(a, b)               \
-    ((a) < (b) ? (a) : (b))
-#define MAX(a, b)               \
-    ((a) > (b) ? (a) : (b))
-#define LENGTH(x)               \
-    (sizeof x / sizeof x[0])
 
 #define ARRAY_INIT_CAP 16
 #define ARRAY_EXPAND(arr, len, cap, inc)                \
@@ -249,7 +240,7 @@ static uint32_t draw_text(char *text,
     bool draw_bg = background && bg_color;
 
     pixman_image_t *fg_fill = NULL;
-    pixman_color_t *cur_bg_color;
+    pixman_color_t *cur_bg_color = NULL;
     if (draw_fg)
         fg_fill = pixman_image_create_solid_fill(fg_color);
     if (draw_bg)
@@ -745,9 +736,9 @@ static void pointer_frame(void *data, struct wl_pointer *pointer) {
             if (custom_title) {
                 if (center_title) {
                     uint32_t title_width = TEXT_WIDTH(seat->bar->title.text, status_x - x, 0);
-                    x = MAX(x, MIN((seat->bar->width - title_width) / 2, status_x - title_width));
+                    x = MMAX(x, MMIN((seat->bar->width - title_width) / 2, status_x - title_width));
                 } else {
-                    x = MIN(x + seat->bar->textpadding, status_x);
+                    x = MMIN(x + seat->bar->textpadding, status_x);
                 }
                 for (i = 0; i < seat->bar->title.buttons_l; i++) {
                     if (seat->pointer_button == seat->bar->title.buttons[i].btn
@@ -860,12 +851,12 @@ static const struct wl_seat_listener seat_listener = {
 static void show_bar(Bar *bar) {
     bar->wl_surface = wl_compositor_create_surface(compositor);
     if (!bar->wl_surface)
-        ERROR("Could not create wl_surface");
+        awl_err_printf( "Could not create wl_surface" );
 
     bar->layer_surface = zwlr_layer_shell_v1_get_layer_surface(layer_shell, bar->wl_surface, bar->wl_output,
                                    ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM, "awl_bar");
     if (!bar->layer_surface)
-        ERROR("Could not create layer_surface");
+        awl_err_printf( "Could not create layer_surface" );
     zwlr_layer_surface_v1_add_listener(bar->layer_surface, &layer_surface_listener, bar);
 
     zwlr_layer_surface_v1_set_size(bar->layer_surface, 0, bar->height / buffer_scale);
@@ -894,9 +885,9 @@ static void dwl_wm_tags(void *data, struct zdwl_ipc_manager_v2 *dwl_wm,
     if (!tags)
         tags = malloc(amount * sizeof(char *));
     uint32_t i = tags_l;
-    ARRAY_EXPAND(tags, tags_l, tags_c, MAX(0, (int)amount - (int)tags_l));
+    ARRAY_EXPAND(tags, tags_l, tags_c, MMAX(0, (int)amount - (int)tags_l));
     for (; i < amount; i++)
-        tags[i] = strdup(tags_names[MIN(i, n_tags_names-1)]);
+        tags[i] = strdup(tags_names[MMIN(i, n_tags_names-1)]);
 }
 
 static void dwl_wm_layout(void *data, struct zdwl_ipc_manager_v2 *dwl_wm,
@@ -1044,12 +1035,12 @@ static void setup_bar(Bar *bar) {
 
     bar->xdg_output = zxdg_output_manager_v1_get_xdg_output(output_manager, bar->wl_output);
     if (!bar->xdg_output)
-        ERROR("Could not create xdg_output");
+        awl_err_printf( "Could not create xdg_output" );
     zxdg_output_v1_add_listener(bar->xdg_output, &output_listener, bar);
 
     bar->dwl_wm_output = zdwl_ipc_manager_v2_get_output(dwl_wm, bar->wl_output);
     if (!bar->dwl_wm_output)
-        ERROR("Could not create dwl_wm_output");
+        awl_err_printf( "Could not create dwl_wm_output" );
     zdwl_ipc_output_v2_add_listener(bar->dwl_wm_output, &dwl_wm_output_listener, bar);
 
     if (!bar->hidden)
@@ -1146,6 +1137,7 @@ static const struct wl_registry_listener registry_listener = {
 };
 
 static void event_loop(void) {
+    awl_log_printf( "bar event loop" );
     int wl_fd = wl_display_get_fd(display);
 
     while (awlb_run_display) {
@@ -1156,12 +1148,11 @@ static void event_loop(void) {
 
         wl_display_flush(display);
 
-        #define MMAX(a,b) ((a) > (b) ? (a) : (b))
         if (select(MMAX(redraw_fd,wl_fd)+1, &rfds, NULL, NULL, NULL) == -1) {
             if (errno == EINTR)
                 continue;
             else
-                ERROR("select");
+                awl_err_printf( "select" );
         }
         if (FD_ISSET(wl_fd, &rfds))
             if (wl_display_dispatch(display) == -1)
@@ -1184,6 +1175,7 @@ static void event_loop(void) {
 }
 
 static void cleanup_fun(void* arg) {
+    awl_log_printf( "entering bar cleanup" );
     (void)arg;
     if (redraw_fd != -1) close( redraw_fd );
     if (tags) {
@@ -1215,9 +1207,11 @@ static void cleanup_fun(void* arg) {
     wl_shm_destroy(shm);
     wl_compositor_destroy(compositor);
     wl_display_disconnect(display);
+    awl_log_printf( "done with bar cleanup" );
 }
 
 void* awl_bar_run( void* arg ) {
+    awl_log_printf( "starting bar thread" );
     (void)arg;
 
     fontstr = fontstr_priv;
@@ -1226,7 +1220,7 @@ void* awl_bar_run( void* arg ) {
     /* Set up display and protocols */
     display = wl_display_connect(NULL);
     if (!display)
-        ERROR("Failed to create display");
+        awl_err_printf( "Failed to create display" );
 
     wl_list_init(&bar_list);
     wl_list_init(&seat_list);
@@ -1235,7 +1229,7 @@ void* awl_bar_run( void* arg ) {
     wl_registry_add_listener(registry, &registry_listener, NULL);
     wl_display_roundtrip(display);
     if (!compositor || !shm || !layer_shell || !output_manager || !dwl_wm)
-        ERROR("Compositor does not support all needed protocols");
+        awl_err_printf( "Compositor does not support all needed protocols" );
 
     /* Load selected font */
     fcft_init(FCFT_LOG_COLORIZE_AUTO, 0, FCFT_LOG_CLASS_ERROR);
@@ -1245,7 +1239,7 @@ void* awl_bar_run( void* arg ) {
     char buf[10];
     snprintf(buf, sizeof buf, "dpi=%u", dpi);
     if (!(font = fcft_from_name(1, (const char *[]) {fontstr}, buf)))
-        ERROR("Could not load font");
+        awl_err_printf( "Could not load font %s", fontstr );
     textpadding = font->height / 2;
     height = font->height / buffer_scale + vertical_padding * 2;
 
@@ -1277,6 +1271,7 @@ static void awl_bar_refresh_fun( void ) {
 
 void* awl_bar_refresh( void* arg ) {
     float* prsec = (float*)arg;
+    awl_log_printf( "started bar refresh thread (%.2fs)", *prsec );
     while (1) {
         usleep( (useconds_t)(*prsec * 1.e6) );
         awl_bar_refresh_fun();

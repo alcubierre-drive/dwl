@@ -1,6 +1,7 @@
 #include "init.h"
 #include "../awl_state.h"
 #include "../awl_extension.h"
+#include "../awl_log.h"
 #include "bar.h"
 #include "date.h"
 #include "stats.h"
@@ -16,9 +17,6 @@
 
 #define ARRAY_INIT( type, ary, capacity ) S. ary = (type*)calloc( capacity, sizeof(type) );
 #define ARRAY_APPEND( type, ary, ... ) S. ary[S.n_##ary ++] = (type){__VA_ARGS__};
-
-#define handle_error_en(en, msg) \
-    do { errno = en; perror(msg); exit(EXIT_FAILURE); } while (0)
 
 extern awl_vtable_t AWL_VTABLE_SYM;
 static awl_config_t S = {0};
@@ -39,6 +37,7 @@ static float _refresh_sec = 0.2;
 
 static void awl_plugin_init(void) {
 
+    awl_log_printf("setting up environment");
     setenv("MOZ_ENABLE_WAYLAND", "1", 1);
     setenv("QT_STYLE_OVERRIDE","kvantum",1);
     setenv("DESKTOP_SESSION","gnome",1);
@@ -51,6 +50,7 @@ static void awl_plugin_init(void) {
     /* #define MODKEY WLR_MODIFIER_ALT */
     /* awl_change_modkey(MODKEY); */
 
+    awl_log_printf( "color setup" );
     S.sloppyfocus = 1;
     S.bypass_surface_visibility = 0;
     S.borderpx = 2;
@@ -100,6 +100,7 @@ static void awl_plugin_init(void) {
     ARRAY_APPEND(Rule, rules, "evolution", NULL, 1<<8, 0, -1 );
     ARRAY_APPEND(Rule, rules, "telegram-desktop", NULL, 1<<7, 0, -1 );
     /* ARRAY_APPEND(Rule, rules, "matplotlib", NULL, -1, 0, -1 ); */
+    awl_log_printf( "created %i rules", S.n_rules );
 
     ARRAY_INIT(Layout, layouts, 16);
     ARRAY_APPEND(Layout, layouts, "[T]", tile );
@@ -108,11 +109,14 @@ static void awl_plugin_init(void) {
     ARRAY_APPEND(Layout, layouts, "[◻]", gaplessgrid );
     ARRAY_APPEND(Layout, layouts, "[◲]", dwindle );
     S.cur_layout = 0;
+    awl_log_printf( "created %i layouts", S.n_layouts );
 
     /* name, mfact, nmaster, scale, layout, rotate/reflect, x, y */
     ARRAY_INIT(MonitorRule, monrules, 16);
     ARRAY_APPEND(MonitorRule, monrules, NULL, 0.5, 1, 1.0, 0, WL_OUTPUT_TRANSFORM_NORMAL, -1, -1);
+    awl_log_printf( "created %i monitor rules", S.n_monrules );
 
+    awl_log_printf( "keyboard/mouse config" );
     S.xkb_rules = (struct xkb_rule_names) {
         .options = NULL,
         .model = "pc105",
@@ -248,12 +252,13 @@ static void awl_plugin_init(void) {
     ADD_TAG( XKB_KEY_7, XKB_KEY_slash,      6)
     ADD_TAG( XKB_KEY_8, XKB_KEY_parenleft,  7)
     ADD_TAG( XKB_KEY_9, XKB_KEY_parenright, 8)
-
+    awl_log_printf( "created %i keybindings", S.n_keys );
 
     ARRAY_INIT(Button, buttons, 16);
     ARRAY_APPEND(Button, buttons, MODKEY, BTN_LEFT,   moveresize,     {.ui = CurMove});
     ARRAY_APPEND(Button, buttons, MODKEY, BTN_MIDDLE, togglefloating, {0});
     ARRAY_APPEND(Button, buttons, MODKEY, BTN_RIGHT,  moveresize,     {.ui = CurResize});
+    awl_log_printf( "created %i mousebindings", S.n_buttons );
 
     start_stats_thread( _cpu, 32, _mem, 32, _swp, 32, 1 );
     awlb_mem_info = _mem;
@@ -266,11 +271,12 @@ static void awl_plugin_init(void) {
 
     int s = pthread_create( &S.BarThread, NULL, awl_bar_run, NULL );
     if (s != 0)
-        handle_error_en(s, "pthread_create");
+        awl_err_printf( "pthread create: %s", strerror(s) );
     pthread_create( &S.BarRefreshThread, NULL, awl_bar_refresh, &_refresh_sec );
 }
 
 static void awl_plugin_free(void) {
+    awl_log_printf( "free plugin resources" );
     free(S.rules);
     free(S.layouts);
     free(S.monrules);
@@ -283,20 +289,25 @@ static void awl_plugin_free(void) {
     awlb_date_txt = NULL;
     awlb_pulse_info = NULL;
     pthread_cancel( S.BarRefreshThread );
+    awl_log_printf( "cancel bar refresh thread" );
 
     awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_log_printf( "cleanup vtable state: %p", B );
     if (B) {
         awlb_run_display = false;
         int s = pthread_cancel( S.BarThread );
+        awl_log_printf( "cancelled bar thread" );
         if (s != 0)
-            handle_error_en(s, "pthread_cancel");
-        void* res = NULL;
-        s = pthread_join(S.BarThread, &res);
+            awl_err_printf( "pthread cancel: %s", strerror(s) );
+        awl_log_printf( "joining thread %p", S.BarThread );
+        s = pthread_join( S.BarThread, NULL );
+        awl_log_printf( "joined bar thread" );
         if (s != 0)
-            handle_error_en(s, "pthread_join");
+            awl_err_printf( "pthread join: %s", strerror(s) );
     }
 
     memset(&S, 0, sizeof(awl_config_t));
+    awl_log_printf( "successfully freed plugin resources" );
 }
 
 void cycle_tag( const Arg* arg ) {

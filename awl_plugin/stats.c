@@ -1,5 +1,6 @@
 #include "stats.h"
 #include "bar.h"
+#include "../awl_log.h"
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,6 +30,7 @@ static void getmem( float* mem, float* swp );
 void start_stats_thread( float* val_cpu, int nval_cpu,
                          float* val_mem, int nval_mem,
                          float* val_swp, int nval_swp, int update_sec ) {
+    awl_log_printf( "starting system monitor" );
     th_arg = malloc(sizeof(th_stats_arg_t));
     th_arg->i = 0;
     th_arg->cpu = val_cpu;

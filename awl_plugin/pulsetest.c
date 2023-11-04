@@ -5,6 +5,7 @@
 #include <pthread.h>
 #include "pulsetest.h"
 #include "bar.h"
+#include "../awl_log.h"
 
 typedef struct PulseAudio {
     pa_mainloop* _mainloop;
@@ -72,18 +73,18 @@ static void context_state_callback(pa_context *c, void *userdata) {
         case PA_CONTEXT_SETTING_NAME:
             break;
         case PA_CONTEXT_READY:
-            fprintf(stderr, "PulseAudio connection established.\n");
+            awl_log_printf( "pulse connection established.." );
             pa_context_get_server_info(c, server_info_callback, userdata);
             pa_context_set_subscribe_callback(c, subscribe_callback, userdata);
             pa_context_subscribe(c, PA_SUBSCRIPTION_MASK_SINK, NULL, NULL);
             break;
         case PA_CONTEXT_TERMINATED:
             PulseAudio_quit(pa, 0);
-            fprintf(stderr, "PulseAudio connection terminated.\n");
+            awl_log_printf( "pulse connection terminated.." );
             break;
         case PA_CONTEXT_FAILED:
         default:
-            fprintf(stderr, "Connection failure: %s\n", pa_strerror(pa_context_errno(c)));
+            awl_err_printf( "pulse connection failure: %s", pa_strerror(pa_context_errno(c)) );
             PulseAudio_quit(pa, 1);
             break;
     }
@@ -119,35 +120,35 @@ static void sink_info_callback(pa_context *c, const pa_sink_info *i, int eol, vo
 }
 
 static void server_info_callback(pa_context *c, const pa_server_info *i, void *userdata) {
-    fprintf(stderr, "default sink name = %s\n", i->default_sink_name);
+    awl_log_printf( "pulse sink name = %s", i->default_sink_name );
     pa_context_get_sink_info_by_name(c, i->default_sink_name, sink_info_callback, userdata);
 }
 
 int PulseAudio_initialize( PulseAudio* p ) {
     if (!p) {
-        fprintf(stderr, "handle was NULL\n");
+        awl_err_printf( "pulse handle was NULL." );
         return 0;
     }
     p->_mainloop = pa_mainloop_new();
     if (!p->_mainloop) {
-        fprintf(stderr, "pa_mainloop_new() failed.\n");
+        awl_err_printf( "pulse pa_mainloop_new() failed." );
         return 0;
     }
     p->_mainloop_api = pa_mainloop_get_api(p->_mainloop);
     if (pa_signal_init(p->_mainloop_api) != 0) {
-        fprintf(stderr, "pa_signal_init() failed\n");
+        awl_err_printf( "pulse pa_signal_init() failed." );
         return 0;
     }
     if (!(p->_signal = pa_signal_new(SIGINT, exit_signal_callback, p))) {;
-        fprintf(stderr, "pa_signal_new() failed\n");
+        awl_err_printf( "pulse pa_signal_new() failed." );
         return 0;
     }
     if (!(p->_context = pa_context_new(p->_mainloop_api, "PulseAudio Test"))) {
-        fprintf(stderr, "pa_context_new() failed\n");
+        awl_err_printf( "pulse pa_context_new() failed." );
         return 0;
     }
     if (pa_context_connect(p->_context, NULL, PA_CONTEXT_NOAUTOSPAWN, NULL) < 0) {
-        fprintf(stderr, "pa_context_connect() failed: %s\n", pa_strerror(pa_context_errno(p->_context)));
+        awl_err_printf( "pulse pa_context_connect() failed: %s", pa_strerror(pa_context_errno(p->_context)));
         return 0;
     }
     pa_context_set_state_callback(p->_context, context_state_callback, p->_mainloop_api);
@@ -158,7 +159,7 @@ int PulseAudio_initialize( PulseAudio* p ) {
 int PulseAudio_run( PulseAudio* p ) {
     int ret = 1;
     if (pa_mainloop_run(p->_mainloop, &ret) < 0) {
-        fprintf(stderr, "pa_mainloop_run() failed.\n");
+        awl_err_printf( "pulse pa_mainloop_run() failed.." );
         return ret;
     }
     return ret;

@@ -2,6 +2,7 @@
 #include "awl_util.h"
 #include "awl_client.h"
 #include "awl_title.h"
+#include "awl_log.h"
 
 #include "awl_state.h"
 #include "awl_extension.h"
@@ -2052,7 +2053,7 @@ void setup(void) {
 
         setenv("DISPLAY", xwayland->display_name, 1);
     } else {
-        fprintf(stderr, "failed to setup XWayland X server, continuing without it\n");
+        awl_err_printf( "failed to setup XWayland X server, continuing without it." );
     }
 }
 
@@ -2487,8 +2488,7 @@ void xwaylandready(struct wl_listener *listener, void *data) {
     xcb_connection_t *xc = xcb_connect(xwayland->display_name, NULL);
     int err = xcb_connection_has_error(xc);
     if (err) {
-        fprintf(stderr, "xcb_connect to X server failed with code %d\n."
-                "Continuing with degraded functionality.\n", err);
+        awl_err_printf( "xcb_connect to X server failed (code %d) -> degraded functionality", err);
         return;
     }
 
@@ -2542,20 +2542,25 @@ static void plugin_free(void) {
 int main(int argc, char *argv[]) {
     char *startup_cmd = NULL;
     int c;
+    int awl_loglevel = 2;
 
-    while ((c = getopt(argc, argv, "s:hdv")) != -1) {
-        if (c == 's')
-            startup_cmd = optarg;
-        else if (c == 'd')
-            log_level = WLR_DEBUG;
-        else if (c == 'v')
-            die("awl " VERSION);
-        else
-            goto usage;
+    while ((c = getopt(argc, argv, "s:hdl:v")) != -1) {
+        switch (c) {
+            case 's': startup_cmd = optarg; break;
+            case 'd': log_level = WLR_DEBUG; awl_loglevel = 5; break;
+            case 'v': die("awl " VERSION); break;
+            case 'l': awl_loglevel = atoi(optarg); break;
+            default:
+            usage:
+                die("Usage: %s [-v] [-d] [-s startup command] [-l loglevel]", argv[0]);
+                break;
+        }
     }
     if (optind < argc)
         goto usage;
 
+    awl_log_init( awl_loglevel );
+    atexit( awl_log_destroy );
     B = awl_state_init();
 
     /* Wayland requires XDG_RUNTIME_DIR for creating its communications socket */
@@ -2573,7 +2578,5 @@ int main(int argc, char *argv[]) {
     awl_state_free(B);
     return EXIT_SUCCESS;
 
-usage:
-    die("Usage: %s [-v] [-d] [-s startup command]", argv[0]);
 }
 
