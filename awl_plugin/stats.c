@@ -106,7 +106,11 @@ static float cpu_idle( void ) {
 
     // return idle percentage
     if (ncpus < 1.0) ncpus = 1.0;
+#ifdef AWL_STATS_SKIP_CPU_MULT
+    float result = diffs[3]/diffs[0];
+#else
     float result = diffs[3]/diffs[0] * ncpus;
+#endif
     return result > 0.0 ? (result < 1.0 ? result : 1.0) : 0.0;
 }
 
