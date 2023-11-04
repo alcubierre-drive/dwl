@@ -2,6 +2,7 @@
 #include "../awl_state.h"
 #include "../awl_extension.h"
 #include "../awl_log.h"
+#include "../awl_util.h"
 #include "bar.h"
 #include "date.h"
 #include "stats.h"
@@ -15,7 +16,7 @@
 #define COLOR_SETF( C, F0, F1, F2, F3 ) \
     { C[0] = F0; C[1] = F1; C[2] = F2; C[3] = F3; }
 
-#define ARRAY_INIT( type, ary, capacity ) S. ary = (type*)calloc( capacity, sizeof(type) );
+#define ARRAY_INIT( type, ary, capacity ) S. ary = (type*)ecalloc( capacity, sizeof(type) );
 #define ARRAY_APPEND( type, ary, ... ) S. ary[S.n_##ary ++] = (type){__VA_ARGS__};
 
 extern awl_vtable_t AWL_VTABLE_SYM;
@@ -96,10 +97,14 @@ static void awl_plugin_init(void) {
     fg_color_stats_mem = color_8bit_to_16bit( molokai_orange );
     fg_color_stats_swp = color_8bit_to_16bit( molokai_green );
 
+    /* id, title, tags, isfloating, monitor */
     ARRAY_INIT(Rule, rules, 16);
+    // tag rules
     ARRAY_APPEND(Rule, rules, "evolution", NULL, 1<<8, 0, -1 );
-    ARRAY_APPEND(Rule, rules, "telegram-desktop", NULL, 1<<7, 0, -1 );
-    /* ARRAY_APPEND(Rule, rules, "matplotlib", NULL, -1, 0, -1 ); */
+    ARRAY_APPEND(Rule, rules, "telegram", NULL, 1<<7, 0, -1 );
+    // floating rules
+    ARRAY_APPEND(Rule, rules, "nomacs", NULL, 0, 1, -1 );
+    ARRAY_APPEND(Rule, rules, NULL, "Figure", 0, 1, -1 );
     awl_log_printf( "created %i rules", S.n_rules );
 
     ARRAY_INIT(Layout, layouts, 16);

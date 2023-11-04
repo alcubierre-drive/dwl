@@ -3,6 +3,7 @@
 #include "bar.h"
 #include "../awl_title.h"
 #include "../awl_log.h"
+#include "../awl_util.h"
 #include <sys/eventfd.h>
 
 static bool has_init = false;
@@ -1063,14 +1064,14 @@ static void handle_global(void *data, struct wl_registry *registry,
         dwl_wm = wl_registry_bind(registry, name, &zdwl_ipc_manager_v2_interface, 2);
         zdwl_ipc_manager_v2_add_listener(dwl_wm, &dwl_wm_listener, NULL);
     } else if (!strcmp(interface, wl_output_interface.name)) {
-        Bar *bar = calloc(1, sizeof(Bar));
+        Bar *bar = ecalloc(1, sizeof(Bar));
         bar->registry_name = name;
         bar->wl_output = wl_registry_bind(registry, name, &wl_output_interface, 1);
         if (awlb_run_display)
             setup_bar(bar);
         wl_list_insert(&bar_list, &bar->link);
     } else if (!strcmp(interface, wl_seat_interface.name)) {
-        Seat *seat = calloc(1, sizeof(Seat));
+        Seat *seat = ecalloc(1, sizeof(Seat));
         seat->registry_name = name;
         seat->wl_seat = wl_registry_bind(registry, name, &wl_seat_interface, 7);
         wl_seat_add_listener(seat->wl_seat, &seat_listener, seat);

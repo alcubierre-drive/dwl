@@ -309,6 +309,7 @@ void checkidleinhibitor(struct wlr_surface *exclude) {
 }
 
 void cleanup(void) {
+    awl_log_printf("cleanup awl");
     wlr_xwayland_destroy(xwayland);
     wl_display_destroy_clients(B->dpy);
     if (B->child_pid > 0) {
@@ -1401,6 +1402,26 @@ void mapnotify(struct wl_listener *listener, void *data) {
     } else {
         applyrules(c);
     }
+
+    const char* appid = client_get_appid(c);
+    const char* title = client_get_title(c);
+    if (!appid) appid = B->broken;
+    if (!title) title = B->broken;
+    struct wlr_box geom = {0},
+                   size_hints_max = {0},
+                   size_hints_min = {0};
+    client_get_geometry(c, &geom);
+    client_get_size_hints(c, &size_hints_max, &size_hints_min);
+    awl_log_printf( "insert client %p into list:\n"
+            "title: %s\nappid: %s\nis float type: %i\nX11: %i\nwants fullscreen: %i\n"
+            "wants focus: %i\nunmanaged: %i\ngeo: (%i,%i)+=(%i,%i)\n"
+            "size hints: (%i,%i)+=(%i,%i) -> (%i,%i)+=(%i,%i)",
+            c, title, appid, client_is_float_type(c), client_is_x11(c),
+            client_wants_fullscreen(c), client_wants_focus(c), client_is_unmanaged(c),
+            geom.x, geom.y, geom.width, geom.height,
+            size_hints_min.x, size_hints_min.y, size_hints_min.width, size_hints_min.height,
+            size_hints_max.x, size_hints_max.y, size_hints_max.width, size_hints_max.height );
+
     printstatus();
 
 unset_fullscreen:
@@ -1706,9 +1727,8 @@ resize(Client *c, struct wlr_box geo, int interact)
             c->geom.height - 2 * c->bw);
 }
 
-void
-run(char *startup_cmd)
-{
+void run(char *startup_cmd) {
+    awl_log_printf( "awl main loop" );
     /* Add a Unix socket to the Wayland display. */
     const char *socket = wl_display_add_socket_auto(B->dpy);
     if (!socket)
@@ -1877,6 +1897,7 @@ void setsel(struct wl_listener *listener, void *data) {
 }
 
 void setup(void) {
+    awl_log_printf( "main awl setup" );
     int sig[] = {SIGCHLD, SIGINT, SIGTERM, SIGPIPE};
     struct sigaction sa = {.sa_flags = SA_RESTART, .sa_handler = handlesig};
     sigemptyset(&sa.sa_mask);
@@ -2527,6 +2548,7 @@ static void plugin_reload(void) {
 }
 
 static void plugin_init(const char* lib) {
+    awl_log_printf( "init plugin architecture" );
     E = awl_extension_init(lib);
     V = awl_extension_vtable(E);
     V->state = B;
@@ -2535,6 +2557,7 @@ static void plugin_init(const char* lib) {
 }
 
 static void plugin_free(void) {
+    awl_log_printf( "free plugin architecture" );
     V->free();
     awl_extension_free(E);
 }

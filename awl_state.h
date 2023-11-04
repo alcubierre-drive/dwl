@@ -95,6 +95,8 @@ struct awl_state_t {
     struct wlr_box sgeom;
     struct wl_list mons;
     Monitor *selmon;
+
+    void *persistent_plugin_data;
 };
 
 awl_state_t* awl_state_init( void );
