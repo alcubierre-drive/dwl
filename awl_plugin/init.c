@@ -98,13 +98,14 @@ static void awl_plugin_init(void) {
     fg_color_stats_swp = color_8bit_to_16bit( molokai_green );
 
     /* id, title, tags, isfloating, monitor */
-    ARRAY_INIT(Rule, rules, 16);
+    ARRAY_INIT(Rule, rules, 32);
     // tag rules
     ARRAY_APPEND(Rule, rules, "evolution", NULL, 1<<8, 0, -1 );
     ARRAY_APPEND(Rule, rules, "telegram", NULL, 1<<7, 0, -1 );
     // floating rules
     ARRAY_APPEND(Rule, rules, "nomacs", NULL, 0, 1, -1 );
     ARRAY_APPEND(Rule, rules, NULL, "Figure", 0, 1, -1 );
+    ARRAY_APPEND(Rule, rules, "wdisplays", NULL, 0, 1, -1 );
     awl_log_printf( "created %i rules", S.n_rules );
 
     ARRAY_INIT(Layout, layouts, 16);
@@ -195,6 +196,8 @@ static void awl_plugin_init(void) {
     static const char *mic_mute_cmd[] = {"pactl", "set-source-mute", "@DEFAULT_SOURCE@", "toggle", NULL};
     static const char *vol_switch_cmd[] = {"pulse_port_switch", "-t", "-N", NULL};
 
+    static const char *display_cmd[] = {"wdisplays", NULL};
+
     ADD_KEY( MODKEY,    XKB_KEY_p,          spawn,              {.v=menucmd} )
     ADD_KEY( MODKEY,    XKB_KEY_Return,     spawn,              {.v=termcmd} )
     ADD_KEY( MODKEY,    XKB_KEY_j,          focusstack,         {.i = +1} )
@@ -235,6 +238,7 @@ static void awl_plugin_init(void) {
     ADD_KEY( 0, XKB_KEY_XF86AudioMute,          spawn,          {.v=vol_mute_cmd} )
     ADD_KEY( 0, XKB_KEY_XF86AudioMicMute,       spawn,          {.v=mic_mute_cmd} )
     ADD_KEY( MODKEY, XKB_KEY_F1,                spawn,          {.v=vol_switch_cmd} )
+    ADD_KEY( MODKEY, XKB_KEY_d,                 spawn,          {.v=display_cmd} );
 
     // TODO missing
     /* "killall arandr || arandr" */
