@@ -19,6 +19,9 @@ static void plugin_reload(void);
 static void plugin_init(const char* lib);
 static void plugin_free(void);
 
+static int awl_ready = 0;
+int awl_is_ready( void ) { return awl_ready; }
+
 static int defer_reload = 0;
 static int log_level = WLR_ERROR;
 static Key essential_keys[] = {
@@ -1775,6 +1778,7 @@ void run(char *startup_cmd) {
      * compositor. Starting the backend rigged up all of the necessary event
      * loop configuration to listen to libinput events, DRM events, generate
      * frame events at the refresh rate, and so on. */
+    awl_ready = 1;
     wl_display_run(B->dpy);
 }
 
