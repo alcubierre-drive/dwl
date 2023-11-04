@@ -27,11 +27,10 @@ static void client_hide( const Arg* arg );
 static void tagmon_f( const Arg* arg );
 
 static void gaplessgrid(Monitor *m);
-static void grid(Monitor *m);
-static void bstackhoriz(Monitor *m);
+/* static void bstackhoriz(Monitor *m); */
 static void bstack(Monitor *m);
 static void dwindle(Monitor *mon);
-static void spiral(Monitor *mon);
+/* static void spiral(Monitor *mon); */
 
 static float _cpu[128] = {0}, _mem[128] = {0}, _swp[128] = {0};
 static float _refresh_sec = 0.2;
@@ -472,45 +471,6 @@ static void gaplessgrid(Monitor *m) {
     }
 }
 
-
-static void grid(Monitor *m) {
-    awl_state_t* B = AWL_VTABLE_SYM.state;
-    awl_config_t* C = &S;
-    if (!B || !C) return;
-
-    unsigned int n = 0, i = 0, ch, cw, rows, cols;
-    Client *c;
-
-    wl_list_for_each(c, &B->clients, link)
-        if (c->visible && VISIBLEON(c, m) && !c->isfloating)
-            n++;
-    if (n == 0)
-        return;
-
-    /* grid dimensions */
-    for (rows = 0; rows <= (n / 2); rows++)
-        if ((rows * rows) >= n)
-            break;
-    cols = (rows && ((rows - 1) * rows) >= n) ? rows - 1 : rows;
-
-    /* window geoms (cell height/width) */
-    ch = m->w.height / (rows ? rows : 1);
-    cw = m->w.width / (cols ? cols : 1);
-    wl_list_for_each(c, &B->clients, link) {
-        unsigned int cx, cy, ah, aw;
-        if (!c->visible || !VISIBLEON(c, m) || c->isfloating || c->isfullscreen)
-            continue;
-
-        cx = m->w.x + (i / rows) * cw;
-        cy = m->w.y + (i % rows) * ch;
-        /* adjust height/width of last row/column's windows */
-        ah = (((i + 1) % rows) == 0) ? m->w.height - ch * rows : 0;
-        aw = (i >= (rows * (cols - 1))) ? m->w.width - cw * cols : 0;
-        resize(c, (struct wlr_box) { .x =  cx, .y = cy, .width = cw - aw, .height = ch - ah }, 0);
-        i++;
-    }
-}
-
 static void bstack(Monitor *m) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
     awl_config_t* C = &S;
@@ -555,47 +515,47 @@ static void bstack(Monitor *m) {
     }
 }
 
-static void bstackhoriz(Monitor *m) {
-    awl_state_t* B = AWL_VTABLE_SYM.state;
-    awl_config_t* C = &S;
-    if (!B || !C) return;
+/* static void bstackhoriz(Monitor *m) { */
+/*     awl_state_t* B = AWL_VTABLE_SYM.state; */
+/*     awl_config_t* C = &S; */
+/*     if (!B || !C) return; */
 
-    int w, mh, mx, tx, ty, th;
-    unsigned int i, n = 0;
-    Client *c;
+/*     int w, mh, mx, tx, ty, th; */
+/*     unsigned int i, n = 0; */
+/*     Client *c; */
 
-    wl_list_for_each(c, &B->clients, link)
-        if (c->visible && VISIBLEON(c, m) && !c->isfloating)
-            n ++;
-    if (n == 0)
-        return;
+/*     wl_list_for_each(c, &B->clients, link) */
+/*         if (c->visible && VISIBLEON(c, m) && !c->isfloating) */
+/*             n ++; */
+/*     if (n == 0) */
+/*         return; */
 
-    if ((int)n > m->nmaster) {
-        mh = m->nmaster ? m->mfact * m->w.height : 0;
-        th = (m->w.height - mh) / (n - m->nmaster);
-        ty = m->w.y + mh;
-    } else {
-        th = mh = m->w.height;
-        ty = m->w.y;
-    }
+/*     if ((int)n > m->nmaster) { */
+/*         mh = m->nmaster ? m->mfact * m->w.height : 0; */
+/*         th = (m->w.height - mh) / (n - m->nmaster); */
+/*         ty = m->w.y + mh; */
+/*     } else { */
+/*         th = mh = m->w.height; */
+/*         ty = m->w.y; */
+/*     } */
 
-    i = mx = 0;
-    tx = m-> w.x;
-    wl_list_for_each(c, &B->clients, link) {
-        if (!c->visible || !VISIBLEON(c,m) || c->isfloating)
-            continue;
-        if ((int)i < m->nmaster) {
-            w = (m->w.width - mx) / (MMIN((int)n, m->nmaster) - i);
-            resize(c, (struct wlr_box) { .x = m->w.x + mx, .y = m->w.y, .width = w, .height = mh }, 0);
-            mx += c->geom.width;
-        } else {
-            resize(c, (struct wlr_box) { .x = tx, .y = ty, .width = m->w.width, .height = th }, 0);
-            if (th != m->w.height)
-                ty += c->geom.height;
-        }
-        i++;
-    }
-}
+/*     i = mx = 0; */
+/*     tx = m-> w.x; */
+/*     wl_list_for_each(c, &B->clients, link) { */
+/*         if (!c->visible || !VISIBLEON(c,m) || c->isfloating) */
+/*             continue; */
+/*         if ((int)i < m->nmaster) { */
+/*             w = (m->w.width - mx) / (MMIN((int)n, m->nmaster) - i); */
+/*             resize(c, (struct wlr_box) { .x = m->w.x + mx, .y = m->w.y, .width = w, .height = mh }, 0); */
+/*             mx += c->geom.width; */
+/*         } else { */
+/*             resize(c, (struct wlr_box) { .x = tx, .y = ty, .width = m->w.width, .height = th }, 0); */
+/*             if (th != m->w.height) */
+/*                 ty += c->geom.height; */
+/*         } */
+/*         i++; */
+/*     } */
+/* } */
 
 static void fibonacci(Monitor *mon, int s) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
@@ -665,9 +625,9 @@ static void dwindle(Monitor *mon) {
     fibonacci(mon, 1);
 }
 
-static void spiral(Monitor *mon) {
-    fibonacci(mon, 0);
-}
+/* static void spiral(Monitor *mon) { */
+/*     fibonacci(mon, 0); */
+/* } */
 
 awl_vtable_t AWL_VTABLE_SYM = {
     .init = &awl_plugin_init,
