@@ -47,9 +47,6 @@ static void awl_plugin_init(void) {
     setenv("SSH_AUTH_SOCK","1",1);
     setenv("NO_AT_BRIDGE","1",1);
 
-    /* #define MODKEY WLR_MODIFIER_ALT */
-    /* awl_change_modkey(MODKEY); */
-
     awl_log_printf( "color setup" );
     S.sloppyfocus = 1;
     S.bypass_surface_visibility = 0;
@@ -169,12 +166,16 @@ static void awl_plugin_init(void) {
     */
     S.button_map = LIBINPUT_CONFIG_TAP_MAP_LRM;
 
+    // in order to change the modkey for the very few default bindings
+    // awl_change_modkey(WLR_MODIFIER_ALT);
+
     // Key combinations
     ARRAY_INIT(Key, keys, 256);
 
-    #define MODKEY_SH MODKEY|WLR_MODIFIER_SHIFT
-    #define MODKEY_CT MODKEY|WLR_MODIFIER_CTRL
-    #define MODKEY_CT_SH MODKEY|WLR_MODIFIER_CTRL|WLR_MODIFIER_SHIFT
+    #define MODKEY AWL_MODKEY
+    #define MODKEY_SH AWL_MODKEY|WLR_MODIFIER_SHIFT
+    #define MODKEY_CT AWL_MODKEY|WLR_MODIFIER_CTRL
+    #define MODKEY_CT_SH AWL_MODKEY|WLR_MODIFIER_CTRL|WLR_MODIFIER_SHIFT
 
     #define ADD_KEY( MOD, KEY, FUN, ARG ) ARRAY_APPEND(Key, keys, MOD, KEY, FUN, ARG);
     #define ADD_TAG( KEY, SKEY, TAG) \
@@ -183,9 +184,14 @@ static void awl_plugin_init(void) {
     ADD_KEY( MODKEY_SH,    SKEY, tag,        {.ui = 1 << TAG} ) \
     ADD_KEY( MODKEY_CT_SH, SKEY, toggletag,  {.ui = 1 << TAG} )
 
-    /* static const char *termcmd[] = {"kitty", "--single-instance", NULL}; */
-    static const char *termcmd[] = {"kitty", NULL};
-    static const char *menucmd[] = {"bemenu-run", NULL};
+#ifndef AWL_TERM_CMD
+#define AWL_TERM_CMD "kitty"
+#endif
+#ifndef AWL_MENU_CMD
+#define AWL_MENU_CMD "bemenu-run"
+#endif
+    static const char *termcmd[] = {AWL_TERM_CMD, NULL};
+    static const char *menucmd[] = {AWL_MENU_CMD, NULL};
 
     static const char *brightness_m_cmd[] = {"backlight-tooler", "-m", "dec", "-V", "0.05", NULL};
     static const char *brightness_p_cmd[] = {"backlight-tooler", "-m", "inc", "-V", "0.05", NULL};

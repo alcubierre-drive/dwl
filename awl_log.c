@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <stdarg.h>
+#include <ctype.h>
 
 static FILE* awllg = NULL;
 static int awllg_lvl = -1;
@@ -58,9 +59,12 @@ void awl_log_printer_( const char* logname, int loglevel, const char* fname, int
     time(&t);
     struct tm* lt = localtime(&t);
     char prefix[1024] = {0};
-    strftime( prefix, 128, "[%F|%T|", lt );
+    strftime( prefix, 128, "%F %T ", lt );
     char* p = prefix + strlen(prefix);
-    sprintf(p, "%s:%i---%s] ", fname, line, logname);
+    char logname_upper[32] = {0};
+    strcpy(logname_upper, logname);
+    for (char* l=logname_upper; *l; ++l) *l = toupper(*l);
+    sprintf(p, "[%s %s:%i] ", logname_upper, fname, line);
 
     fprintf(awllg, "%s", prefix);
     va_list ap;

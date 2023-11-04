@@ -61,9 +61,9 @@
 #include "awl_arg.h"
 
 #define TAGCOUNT (9)
-#ifndef MODKEY
-//#define MODKEY WLR_MODIFIER_LOGO
-#define MODKEY WLR_MODIFIER_ALT
+#ifndef AWL_MODKEY
+//#define AWL_MODKEY WLR_MODIFIER_LOGO
+#define AWL_MODKEY WLR_MODIFIER_ALT
 #endif
 
 void awl_change_modkey( uint32_t modkey );

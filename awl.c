@@ -25,8 +25,8 @@ int awl_is_ready( void ) { return awl_ready; }
 static int defer_reload = 0;
 static int log_level = WLR_ERROR;
 static Key essential_keys[] = {
-    { MODKEY|WLR_MODIFIER_SHIFT,         XKB_KEY_equal,            quit,             {0} },
-    { MODKEY|WLR_MODIFIER_CTRL,          XKB_KEY_r,                defer_reload_fun, {0} },
+    { AWL_MODKEY|WLR_MODIFIER_SHIFT,         XKB_KEY_equal,            quit,             {0} },
+    { AWL_MODKEY|WLR_MODIFIER_CTRL,          XKB_KEY_r,                defer_reload_fun, {0} },
     { WLR_MODIFIER_CTRL|WLR_MODIFIER_ALT,XKB_KEY_Terminate_Server, quit,             {0} },
 #define CHVT(n) { WLR_MODIFIER_CTRL|WLR_MODIFIER_ALT,XKB_KEY_XF86Switch_VT_##n, chvt, {.ui = (n)} }
     CHVT(1), CHVT(2), CHVT(3), CHVT(4), CHVT(5), CHVT(6),
@@ -34,7 +34,7 @@ static Key essential_keys[] = {
 };
 static const int n_essential_keys = LENGTH(essential_keys);
 
-static uint32_t awl_last_modkey = MODKEY;
+static uint32_t awl_last_modkey = AWL_MODKEY;
 void awl_change_modkey( uint32_t modkey ) {
     for (int i=0; i<n_essential_keys; ++i)
         if (essential_keys[i].mod & awl_last_modkey) {
