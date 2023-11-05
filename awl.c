@@ -927,6 +927,8 @@ void dwl_ipc_output_printstatus_to(DwlIpcOutput *ipc_output) {
                 ttl->focused = (c == focused);
                 ttl->urgent = c->isurgent;
                 ttl->visible = c->visible;
+
+                ttl->c = c;
             }
             numclients++;
         }

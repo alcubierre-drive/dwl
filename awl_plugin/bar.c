@@ -5,6 +5,7 @@
 #include "../awl_log.h"
 #include "../awl_util.h"
 #include <sys/eventfd.h>
+#include <sys/mman.h>
 
 int awl_is_ready( void );
 
@@ -147,7 +148,9 @@ struct Bar {
 
     uint32_t mtags, ctags, urg, sel;
     awl_title_t* window_titles;
+    awl_title_t* window_list;
     int n_window_titles;
+    int n_window_list;
     char* layout;
     uint32_t layout_idx, last_layout_idx;
     CustomText title, status;
@@ -191,6 +194,20 @@ static uint32_t layouts_l, layouts_c;
 
 static struct fcft_font *font;
 static uint32_t height, textpadding;
+
+static void window_array_to_list( Bar* bar ) {
+    bar->window_list = NULL;
+    bar->n_window_list = 0;
+    if (!bar->window_titles) return;
+
+    for (int i=0; i<bar->n_window_titles; ++i) {
+        awl_title_t *s, *t=bar->window_titles+i;
+        HASH_FIND_INT(bar->window_list, &t->id, s);
+        if (!s)
+            HASH_ADD_INT(bar->window_list, id, t);
+    }
+    bar->n_window_list = HASH_COUNT(bar->window_list);
+}
 
 static void wl_buffer_release(void *data, struct wl_buffer *wl_buffer) {
     (void)data;
@@ -481,13 +498,14 @@ static int draw_frame(Bar *bar) {
     uint32_t nx;
 
     uint32_t xspace = bar->width - status_width - x;
-    if (bar->n_window_titles > 0) {
-        uint32_t space_per_window = xspace / bar->n_window_titles;
-        uint32_t pad = xspace - space_per_window*bar->n_window_titles;
+
+    window_array_to_list( bar );
+    if (bar->n_window_list > 0) {
+        uint32_t space_per_window = xspace / bar->n_window_list;
+        uint32_t pad = xspace - space_per_window*bar->n_window_list;
 
         x += pad/2 + pad%2;
-        for (int i=0; i<bar->n_window_titles; ++i) {
-            awl_title_t* T = bar->window_titles + i;
+        for (awl_title_t* T = bar->window_list; T != NULL; T = T->hh.next) {
             nx = x + space_per_window;
 
             // find the right bg color (maybe do that with fg too?)
@@ -496,6 +514,7 @@ static int draw_frame(Bar *bar) {
             if (T->urgent) bg = alpha_blend_16( bg, bg_color_win_urg );
             if (!T->visible) bg = alpha_blend_16( bg, bg_color_win_min );
 
+            x = draw_text( " ", x, y, foreground, background, &fg_color_win, &bg, nx, bar->height, 0, NULL, 0 );
             if (T->floating) {
                 x = draw_text( "[✈✈✈] ", x, y, foreground, background, &fg_color_win, &bg,
                         nx, bar->height, 0, NULL, 0 );
@@ -508,6 +527,7 @@ static int draw_frame(Bar *bar) {
         }
         x += pad/2;
         nx = x;
+        HASH_CLEAR(hh, bar->window_list);
     } else {
         pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &bg_color_lay, 1,
                 &(pixman_box32_t){ .x1 = x, .x2 = x+xspace, .y1 = 0, .y2 = bar->height });
@@ -1035,6 +1055,9 @@ static void setup_bar(Bar *bar) {
     bar->bottom = bottom;
     bar->hidden = hidden;
     bar->window_titles = NULL;
+    bar->n_window_titles = 0;
+    bar->window_list = NULL;
+    bar->n_window_list = 0;
 
     bar->xdg_output = zxdg_output_manager_v1_get_xdg_output(output_manager, bar->wl_output);
     if (!bar->xdg_output)
