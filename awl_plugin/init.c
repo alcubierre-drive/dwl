@@ -102,6 +102,8 @@ static void awl_plugin_init(void) {
     ARRAY_APPEND(Rule, rules, "nomacs", NULL, 0, 1, -1 );
     ARRAY_APPEND(Rule, rules, NULL, "Figure", 0, 1, -1 );
     ARRAY_APPEND(Rule, rules, "wdisplays", NULL, 0, 1, -1 );
+    // TODO tray application (RUST)
+    ARRAY_APPEND(Rule, rules, "gtk-tray", "AWL", 0, 1, -1 );
     awl_log_printf( "created %i rules", S.n_rules );
 
     ARRAY_INIT(Layout, layouts, 16);
