@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include "init.h"
 #include "bar.h"
+#include "awl.h"
 #include "../awl_title.h"
 #include "../awl_log.h"
 #include "../awl_util.h"
@@ -8,6 +9,14 @@
 #include <sys/mman.h>
 
 int awl_is_ready( void );
+
+static void shell_command(char *command) {
+    if (fork() == 0) {
+        setsid();
+        execl("/bin/sh", "sh", "-c", command, NULL);
+        exit(EXIT_SUCCESS);
+    }
+}
 
 static bool has_init = false;
 static int redraw_fd = -1;
@@ -53,6 +62,7 @@ char *fontstr;
 char **tags_names;
 uint32_t n_tags_names = 9;
 
+static char default_layout_name[] = "[T]";
 static char fontstr_priv[] = "monospace:size=10";
 static char *tags_names_priv[] = { "1", "2", "3", "4", "5", "6", "7", "✉ 8", "✉ 9" };
 static pixman_box32_t* widget_boxes = NULL;
@@ -86,26 +96,6 @@ pixman_color_t bg_color_tags = COLOR_16BIT_QUICK( 22, 22, 22, FF ),
 #include "wlr-layer-shell-unstable-v1-protocol.h"
 #include "awl-ipc-unstable-v2-protocol.h"
 
-#define ARRAY_INIT_CAP 16
-#define ARRAY_EXPAND(arr, len, cap, inc)                \
-    do {                                \
-        uint32_t new_len, new_cap;              \
-        new_len = (len) + (inc);                \
-        if (new_len > (cap)) {                  \
-            new_cap = new_len * 2;              \
-            if (new_cap < ARRAY_INIT_CAP)           \
-                new_cap = ARRAY_INIT_CAP;       \
-            (arr) = realloc((arr), sizeof(*(arr)) * new_cap); \
-            (cap) = new_cap;                \
-        }                           \
-        (len) = new_len;                    \
-    } while (0)
-#define ARRAY_APPEND(arr, len, cap, ptr)        \
-    do {                        \
-        ARRAY_EXPAND((arr), (len), (cap), 1);   \
-        (ptr) = &(arr)[(len) - 1];      \
-    } while (0)
-
 #define TEXT_MAX 2048
 
 bool awlb_run_display = false;
@@ -117,19 +107,17 @@ typedef struct {
 } Color;
 
 typedef struct {
-    uint32_t btn;
-    uint32_t x1;
-    uint32_t x2;
-    char command[128];
-} Button;
-
-typedef struct {
     char text[TEXT_MAX];
-    Color *colors;
-    uint32_t colors_l, colors_c;
-    Button *buttons;
-    uint32_t buttons_l, buttons_c;
 } CustomText;
+
+typedef struct widget_t widget_t;
+
+struct widget_t {
+    uint32_t width;
+    uint32_t (*draw)(Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background);
+    void (*callback_click)(Bar* bar, uint32_t x_rel, int button);
+    void (*callback_scroll)(Bar* bar, uint32_t x_rel, int amount);
+};
 
 struct Bar {
     struct wl_output *wl_output;
@@ -151,12 +139,24 @@ struct Bar {
     awl_title_t* window_list;
     int n_window_titles;
     int n_window_list;
+
+    awl_title_t* cpy_window_list;
+    int cpy_n_window_list;
+
     char* layout;
-    uint32_t layout_idx, last_layout_idx;
-    CustomText title, status;
+    uint32_t layout_idx;
 
     bool hidden, bottom;
     bool redraw;
+
+    widget_t widgets_left[32];
+    int n_widgets_left;
+    widget_t widgets_right[32];
+    int n_widgets_right;
+    widget_t center_widget;
+    uint32_t center_widget_space;
+    uint32_t center_widget_start;
+    int has_center_widget;
 
     struct wl_list link;
 };
@@ -187,26 +187,45 @@ static struct wl_surface *cursor_surface;
 struct wl_list bar_list = {0};
 struct wl_list seat_list = {0};
 
-static char **tags;
-static uint32_t tags_l, tags_c;
-static char **layouts;
-static uint32_t layouts_l, layouts_c;
+static char layouts[128][16] = {0};
+static int n_layouts = 0;
+static char tags[128][16] = {0};
+static int n_tags = 0;
+
+#define STATIC_ARRAY_APPEND_STR( name, item ) do { \
+    if ( n_##name >= 128 ) break; \
+    strncpy( name[ n_##name ++ ], item, 15 ); \
+} while (0);
 
 static struct fcft_font *font;
 static uint32_t height, textpadding;
 
-static void window_array_to_list( Bar* bar ) {
-    bar->window_list = NULL;
-    bar->n_window_list = 0;
-    if (!bar->window_titles) return;
+static void window_array_to_list( Bar* bar, int slot ) {
+    if (slot == 0) {
+        bar->window_list = NULL;
+        bar->n_window_list = 0;
+        if (!bar->window_titles) return;
 
-    for (int i=0; i<bar->n_window_titles; ++i) {
-        awl_title_t *s, *t=bar->window_titles+i;
-        HASH_FIND_INT(bar->window_list, &t->id, s);
-        if (!s)
-            HASH_ADD_INT(bar->window_list, id, t);
+        for (int i=0; i<bar->n_window_titles; ++i) {
+            awl_title_t *s, *t=bar->window_titles+i;
+            HASH_FIND_INT(bar->window_list, &t->id, s);
+            if (!s)
+                HASH_ADD_INT(bar->window_list, id, t);
+        }
+        bar->n_window_list = HASH_COUNT(bar->window_list);
+    } else {
+        bar->cpy_window_list = NULL;
+        bar->cpy_n_window_list = 0;
+        if (!bar->window_titles) return;
+
+        for (int i=0; i<bar->n_window_titles; ++i) {
+            awl_title_t *s, *t=bar->window_titles+i;
+            HASH_FIND_INT(bar->cpy_window_list, &t->id, s);
+            if (!s)
+                HASH_ADD_INT(bar->cpy_window_list, id, t);
+        }
+        bar->cpy_n_window_list = HASH_COUNT(bar->cpy_window_list);
     }
-    bar->n_window_list = HASH_COUNT(bar->window_list);
 }
 
 static void wl_buffer_release(void *data, struct wl_buffer *wl_buffer) {
@@ -244,9 +263,7 @@ static uint32_t draw_text(char *text,
       pixman_color_t *bg_color,
       uint32_t max_x,
       uint32_t buf_height,
-      uint32_t padding,
-      Color *colors,
-      uint32_t colors_l) {
+      uint32_t padding ) {
     if (!text || !*text || !max_x)
         return x;
 
@@ -266,22 +283,8 @@ static uint32_t draw_text(char *text,
     if (draw_bg)
         cur_bg_color = bg_color;
 
-    uint32_t color_ind = 0, codepoint, state = UTF8_ACCEPT, last_cp = 0;
+    uint32_t codepoint, state = UTF8_ACCEPT, last_cp = 0;
     for (char *p = text; *p; p++) {
-        /* Check for new colors */
-        if (state == UTF8_ACCEPT && colors && (draw_fg || draw_bg)) {
-            while (color_ind < colors_l && p == colors[color_ind].start) {
-                if (colors[color_ind].bg) {
-                    if (draw_bg)
-                        cur_bg_color = &colors[color_ind].color;
-                } else if (draw_fg) {
-                    pixman_image_unref(fg_fill);
-                    fg_fill = pixman_image_create_solid_fill(&colors[color_ind].color);
-                }
-                color_ind++;
-            }
-        }
-
         /* Returns nonzero if more bytes are needed */
         if (utf8decode(&state, &codepoint, *p))
             continue;
@@ -356,7 +359,23 @@ static uint32_t draw_text(char *text,
 }
 
 #define TEXT_WIDTH(text, maxwidth, padding)             \
-    draw_text(text, 0, 0, NULL, NULL, NULL, NULL, maxwidth, 0, padding, NULL, 0)
+    draw_text(text, 0, 0, NULL, NULL, NULL, NULL, maxwidth, 0, padding)
+
+static uint32_t tagwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
+static void tagwidget_scroll( Bar* bar, uint32_t pointer_x, int amount );
+static void tagwidget_click( Bar* bar, uint32_t pointer_x, int button );
+static uint32_t layoutwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
+static void layoutwidget_scroll( Bar* bar, uint32_t pointer_x, int amount );
+static uint32_t clockwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
+static uint32_t pulsewidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
+static void pulsewidget_scroll( Bar* bar, uint32_t pointer_x, int amount );
+static void pulsewidget_click( Bar* bar, uint32_t pointer_x, int button );
+static uint32_t separator_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
+static uint32_t statuswidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
+static void statuswidget_click( Bar* bar, uint32_t pointer_x, int button );
+static uint32_t taskbarwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
+static void taskbarwidget_scroll( Bar* bar, uint32_t pointer_x, int amount );
+static void taskbarwidget_click( Bar* bar, uint32_t pointer_x, int button );
 
 static int draw_frame(Bar *bar) {
     /* Allocate buffer to be attached to the surface */
@@ -385,154 +404,28 @@ static int draw_frame(Bar *bar) {
     pixman_image_t *background = pixman_image_create_bits(PIXMAN_a8r8g8b8, bar->width,
             bar->height, NULL, bar->width * 4);
 
-    // setup drawing coordinates
     uint32_t x = 0;
-    uint32_t y = (bar->height + font->ascent - font->descent) / 2;
-    uint32_t boxs = font->height / 9;
-    uint32_t boxw = font->height / 6 + 2;
-
-    // draw tags
-    for (uint32_t i = 0; i < tags_l; i++) {
-        bool active = bar->mtags & 1 << i;
-        bool occupied = bar->ctags & 1 << i;
-        bool urgent = bar->urg & 1 << i;
-
-        // draw small box
-        if (occupied) {
-            pixman_image_fill_boxes(PIXMAN_OP_SRC, foreground,
-                        &fg_color_tags, 1, &(pixman_box32_t){
-                            .x1 = x + boxs, .x2 = x + boxs + boxw,
-                            .y1 = boxs, .y2 = boxs + boxw
-                        });
-            if ((!bar->sel || !active) && boxw >= 3) {
-                /* Make box hollow */
-                pixman_image_fill_boxes(PIXMAN_OP_SRC, foreground,
-                            &(pixman_color_t){ 0 },
-                            1, &(pixman_box32_t){
-                                .x1 = x + boxs + 1, .x2 = x + boxs + boxw - 1,
-                                .y1 = boxs + 1, .y2 = boxs + boxw - 1
-                            });
-            }
-        }
-
-        // find the right bg color (maybe do that with fg too?)
-        pixman_color_t bg = bg_color_tags;
-        if (occupied) bg = alpha_blend_16( bg, bg_color_tags_occ );
-        if (active) bg = alpha_blend_16( bg, bg_color_tags_act );
-        if (urgent) bg = alpha_blend_16( bg, bg_color_tags_urg );
-
-        x = draw_text(tags[i], x, y, foreground, background, &fg_color_tags, &bg,
-                bar->width, bar->height, bar->textpadding, NULL, 0);
+    for (int w=0; w<bar->n_widgets_left; ++w) {
+        if (bar->widgets_left[w].draw)
+            bar->widgets_left[w].width = bar->widgets_left[w].draw( bar, x, foreground, background );
+        x += bar->widgets_left[w].width;
     }
 
-    x = draw_text(bar->layout, x, y, foreground, background,
-              &fg_color_lay, &bg_color_lay, bar->width,
-              bar->height, bar->textpadding, NULL, 0);
-
-    uint32_t status_width = 0;
-    char status_txt[512] = {0};
-    if (awlb_date_txt)
-        strcat( status_txt, awlb_date_txt );
-    if (awlb_pulse_info)
-        sprintf( status_txt + strlen(status_txt), " | %.0f%%", awlb_pulse_info->value * 100.0f );
-    uint32_t widget_width = 0;
-    if (awlb_cpu_info) widget_width += awlb_cpu_len;
-    if (awlb_mem_info) widget_width += awlb_mem_len;
-    if (awlb_swp_info) widget_width += awlb_swp_len;
-    status_width = TEXT_WIDTH(status_txt, bar->width - x, bar->textpadding) + widget_width;
-    draw_text(status_txt, bar->width - status_width + widget_width, y, foreground,
-              background, &fg_color_status, &bg_color_status,
-              bar->width, bar->height, bar->textpadding,
-              bar->status.colors, bar->status.colors_l);
-    int xx = bar->width - status_width;
-
-    const int ncpu = awlb_cpu_len,
-              nmem = awlb_mem_len,
-              nswp = awlb_swp_len;
-    const float *icpu = awlb_cpu_info,
-                *imem = awlb_mem_info,
-                *iswp = awlb_swp_info;
-    widget_boxes = (pixman_box32_t*)realloc(widget_boxes, sizeof(pixman_box32_t)*2*(ncpu+nmem+nswp));
-
-    pixman_box32_t *b_cpu = widget_boxes;
-    pixman_box32_t *b_mem = b_cpu + ncpu;
-    pixman_box32_t *b_swp = b_mem + nmem;
-    pixman_box32_t *b_bg = b_swp + nswp;
-    pixman_box32_t *b_bg_run = b_bg;
-
-    if (icpu) {
-        for (int i=0; i<ncpu; ++i) {
-            int ydiv = bar->height - icpu[awlb_direction ? ncpu-i : i] * bar->height;
-            *b_bg_run++ = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=0, .y2=ydiv};
-            b_cpu[i] = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=ydiv,.y2=bar->height};
-            xx++;
-        }
+    uint32_t x_end = bar->width;
+    for (int w=0; w<bar->n_widgets_right; ++w) {
+        if (bar->widgets_right[w].draw)
+            bar->widgets_right[w].width = bar->widgets_right[w].draw( bar, x_end - bar->widgets_right[w].width, foreground, background );
+        x_end -= bar->widgets_right[w].width;
     }
-    if (imem) {
-        for (int i=0; i<nmem; ++i) {
-            int ydiv = bar->height - imem[awlb_direction ? ncpu-i : i] * bar->height;
-            *b_bg_run++ = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=0, .y2=ydiv};
-            b_mem[i] = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=ydiv,.y2=bar->height};
-            xx++;
-        }
-    }
-    if (iswp) {
-        for (int i=0; i<nswp; ++i) {
-            int ydiv = bar->height - iswp[awlb_direction ? ncpu-i : i] * bar->height;
-            *b_bg_run++ = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=0, .y2=ydiv};
-            b_swp[i] = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=ydiv,.y2=bar->height};
-            xx++;
-        }
-    }
-    pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &bg_color_stats, b_bg_run-b_bg, b_bg);
-    pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &fg_color_stats_cpu, ncpu, b_cpu);
-    pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &fg_color_stats_mem, nmem, b_mem);
-    pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &fg_color_stats_swp, nswp, b_swp);
-    // status text
-    /* uint32_t status_width = TEXT_WIDTH(bar->status.text, bar->width - x, bar->textpadding); */
-    /* draw_text(bar->status.text, bar->width - status_width, y, foreground, */
-    /*       background, &fg_color_status, &bg_color_status, */
-    /*       bar->width, bar->height, bar->textpadding, */
-    /*       bar->status.colors, bar->status.colors_l); */
 
-    uint32_t nx;
-
-    uint32_t xspace = bar->width - status_width - x;
-
-    window_array_to_list( bar );
-    if (bar->n_window_list > 0) {
-        uint32_t space_per_window = xspace / bar->n_window_list;
-        uint32_t pad = xspace - space_per_window*bar->n_window_list;
-
-        x += pad/2 + pad%2;
-        for (awl_title_t* T = bar->window_list; T != NULL; T = T->hh.next) {
-            nx = x + space_per_window;
-
-            // find the right bg color (maybe do that with fg too?)
-            pixman_color_t bg = bg_color_win;
-            if (T->focused) bg = alpha_blend_16( bg, bg_color_win_act );
-            if (T->urgent) bg = alpha_blend_16( bg, bg_color_win_urg );
-            if (!T->visible) bg = alpha_blend_16( bg, bg_color_win_min );
-
-            x = draw_text( " ", x, y, foreground, background, &fg_color_win, &bg, nx, bar->height, 0, NULL, 0 );
-            if (T->floating) {
-                x = draw_text( "[✈✈✈] ", x, y, foreground, background, &fg_color_win, &bg,
-                        nx, bar->height, 0, NULL, 0 );
-            }
-            x = draw_text( T->name, x, y, foreground, background, &fg_color_win, &bg,
-                nx, bar->height, 0, NULL, 0 );
-            pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &bg, 1,
-                        &(pixman_box32_t){ .x1 = x, .x2 = nx, .y1 = 0, .y2 = bar->height });
-            x = nx;
-        }
-        x += pad/2;
-        nx = x;
-        HASH_CLEAR(hh, bar->window_list);
+    bar->center_widget_space = x_end - x;
+    bar->center_widget_start = x;
+    if (bar->has_center_widget) {
+        if (bar->center_widget.draw)
+            bar->center_widget.draw( bar, x, foreground, background );
     } else {
-        pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &bg_color_lay, 1,
-                &(pixman_box32_t){ .x1 = x, .x2 = x+xspace, .y1 = 0, .y2 = bar->height });
-        x += xspace;
-        nx = x;
+        pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &black, 1,
+                &(pixman_box32_t){ .x1 = x, .x2 = x_end, .y1 = 0, .y2 = bar->height });
     }
 
     /* Draw background and foreground on bar */
@@ -631,14 +524,6 @@ static const struct zxdg_output_v1_listener output_listener = {
     .description = output_description
 };
 
-static void shell_command(char *command) {
-    if (fork() == 0) {
-        setsid();
-        execl("/bin/sh", "sh", "-c", command, NULL);
-        exit(EXIT_SUCCESS);
-    }
-}
-
 static void pointer_enter(void *data, struct wl_pointer *pointer,
           uint32_t serial, struct wl_surface *surface,
           wl_fixed_t surface_x, wl_fixed_t surface_y) {
@@ -717,75 +602,68 @@ static void pointer_frame(void *data, struct wl_pointer *pointer) {
     }
     memset(event, 0, sizeof(*event));
 
-    uint32_t x = 0, i = 0;
-    do {
-        x += TEXT_WIDTH(tags[i], seat->bar->width - x, seat->bar->textpadding) / buffer_scale;
-    } while (seat->pointer_x >= x && ++i < tags_l);
+    Bar* bar = seat->bar;
 
-    // scroll events!
     if (discrete_event) {
-        seat->bar->redraw = true;
-        if (i < tags_l) {
-            cycle_tag( &( (const Arg){.i=discrete_event} ) );
-            return;
-        } else if ((seat->pointer_x <
-                    (x + TEXT_WIDTH(seat->bar->layout, seat->bar->width - x, seat->bar->textpadding)))) {
-            cycle_layout( &( (const Arg){.i=discrete_event} ) );
-            return;
-        } else {
-            focusstack( &( (const Arg){.i=discrete_event} ) );
-            return;
-        }
-    }
-
-    if (!seat->pointer_button) return;
-
-    if (i < tags_l) {
-        if (seat->pointer_button == BTN_LEFT)
-            view( &( (const Arg){.ui=1<<i} ) );
-        else if (seat->pointer_button == BTN_MIDDLE)
-            view( &( (const Arg){.ui=~0} ) );
-        else if (seat->pointer_button == BTN_RIGHT)
-            toggleview( &( (const Arg){.ui=1<<i} ) );
-    } else if (seat->pointer_x < (x += TEXT_WIDTH(seat->bar->layout, seat->bar->width - x, seat->bar->textpadding))) {
-        if (seat->pointer_button == BTN_LEFT)
-            cycle_layout( &( (const Arg){.i=-1} ) );
-        else if (seat->pointer_button == BTN_RIGHT)
-            cycle_layout( &( (const Arg){.i=+1} ) );
-    } else {
-        uint32_t status_x = seat->bar->width / buffer_scale - TEXT_WIDTH(seat->bar->status.text, seat->bar->width - x, seat->bar->textpadding) / buffer_scale;
-        if (seat->pointer_x < status_x) {
-            /* Clicked on title */
-            if (custom_title) {
-                if (center_title) {
-                    uint32_t title_width = TEXT_WIDTH(seat->bar->title.text, status_x - x, 0);
-                    x = MMAX(x, MMIN((seat->bar->width - title_width) / 2, status_x - title_width));
-                } else {
-                    x = MMIN(x + seat->bar->textpadding, status_x);
-                }
-                for (i = 0; i < seat->bar->title.buttons_l; i++) {
-                    if (seat->pointer_button == seat->bar->title.buttons[i].btn
-                        && seat->pointer_x >= x + seat->bar->title.buttons[i].x1
-                        && seat->pointer_x < x + seat->bar->title.buttons[i].x2) {
-                        shell_command(seat->bar->title.buttons[i].command);
-                        break;
-                    }
-                }
+        // left widgets
+        uint32_t x = 0;
+        for (int w=0; w<bar->n_widgets_left; ++w) {
+            if (seat->pointer_x >= x && seat->pointer_x <= x + bar->widgets_left[w].width/buffer_scale) {
+                if (bar->widgets_left[w].callback_scroll)
+                    bar->widgets_left[w].callback_scroll( bar, seat->pointer_x - x, discrete_event );
+                return;
             }
-        } else {
-            /* Clicked on status */
-            for (i = 0; i < seat->bar->status.buttons_l; i++) {
-                if (seat->pointer_button == seat->bar->status.buttons[i].btn
-                    && seat->pointer_x >= status_x + seat->bar->textpadding + seat->bar->status.buttons[i].x1 / buffer_scale
-                    && seat->pointer_x < status_x + seat->bar->textpadding + seat->bar->status.buttons[i].x2 / buffer_scale) {
-                    shell_command(seat->bar->status.buttons[i].command);
-                    break;
-                }
+            x += bar->widgets_left[w].width/buffer_scale;
+        }
+        // save start pos
+        uint32_t c = x;
+        // right widgets
+        x = bar->width/buffer_scale;
+        for (int w=0; w<bar->n_widgets_right; ++w) {
+            x -= bar->widgets_right[w].width/buffer_scale;
+            if (seat->pointer_x >= x && seat->pointer_x <= x + bar->widgets_right[w].width/buffer_scale) {
+                if (bar->widgets_right[w].callback_scroll)
+                    bar->widgets_right[w].callback_scroll( bar, seat->pointer_x - x, discrete_event );
+                return;
             }
         }
+        // center widget
+        if (bar->has_center_widget)
+            if (bar->center_widget.callback_scroll)
+                bar->center_widget.callback_scroll( bar, seat->pointer_x - c, discrete_event );
+        return;
     }
 
-    seat->pointer_button = 0;
+    if (seat->pointer_button) {
+        // left widgets
+        uint32_t x = 0;
+        for (int w=0; w<bar->n_widgets_left; ++w) {
+            if (seat->pointer_x >= x && seat->pointer_x <= x + bar->widgets_left[w].width/buffer_scale) {
+                if (bar->widgets_left[w].callback_click)
+                    bar->widgets_left[w].callback_click( bar, seat->pointer_x - x, seat->pointer_button );
+                seat->pointer_button = 0; return;
+            }
+            x += bar->widgets_left[w].width/buffer_scale;
+        }
+        // save start pos
+        uint32_t c = x;
+        // right widgets
+        x = bar->width/buffer_scale;
+        for (int w=0; w<bar->n_widgets_right; ++w) {
+            x -= bar->widgets_right[w].width/buffer_scale;
+            if (seat->pointer_x >= x && seat->pointer_x <= x + bar->widgets_right[w].width/buffer_scale) {
+                if (bar->widgets_right[w].callback_click)
+                    bar->widgets_right[w].callback_click( bar, seat->pointer_x - x, seat->pointer_button );
+                seat->pointer_button = 0; return;
+            }
+        }
+        // center widget
+        if (bar->has_center_widget)
+            if (bar->center_widget.callback_click)
+                bar->center_widget.callback_click( bar, seat->pointer_x - c, seat->pointer_button );
+        seat->pointer_button = 0; return;
+    }
+
 }
 
 static void pointer_axis(void *data, struct wl_pointer *wl_pointer, uint32_t time,
@@ -901,25 +779,17 @@ static void hide_bar(Bar *bar) {
     bar->hidden = true;
 }
 
-static void dwl_wm_tags(void *data, struct zdwl_ipc_manager_v2 *dwl_wm,
-    uint32_t amount) {
+static void dwl_wm_tags(void *data, struct zdwl_ipc_manager_v2 *dwl_wm, uint32_t amount) {
     (void)data;
     (void)dwl_wm;
-    if (!tags)
-        tags = malloc(amount * sizeof(char *));
-    uint32_t i = tags_l;
-    ARRAY_EXPAND(tags, tags_l, tags_c, MMAX(0, (int)amount - (int)tags_l));
-    for (; i < amount; i++)
-        tags[i] = strdup(tags_names[MMIN(i, n_tags_names-1)]);
+    for (uint32_t i=0; i<amount; i++)
+        STATIC_ARRAY_APPEND_STR( tags, tags_names[MMIN(i, n_tags_names-1)] );
 }
 
-static void dwl_wm_layout(void *data, struct zdwl_ipc_manager_v2 *dwl_wm,
-    const char *name) {
+static void dwl_wm_layout(void *data, struct zdwl_ipc_manager_v2 *dwl_wm, const char *name) {
     (void)data;
     (void)dwl_wm;
-    char **ptr;
-    ARRAY_APPEND(layouts, layouts_l, layouts_c, ptr);
-    *ptr = strdup(name);
+    STATIC_ARRAY_APPEND_STR( layouts, name );
 }
 
 static const struct zdwl_ipc_manager_v2_listener dwl_wm_listener = {
@@ -937,8 +807,7 @@ static void dwl_wm_output_toggle_visibility(void *data, struct zdwl_ipc_output_v
         hide_bar(bar);
 }
 
-static void dwl_wm_output_active(void *data, struct zdwl_ipc_output_v2 *dwl_wm_output,
-        uint32_t active) {
+static void dwl_wm_output_active(void *data, struct zdwl_ipc_output_v2 *dwl_wm_output, uint32_t active) {
     (void)dwl_wm_output;
     Bar *bar = (Bar *)data;
 
@@ -970,8 +839,6 @@ static void dwl_wm_output_layout(void *data, struct zdwl_ipc_output_v2 *dwl_wm_o
         uint32_t layout) {
     (void)dwl_wm_output;
     Bar *bar = (Bar *)data;
-
-    bar->last_layout_idx = bar->layout_idx;
     bar->layout_idx = layout;
 }
 
@@ -1008,10 +875,7 @@ static void dwl_wm_output_layout_symbol(void *data, struct zdwl_ipc_output_v2 *d
     const char *layout) {
     (void)dwl_wm_output;
     Bar *bar = (Bar *)data;
-
-    if (layouts[bar->layout_idx])
-        free(layouts[bar->layout_idx]);
-    layouts[bar->layout_idx] = strdup(layout);
+    strncpy( layouts[bar->layout_idx], layout, 15 );
     bar->layout = layouts[bar->layout_idx];
 }
 
@@ -1058,6 +922,55 @@ static void setup_bar(Bar *bar) {
     bar->n_window_titles = 0;
     bar->window_list = NULL;
     bar->n_window_list = 0;
+    bar->cpy_window_list = NULL;
+    bar->cpy_n_window_list = 0;
+    bar->layout = default_layout_name;
+
+    // TODO add click actions to widgets, and maybe the fancy colorbar
+    // temperature one, the ip address one, ... (basically my awesomewm
+    // collection)
+
+    bar->n_widgets_left = bar->n_widgets_right = bar->has_center_widget = 0;
+
+    // widgets aligned to the left
+    bar->widgets_left[bar->n_widgets_left++] = (widget_t){
+        .draw = tagwidget_draw,
+        .callback_scroll = tagwidget_scroll,
+        .callback_click = tagwidget_click,
+    };
+    bar->widgets_left[bar->n_widgets_left++] = (widget_t){
+        .draw = layoutwidget_draw,
+        .callback_scroll = layoutwidget_scroll,
+    };
+
+    // widgets aligned to the right
+    bar->widgets_right[bar->n_widgets_right++] = (widget_t){
+        .draw = clockwidget_draw,
+        .width = TEXT_WIDTH( "XX:XX", -1, bar->textpadding ),
+    };
+    bar->widgets_right[bar->n_widgets_right++] = (widget_t){
+        .draw = separator_draw,
+        .width = TEXT_WIDTH( "|", -1, 0 ),
+    };
+    bar->widgets_right[bar->n_widgets_right++] = (widget_t){
+        .draw = pulsewidget_draw,
+        .width = TEXT_WIDTH( "100%", -1, bar->textpadding ),
+        .callback_scroll = pulsewidget_scroll,
+        .callback_click = pulsewidget_click,
+    };
+    bar->widgets_right[bar->n_widgets_right++] = (widget_t){
+        .draw = statuswidget_draw,
+        .width = awlb_cpu_len + awlb_mem_len + awlb_swp_len,
+        .callback_click = statuswidget_click,
+    };
+
+    // central widget
+    bar->center_widget = (widget_t){
+        .draw = taskbarwidget_draw,
+        .callback_scroll = taskbarwidget_scroll,
+        .callback_click = taskbarwidget_click,
+    };
+    bar->has_center_widget = 1;
 
     bar->xdg_output = zxdg_output_manager_v1_get_xdg_output(output_manager, bar->wl_output);
     if (!bar->xdg_output)
@@ -1105,14 +1018,6 @@ static void handle_global(void *data, struct wl_registry *registry,
 }
 
 static void teardown_bar(Bar *bar) {
-    if (bar->status.colors)
-        free(bar->status.colors);
-    if (bar->status.buttons)
-        free(bar->status.buttons);
-    if (bar->title.colors)
-        free(bar->title.colors);
-    if (bar->title.buttons)
-        free(bar->title.buttons);
     if (bar->window_titles)
         free(bar->window_titles);
     zdwl_ipc_output_v2_destroy(bar->dwl_wm_output);
@@ -1140,7 +1045,7 @@ static void handle_global_remove(void *data, struct wl_registry *registry, uint3
     Bar *bar;
     Seat *seat;
 
-    printf("in global remove\n");
+    awl_log_printf("in global remove\n");
     wl_list_for_each(bar, &bar_list, link) {
         if (bar->registry_name == name) {
             wl_list_remove(&bar->link);
@@ -1204,16 +1109,6 @@ static void cleanup_fun(void* arg) {
     awl_log_printf( "entering bar cleanup" );
     (void)arg;
     if (redraw_fd != -1) close( redraw_fd );
-    if (tags) {
-        for (uint32_t i = 0; i < tags_l; i++)
-            free(tags[i]);
-        free(tags);
-    }
-    if (layouts) {
-        for (uint32_t i = 0; i < layouts_l; i++)
-            free(layouts[i]);
-        free(layouts);
-    }
     free( widget_boxes );
 
     Bar *bar, *bar2;
@@ -1304,4 +1199,265 @@ void* awl_bar_refresh( void* arg ) {
         awl_bar_refresh_fun();
     }
     return NULL;
+}
+
+// widget implementations
+
+static uint32_t tagwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
+    uint32_t x_enter = x;
+    uint32_t y = (bar->height + font->ascent - font->descent) / 2;
+    uint32_t boxs = font->height / 9;
+    uint32_t boxw = font->height / 6 + 2;
+    // draw tags
+    for (int i = 0; i < n_tags; i++) {
+        bool active = bar->mtags & 1 << i;
+        bool occupied = bar->ctags & 1 << i;
+        bool urgent = bar->urg & 1 << i;
+        // draw small box
+        if (occupied) {
+            pixman_image_fill_boxes(PIXMAN_OP_SRC, foreground,
+                        &fg_color_tags, 1, &(pixman_box32_t){
+                            .x1 = x + boxs, .x2 = x + boxs + boxw,
+                            .y1 = boxs, .y2 = boxs + boxw
+                        });
+            if ((!bar->sel || !active) && boxw >= 3) {
+                /* Make box hollow */
+                pixman_image_fill_boxes(PIXMAN_OP_SRC, foreground,
+                            &(pixman_color_t){ 0 },
+                            1, &(pixman_box32_t){
+                                .x1 = x + boxs + 1, .x2 = x + boxs + boxw - 1,
+                                .y1 = boxs + 1, .y2 = boxs + boxw - 1
+                            });
+            }
+        }
+        // find the right bg color (maybe do that with fg too?)
+        pixman_color_t bg = bg_color_tags;
+        if (occupied) bg = alpha_blend_16( bg, bg_color_tags_occ );
+        if (active) bg = alpha_blend_16( bg, bg_color_tags_act );
+        if (urgent) bg = alpha_blend_16( bg, bg_color_tags_urg );
+        x = draw_text(tags[i], x, y, foreground, background, &fg_color_tags, &bg,
+                bar->width, bar->height, bar->textpadding);
+    }
+    return x - x_enter;
+}
+
+static void tagwidget_scroll( Bar* bar, uint32_t pointer_x, int amount ) {
+    uint32_t x = 0;
+    int i = 0;
+    do {
+        x += TEXT_WIDTH(tags[i], bar->width, bar->textpadding) / buffer_scale;
+    } while (pointer_x >= x && ++i < n_tags);
+    if (i < n_tags) {
+        cycle_tag( &( (const Arg){.i=amount} ) );
+        bar->redraw = true;
+    }
+}
+
+static void tagwidget_click( Bar* bar, uint32_t pointer_x, int button ) {
+    uint32_t x = 0;
+    int i = 0;
+    do {
+        x += TEXT_WIDTH(tags[i], bar->width, bar->textpadding) / buffer_scale;
+    } while (pointer_x >= x && ++i < n_tags);
+    if (i < n_tags) {
+        if (button == BTN_LEFT)
+            view( &( (const Arg){.ui=1<<i} ) );
+        else if (button == BTN_MIDDLE)
+            view( &( (const Arg){.ui=~0} ) );
+        else if (button == BTN_RIGHT)
+            toggleview( &( (const Arg){.ui=1<<i} ) );
+    }
+}
+
+static uint32_t layoutwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
+    uint32_t y = (bar->height + font->ascent - font->descent) / 2;
+    uint32_t new_x = draw_text(bar->layout, x, y, foreground, background,
+              &fg_color_lay, &bg_color_lay, bar->width,
+              bar->height, bar->textpadding);
+    return new_x - x;
+}
+
+static void layoutwidget_scroll( Bar* bar, uint32_t pointer_x, int amount ) {
+    (void)bar;
+    (void)pointer_x;
+    cycle_layout( &( (const Arg){.i=amount} ) );
+    bar->redraw = true;
+}
+
+static uint32_t clockwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
+    uint32_t y = (bar->height + font->ascent - font->descent) / 2;
+    if (awlb_date_txt)
+        draw_text(awlb_date_txt, x, y, foreground, background, &fg_color_status, &bg_color_status, bar->width, bar->height, bar->textpadding );
+    return TEXT_WIDTH( "XX:XX", -1, bar->textpadding );
+}
+
+static uint32_t pulsewidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
+    uint32_t y = (bar->height + font->ascent - font->descent) / 2;
+    char string[8];
+    if (awlb_pulse_info) {
+        sprintf( string, "%3.0f%%", awlb_pulse_info->value * 100.0f );
+        draw_text( string, x, y, foreground, background, lround(awlb_pulse_info->value*100.0) > 100 ? &fg_color_stats_mem : &fg_color_status,
+                   &bg_color_status, bar->width, bar->height, bar->textpadding );
+    }
+    return TEXT_WIDTH( "100%", -1, bar->textpadding );
+}
+
+static void pulsewidget_scroll( Bar* bar, uint32_t pointer_x, int amount ) {
+    (void)bar;
+    (void)pointer_x;
+    static char cmd[128];
+    sprintf( cmd, "pactl set-sink-volume @DEFAULT_SINK@ %+d%%", -amount*2 );
+    shell_command( cmd );
+}
+
+static void pulsewidget_click( Bar* bar, uint32_t pointer_x, int button ) {
+    (void)bar;
+    (void)pointer_x;
+    switch (button) {
+        case BTN_LEFT:
+            shell_command("pavucontrol"); break;
+        case BTN_RIGHT:
+            shell_command("pulse_port_switch -t -N"); break;
+        case BTN_MIDDLE:
+            /* shell_command(); break; */
+        default:
+            break;
+    }
+}
+
+static uint32_t separator_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
+    uint32_t y = (bar->height + font->ascent - font->descent) / 2;
+    draw_text( "|", x, y, foreground, background, &fg_color_status, &bg_color_status, bar->width, bar->height, 0 );
+    return TEXT_WIDTH( "|", -1, 0 );
+}
+
+static uint32_t statuswidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
+    (void)foreground;
+    uint32_t widget_width = 0;
+    if (awlb_cpu_info) widget_width += awlb_cpu_len;
+    if (awlb_mem_info) widget_width += awlb_mem_len;
+    if (awlb_swp_info) widget_width += awlb_swp_len;
+    const int ncpu = awlb_cpu_len,
+              nmem = awlb_mem_len,
+              nswp = awlb_swp_len;
+    const float *icpu = awlb_cpu_info,
+                *imem = awlb_mem_info,
+                *iswp = awlb_swp_info;
+    widget_boxes = (pixman_box32_t*)realloc(widget_boxes, sizeof(pixman_box32_t)*2*(ncpu+nmem+nswp));
+    pixman_box32_t *b_cpu = widget_boxes;
+    pixman_box32_t *b_mem = b_cpu + ncpu;
+    pixman_box32_t *b_swp = b_mem + nmem;
+    pixman_box32_t *b_bg = b_swp + nswp;
+    pixman_box32_t *b_bg_run = b_bg;
+
+    int xx=x;
+    if (icpu) {
+        for (int i=0; i<ncpu; ++i) {
+            int ydiv = bar->height - icpu[awlb_direction ? ncpu-i : i] * bar->height;
+            *b_bg_run++ = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=0, .y2=ydiv};
+            b_cpu[i] = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=ydiv,.y2=bar->height};
+            xx++;
+        }
+    }
+    if (imem) {
+        for (int i=0; i<nmem; ++i) {
+            int ydiv = bar->height - imem[awlb_direction ? ncpu-i : i] * bar->height;
+            *b_bg_run++ = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=0, .y2=ydiv};
+            b_mem[i] = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=ydiv,.y2=bar->height};
+            xx++;
+        }
+    }
+    if (iswp) {
+        for (int i=0; i<nswp; ++i) {
+            int ydiv = bar->height - iswp[awlb_direction ? ncpu-i : i] * bar->height;
+            *b_bg_run++ = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=0, .y2=ydiv};
+            b_swp[i] = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=ydiv,.y2=bar->height};
+            xx++;
+        }
+    }
+    pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &bg_color_stats, b_bg_run-b_bg, b_bg);
+    pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &fg_color_stats_cpu, ncpu, b_cpu);
+    pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &fg_color_stats_mem, nmem, b_mem);
+    pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &fg_color_stats_swp, nswp, b_swp);
+
+    return widget_width;
+}
+
+static void statuswidget_click( Bar* bar, uint32_t pointer_x, int button ) {
+    (void)bar;
+    (void)pointer_x;
+    (void)button;
+    shell_command( "kitty -e btop" );
+}
+
+static uint32_t taskbarwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
+    uint32_t xspace = bar->center_widget_space;
+    uint32_t nx;
+    uint32_t y = (bar->height + font->ascent - font->descent) / 2;
+    window_array_to_list( bar, 0 );
+    if (bar->n_window_list > 0) {
+        uint32_t space_per_window = xspace / bar->n_window_list;
+        uint32_t pad = xspace - space_per_window*bar->n_window_list;
+
+        x += pad/2 + pad%2;
+        for (awl_title_t* T = bar->window_list; T != NULL; T = T->hh.next) {
+            nx = x + space_per_window;
+
+            // find the right bg color (maybe do that with fg too?)
+            pixman_color_t bg = bg_color_win;
+            if (T->focused) bg = alpha_blend_16( bg, bg_color_win_act );
+            if (T->urgent) bg = alpha_blend_16( bg, bg_color_win_urg );
+            if (!T->visible) bg = alpha_blend_16( bg, bg_color_win_min );
+
+            x = draw_text( " ", x, y, foreground, background, &fg_color_win, &bg, nx, bar->height, 0 );
+            if (T->floating) {
+                x = draw_text( "[✈✈✈] ", x, y, foreground, background, &fg_color_win, &bg,
+                        nx, bar->height, 0 );
+            }
+            x = draw_text( T->name, x, y, foreground, background, &fg_color_win, &bg,
+                nx, bar->height, 0 );
+            pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &bg, 1,
+                        &(pixman_box32_t){ .x1 = x, .x2 = nx, .y1 = 0, .y2 = bar->height });
+            x = nx;
+        }
+        x += pad/2;
+        nx = x;
+        HASH_CLEAR(hh, bar->window_list);
+    } else {
+        pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &bg_color_lay, 1,
+                &(pixman_box32_t){ .x1 = x, .x2 = x+xspace, .y1 = 0, .y2 = bar->height });
+        x += xspace;
+        nx = x;
+    }
+    return 0;
+}
+
+static void taskbarwidget_scroll( Bar* bar, uint32_t pointer_x, int amount ) {
+    (void)bar;
+    (void)pointer_x;
+    focusstack( &( (const Arg){.i=amount} ) );
+    bar->redraw = true;
+}
+
+static void taskbarwidget_click( Bar* bar, uint32_t pointer_x, int button ) {
+    uint32_t xspace = bar->center_widget_space;
+    uint32_t x = bar->center_widget_start;
+    pointer_x += bar->center_widget_start/buffer_scale;
+    window_array_to_list( bar, 1 );
+    if (bar->cpy_n_window_list > 0) {
+        uint32_t space_per_window = xspace / bar->cpy_n_window_list;
+        uint32_t pad = xspace - space_per_window*bar->cpy_n_window_list;
+
+        x += pad/2 + pad%2;
+        for (awl_title_t* T = bar->cpy_window_list; T != NULL; T = T->hh.next) {
+            if (pointer_x >= x/buffer_scale && pointer_x <= (x+space_per_window)/buffer_scale) {
+                // TODO toggle works, but update not
+                T->c->visible = !T->c->visible;
+                goto taskbarwidget_click_return;
+            }
+        }
+    }
+    return;
+taskbarwidget_click_return:
+        HASH_CLEAR(hh, bar->cpy_window_list);
 }
