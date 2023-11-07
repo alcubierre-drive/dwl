@@ -14,18 +14,19 @@
 # future ideas
 * lockscreen (looking at xtr-lock-pam/awesomewm)
 * wallpaper support
-* widgets with mouse support
 
 # useful programs
 * dunst (notifications)
 * fuzzel (launcher)
 * xdg-desktop-portal-wlr + wireplumber + wofi
-* wdisplays + wlr-randr (need to write some scripts)
+* wdisplays + wlr-randr (need to write some scripts (done?))
 * kitty (terminal)
+* grim (screenshots)
 
 # compilation options
 * Makefile.inc: CFLAGS (and LDFLAGS)
 * -DAWL_MODKEY=WLR_MODIFIER_LOGO
 * -DAWL_MENU_CMD=\"fuzzel\"
 * -DAWL_TERM_CMD=\"kitty\"
-* -DAWL_STATS_SKIP_CPU_MULT
+* -DAWL_STATS_FORCE_CPU_MULT
+* -DAWL_SKIP_BATWIDGET

@@ -31,3 +31,30 @@ static const uint32_t molokai_light_gray = 0x455354ff;
 extern awl_ipaddr_t awl_ip;
 extern awl_temperature_t awl_temp;
 extern awl_battery_t awl_bat;
+
+/* functions used from awl.h/awl.c
+arrange
+ecalloc
+focusclient
+focusmon
+focusstack
+focustop
+killclient
+monocle
+moveresize
+printstatus
+resize
+setlayout
+setmfact
+spawn
+tag
+tagmon
+tile
+togglebar
+togglefloating
+togglefullscreen
+toggletag
+toggleview
+view
+zoom
+*/
