@@ -1,8 +1,9 @@
 #pragma once
 
 struct awl_ipaddr_t {
-    char address_string[2047];
+    char address_string[2046];
     unsigned char is_online;
+    unsigned char ready;
 };
 typedef struct awl_ipaddr_t awl_ipaddr_t;
 

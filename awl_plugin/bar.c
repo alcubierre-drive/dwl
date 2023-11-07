@@ -368,18 +368,28 @@ static uint32_t draw_text(char *text,
 static uint32_t tagwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
 static void tagwidget_scroll( Bar* bar, uint32_t pointer_x, int amount );
 static void tagwidget_click( Bar* bar, uint32_t pointer_x, int button );
+
 static uint32_t layoutwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
 static void layoutwidget_scroll( Bar* bar, uint32_t pointer_x, int amount );
 static void layoutwidget_click( Bar* bar, uint32_t pointer_x, int button );
+
 static uint32_t clockwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
+
 static uint32_t pulsewidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
 static void pulsewidget_scroll( Bar* bar, uint32_t pointer_x, int amount );
 static void pulsewidget_click( Bar* bar, uint32_t pointer_x, int button );
+
 static uint32_t ipwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
+
 static uint32_t tempwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
+
+static uint32_t batwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
+
 static uint32_t separator_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
+
 static uint32_t statuswidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
 static void statuswidget_click( Bar* bar, uint32_t pointer_x, int button );
+
 static uint32_t taskbarwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
 static void taskbarwidget_scroll( Bar* bar, uint32_t pointer_x, int amount );
 static void taskbarwidget_click( Bar* bar, uint32_t pointer_x, int button );
@@ -1002,6 +1012,20 @@ static void setup_bar(Bar *bar) {
         .width = TEXT_WIDTH( "CPU:45°C", -1, bar->textpadding ),
     };
     bar->widgets_right[bar->n_widgets_right++] = (widget_t){
+        .draw = separator_draw,
+        .width = TEXT_WIDTH( "|", -1, 0 ),
+    };
+    #ifndef AWL_SKIP_BATWIDGET
+    bar->widgets_right[bar->n_widgets_right++] = (widget_t){
+        .draw = batwidget_draw,
+        .width = TEXT_WIDTH( "100%", -1, bar->textpadding ),
+    };
+    bar->widgets_right[bar->n_widgets_right++] = (widget_t){
+        .draw = separator_draw,
+        .width = TEXT_WIDTH( "|", -1, 0 ),
+    };
+    #endif // AWL_SKIP_BATWIDGET
+    bar->widgets_right[bar->n_widgets_right++] = (widget_t){
         .draw = ipwidget_draw,
         .width = TEXT_WIDTH( "ipaddr", -1, bar->textpadding ),
     };
@@ -1367,6 +1391,7 @@ static uint32_t ipwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground,
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
     pixman_color_t _molokai_red = color_8bit_to_16bit(molokai_red),
                    _molokai_green = color_8bit_to_16bit(molokai_green);
+    while (!awl_ip.ready) usleep(10);
     if (*awl_ip.address_string) {
         draw_text( awl_ip.address_string, x, y, foreground, background,
                    awl_ip.is_online ? &_molokai_green : &_molokai_red,
@@ -1390,6 +1415,19 @@ static uint32_t tempwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foregroun
         width += TEXT_WIDTH(text, -1, bar->textpadding);
     }
     return width;
+}
+
+static uint32_t batwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
+    uint32_t y = (bar->height + font->ascent - font->descent) / 2;
+    if (awl_bat.charging < 0) return 0;
+
+    char text[16] = {0};
+    snprintf( text, 15, "%3.0f%%", awl_bat.charge * 100.0 );
+
+    pixman_color_t fgcolor = awl_bat.charging ? color_8bit_to_16bit( molokai_green ) : fg_color_status;
+    draw_text( text, x, y, foreground, background, &fgcolor, &bg_color_status,
+               bar->width, bar->height, bar->textpadding );
+    return TEXT_WIDTH( text, -1, bar->textpadding );
 }
 
 static void pulsewidget_scroll( Bar* bar, uint32_t pointer_x, int amount ) {

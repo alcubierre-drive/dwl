@@ -31,6 +31,7 @@ static void dwindle(Monitor *mon);
 
 awl_temperature_t awl_temp = {0};
 awl_ipaddr_t awl_ip = {0};
+awl_battery_t awl_bat = {0};
 static float _cpu[128] = {0}, _mem[128] = {0}, _swp[128] = {0};
 static float _refresh_sec = 0.2;
 
@@ -283,12 +284,13 @@ static void awl_plugin_init(void) {
     awlb_date_txt = start_date_thread( 10 );
     awlb_pulse_info = start_pulse_thread();
     start_ip_thread( &awl_ip, 1 );
+    start_bat_thread( &awl_bat, 1 );
     awlb_direction = 0;
 
     strcpy( awl_temp.f_files[awl_temp.f_ntemps], "/sys/class/thermal/thermal_zone7/temp" );
     strcpy( awl_temp.f_labels[awl_temp.f_ntemps], "CPU" );
     awl_temp.f_t_max[awl_temp.f_ntemps] = 80;
-    awl_temp.f_t_min[awl_temp.f_ntemps++] = 30;
+    awl_temp.f_t_min[awl_temp.f_ntemps++] = 40;
     start_temp_thread( &awl_temp, 1 );
 
     int s = pthread_create( &S.BarThread, NULL, awl_bar_run, NULL );
@@ -309,6 +311,8 @@ static void awl_plugin_free(void) {
     stop_date_thread();
     stop_pulse_thread();
     stop_ip_thread();
+    stop_bat_thread();
+    stop_temp_thread();
     awlb_date_txt = NULL;
     awlb_pulse_info = NULL;
     pthread_cancel( S.BarRefreshThread );

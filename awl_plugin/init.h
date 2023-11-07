@@ -6,6 +6,7 @@
 
 #include "ipaddr.h"
 #include "temp.h"
+#include "bat.h"
 
 void cycle_tag( const Arg* arg );
 void cycle_layout( const Arg* arg );
@@ -29,3 +30,4 @@ static const uint32_t molokai_light_gray = 0x455354ff;
 
 extern awl_ipaddr_t awl_ip;
 extern awl_temperature_t awl_temp;
+extern awl_battery_t awl_bat;

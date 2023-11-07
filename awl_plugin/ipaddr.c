@@ -32,8 +32,10 @@ static int is_not_in_exclude_list( const char* name ) {
 static void* ip_thread_run( void* arg ) {
     awl_ipaddr_t* ip = (awl_ipaddr_t*)arg;
     if (!ip) return NULL;
-    ip->is_online = 1;
     while (ip_thread_running) {
+
+        ip->is_online = 1;
+        ip->ready = 0;
 
         int first = 1;
         char* addr = ip->address_string;
@@ -71,6 +73,7 @@ static void* ip_thread_run( void* arg ) {
         }
 
 loopend:
+        ip->ready = 1;
         freeifaddrs(ifaddr);
         sleep(ip_thread_sleep_sec);
     }
