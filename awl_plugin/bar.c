@@ -7,6 +7,7 @@
 #include "../awl_util.h"
 #include <sys/eventfd.h>
 #include <sys/mman.h>
+#include <pthread.h>
 
 int awl_is_ready( void );
 
@@ -158,6 +159,8 @@ struct Bar {
     uint32_t center_widget_space;
     uint32_t center_widget_start;
     int has_center_widget;
+
+    pthread_mutex_t draw_mtx;
 
     struct wl_list link;
 };
@@ -383,15 +386,20 @@ static void taskbarwidget_click( Bar* bar, uint32_t pointer_x, int button );
 static void taskbarwidget_view( Bar* bar, uint32_t pointer_x );
 
 static int draw_frame(Bar *bar) {
+    pthread_mutex_lock(&bar->draw_mtx);
+    int result = 0;
     /* Allocate buffer to be attached to the surface */
     int fd = allocate_shm_file(bar->bufsize);
-    if (fd == -1)
-        return -1;
+    if (fd == -1) {
+        result = -1;
+        goto draw_frame_end;
+    }
 
     uint32_t *data = mmap(NULL, bar->bufsize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (data == MAP_FAILED) {
         close(fd);
-        return -1;
+        result = -1;
+        goto draw_frame_end;
     }
 
     struct wl_shm_pool *pool = wl_shm_create_pool(shm, fd, bar->bufsize);
@@ -449,7 +457,9 @@ static int draw_frame(Bar *bar) {
     wl_surface_damage_buffer(bar->wl_surface, 0, 0, bar->width, bar->height);
     wl_surface_commit(bar->wl_surface);
 
-    return 0;
+draw_frame_end:
+    pthread_mutex_unlock(&bar->draw_mtx);
+    return result;
 }
 
 /* Layer-surface setup adapted from layer-shell example in [wlroots] */
@@ -946,6 +956,8 @@ static void setup_bar(Bar *bar) {
     bar->cpy_window_list = NULL;
     bar->cpy_n_window_list = 0;
     bar->layout = default_layout_name;
+    pthread_mutex_init( &bar->draw_mtx, NULL );
+    pthread_mutex_unlock( &bar->draw_mtx );
 
     // TODO add click actions to widgets, and maybe the fancy colorbar
     // temperature one, the ip address one, ... (basically my awesomewm
@@ -1049,6 +1061,8 @@ static void handle_global(void *data, struct wl_registry *registry,
 }
 
 static void teardown_bar(Bar *bar) {
+    pthread_mutex_unlock(&bar->draw_mtx);
+    pthread_mutex_destroy(&bar->draw_mtx);
     if (bar->window_titles)
         free(bar->window_titles);
     zdwl_ipc_output_v2_destroy(bar->dwl_wm_output);
@@ -1365,11 +1379,13 @@ static uint32_t ipwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground,
 static uint32_t tempwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
     uint32_t width = 0;
-    while (!awl_temp.ready) { usleep(10); }
+    while (!awl_temp.ready) usleep(10);
     for (int i=0; i<awl_temp.ntemps; ++i) {
         char text[128] = {0};
-        snprintf( text, 127, "%s:%.0f°C", awl_temp.f_labels[awl_temp.idx[i]], awl_temp.temps[i] ); // TODO limits, colors
-        draw_text( text, x, y, foreground, background, &fg_color_status, &bg_color_status,
+        snprintf( text, 127, "%s:%.0f°C", awl_temp.f_labels[awl_temp.idx[i]], awl_temp.temps[i] );
+        pixman_color_t fgcolor = color_8bit_to_16bit( temp_color( awl_temp.temps[i],
+                    awl_temp.f_t_min[awl_temp.idx[i]], awl_temp.f_t_max[awl_temp.idx[i]] ) );
+        draw_text( text, x, y, foreground, background, &fgcolor, &bg_color_status,
                    bar->width, bar->height, bar->textpadding );
         width += TEXT_WIDTH(text, -1, bar->textpadding);
     }

@@ -287,7 +287,8 @@ static void awl_plugin_init(void) {
 
     strcpy( awl_temp.f_files[awl_temp.f_ntemps], "/sys/class/thermal/thermal_zone7/temp" );
     strcpy( awl_temp.f_labels[awl_temp.f_ntemps], "CPU" );
-    awl_temp.f_limits[awl_temp.f_ntemps++] = 60;
+    awl_temp.f_t_max[awl_temp.f_ntemps] = 80;
+    awl_temp.f_t_min[awl_temp.f_ntemps++] = 30;
     start_temp_thread( &awl_temp, 1 );
 
     int s = pthread_create( &S.BarThread, NULL, awl_bar_run, NULL );
