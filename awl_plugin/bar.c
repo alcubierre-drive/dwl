@@ -372,6 +372,7 @@ static uint32_t clockwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foregrou
 static uint32_t pulsewidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
 static void pulsewidget_scroll( Bar* bar, uint32_t pointer_x, int amount );
 static void pulsewidget_click( Bar* bar, uint32_t pointer_x, int button );
+static uint32_t ipwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
 static uint32_t separator_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
 static uint32_t statuswidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
 static void statuswidget_click( Bar* bar, uint32_t pointer_x, int button );
@@ -600,6 +601,9 @@ static void pointer_motion(void *data, struct wl_pointer *pointer, uint32_t time
             bar->center_widget.callback_view( bar, seat->pointer_x - bar->center_widget_start/buffer_scale );
 }
 
+static double continuous_event = 0.0;
+static const double continuous_event_norm = 10.0;
+
 static void pointer_frame(void *data, struct wl_pointer *pointer) {
     (void)pointer;
     if (!data) return;
@@ -608,12 +612,20 @@ static void pointer_frame(void *data, struct wl_pointer *pointer) {
     if (!bar) return;
     int discrete_event = 0;
     struct pointer_event* event = &seat->pointer_event;
-    if (event->event_mask & POINTER_EVENT_AXIS_DISCRETE &&
+    if (event->event_mask & (POINTER_EVENT_AXIS_DISCRETE|POINTER_EVENT_AXIS) &&
         event->axes[WL_POINTER_AXIS_VERTICAL_SCROLL].valid) {
         discrete_event = event->axes[WL_POINTER_AXIS_VERTICAL_SCROLL].discrete;
+        if (!discrete_event) {
+            continuous_event += wl_fixed_to_double(event->axes[WL_POINTER_AXIS_VERTICAL_SCROLL].value) /
+                                continuous_event_norm;
+            if (fabs(continuous_event) > 1.0) {
+                discrete_event = continuous_event;
+                continuous_event = 0.0;
+            }
+            awl_log_printf("pointer frame: %.3f", discrete_event);
+        }
     }
     memset(event, 0, sizeof(*event));
-
     if (discrete_event) {
         // left widgets
         uint32_t x = 0;
@@ -972,6 +984,10 @@ static void setup_bar(Bar *bar) {
         .width = awlb_cpu_len + awlb_mem_len + awlb_swp_len,
         .callback_click = statuswidget_click,
     };
+    bar->widgets_right[bar->n_widgets_right++] = (widget_t){
+        .draw = ipwidget_draw,
+        .width = TEXT_WIDTH( "ipaddr", -1, bar->textpadding ),
+    };
 
     // central widget
     bar->center_widget = (widget_t){
@@ -1315,12 +1331,30 @@ static uint32_t clockwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foregrou
 static uint32_t pulsewidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
     char string[8];
+    pixman_color_t _molokai_red = color_8bit_to_16bit(molokai_red),
+                   _molokai_orange = color_8bit_to_16bit(molokai_orange);
     if (awlb_pulse_info) {
         sprintf( string, "%3.0f%%", awlb_pulse_info->value * 100.0f );
-        draw_text( string, x, y, foreground, background, lround(awlb_pulse_info->value*100.0) > 100 ? &fg_color_stats_mem : &fg_color_status,
+        draw_text( string, x, y, foreground, background,
+                   awlb_pulse_info->muted ? &_molokai_orange :
+                                            lround(awlb_pulse_info->value*100.0) > 100 ?
+                                            &_molokai_red : &fg_color_status,
                    &bg_color_status, bar->width, bar->height, bar->textpadding );
     }
     return TEXT_WIDTH( "100%", -1, bar->textpadding );
+}
+
+static uint32_t ipwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
+    uint32_t y = (bar->height + font->ascent - font->descent) / 2;
+    pixman_color_t _molokai_red = color_8bit_to_16bit(molokai_red),
+                   _molokai_green = color_8bit_to_16bit(molokai_green);
+    if (*awl_ip.address_string) {
+        draw_text( awl_ip.address_string, x, y, foreground, background,
+                   awl_ip.is_online ? &_molokai_green : &_molokai_red,
+                   &bg_color_status, bar->width, bar->height, bar->textpadding );
+        return TEXT_WIDTH( awl_ip.address_string, -1, bar->textpadding );
+    }
+    return TEXT_WIDTH( "ipaddr", -1, bar->textpadding );
 }
 
 static void pulsewidget_scroll( Bar* bar, uint32_t pointer_x, int amount ) {

@@ -30,6 +30,7 @@ static void bstack(Monitor *m);
 static void dwindle(Monitor *mon);
 /* static void spiral(Monitor *mon); */
 
+awl_ipaddr_t awl_ip = {0};
 static float _cpu[128] = {0}, _mem[128] = {0}, _swp[128] = {0};
 static float _refresh_sec = 0.2;
 
@@ -281,6 +282,7 @@ static void awl_plugin_init(void) {
     awlb_mem_len = awlb_cpu_len = awlb_swp_len = 32;
     awlb_date_txt = start_date_thread( 10 );
     awlb_pulse_info = start_pulse_thread();
+    start_ip_thread( &awl_ip, 1 );
     awlb_direction = 0;
 
     int s = pthread_create( &S.BarThread, NULL, awl_bar_run, NULL );
@@ -300,6 +302,7 @@ static void awl_plugin_free(void) {
     stop_stats_thread();
     stop_date_thread();
     stop_pulse_thread();
+    stop_ip_thread();
     awlb_date_txt = NULL;
     awlb_pulse_info = NULL;
     pthread_cancel( S.BarRefreshThread );

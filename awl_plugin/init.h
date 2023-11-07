@@ -4,6 +4,8 @@
 #include "../awl_state.h"
 #include "../awl_extension.h"
 
+#include "ipaddr.h"
+
 void cycle_tag( const Arg* arg );
 void cycle_layout( const Arg* arg );
 
@@ -24,3 +26,4 @@ static const uint32_t molokai_gray = 0x232526ff;
 static const uint32_t molokai_dark_gray = 0x1b1d1eff;
 static const uint32_t molokai_light_gray = 0x455354ff;
 
+extern awl_ipaddr_t awl_ip;
