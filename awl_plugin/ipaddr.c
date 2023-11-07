@@ -30,13 +30,14 @@ static int is_not_in_exclude_list( const char* name ) {
 }
 
 static void* ip_thread_run( void* arg ) {
-
     awl_ipaddr_t* ip = (awl_ipaddr_t*)arg;
+    if (!ip) return NULL;
     ip->is_online = 1;
     while (ip_thread_running) {
 
         int first = 1;
         char* addr = ip->address_string;
+        memset(addr, 0, sizeof(ip->address_string));
 
         struct ifaddrs *ifaddr;
 
@@ -57,10 +58,11 @@ static void* ip_thread_run( void* arg ) {
                     goto loopend;
                 }
                 if (first) {
-                    sprintf( addr, "%s", host );
+                    strcat(addr, host);
                     first = 0;
                 } else {
-                    sprintf( addr, " | %s", host );
+                    strcat(addr, " | ");
+                    strcat(addr, host );
                 }
                 if (strstr(addr, "127.0.0"))
                     ip->is_online = 0;

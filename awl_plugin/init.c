@@ -5,6 +5,7 @@
 #include "date.h"
 #include "stats.h"
 #include "pulsetest.h"
+#include "temp.h"
 
 #define COLOR_SET( C, hex ) \
     { C[0] = ((hex >> 24) & 0xFF) / 255.0f; \
@@ -25,11 +26,10 @@ static void client_hide( const Arg* arg );
 static void tagmon_f( const Arg* arg );
 
 static void gaplessgrid(Monitor *m);
-/* static void bstackhoriz(Monitor *m); */
 static void bstack(Monitor *m);
 static void dwindle(Monitor *mon);
-/* static void spiral(Monitor *mon); */
 
+awl_temperature_t awl_temp = {0};
 awl_ipaddr_t awl_ip = {0};
 static float _cpu[128] = {0}, _mem[128] = {0}, _swp[128] = {0};
 static float _refresh_sec = 0.2;
@@ -285,6 +285,11 @@ static void awl_plugin_init(void) {
     start_ip_thread( &awl_ip, 1 );
     awlb_direction = 0;
 
+    strcpy( awl_temp.f_files[awl_temp.f_ntemps], "/sys/class/thermal/thermal_zone7/temp" );
+    strcpy( awl_temp.f_labels[awl_temp.f_ntemps], "CPU" );
+    awl_temp.f_limits[awl_temp.f_ntemps++] = 60;
+    start_temp_thread( &awl_temp, 1 );
+
     int s = pthread_create( &S.BarThread, NULL, awl_bar_run, NULL );
     if (s != 0)
         awl_err_printf( "pthread create: %s", strerror(s) );
@@ -524,48 +529,6 @@ static void bstack(Monitor *m) {
     }
 }
 
-/* static void bstackhoriz(Monitor *m) { */
-/*     awl_state_t* B = AWL_VTABLE_SYM.state; */
-/*     awl_config_t* C = &S; */
-/*     if (!B || !C) return; */
-
-/*     int w, mh, mx, tx, ty, th; */
-/*     unsigned int i, n = 0; */
-/*     Client *c; */
-
-/*     wl_list_for_each(c, &B->clients, link) */
-/*         if (c->visible && VISIBLEON(c, m) && !c->isfloating) */
-/*             n ++; */
-/*     if (n == 0) */
-/*         return; */
-
-/*     if ((int)n > m->nmaster) { */
-/*         mh = m->nmaster ? m->mfact * m->w.height : 0; */
-/*         th = (m->w.height - mh) / (n - m->nmaster); */
-/*         ty = m->w.y + mh; */
-/*     } else { */
-/*         th = mh = m->w.height; */
-/*         ty = m->w.y; */
-/*     } */
-
-/*     i = mx = 0; */
-/*     tx = m-> w.x; */
-/*     wl_list_for_each(c, &B->clients, link) { */
-/*         if (!c->visible || !VISIBLEON(c,m) || c->isfloating) */
-/*             continue; */
-/*         if ((int)i < m->nmaster) { */
-/*             w = (m->w.width - mx) / (MMIN((int)n, m->nmaster) - i); */
-/*             resize(c, (struct wlr_box) { .x = m->w.x + mx, .y = m->w.y, .width = w, .height = mh }, 0); */
-/*             mx += c->geom.width; */
-/*         } else { */
-/*             resize(c, (struct wlr_box) { .x = tx, .y = ty, .width = m->w.width, .height = th }, 0); */
-/*             if (th != m->w.height) */
-/*                 ty += c->geom.height; */
-/*         } */
-/*         i++; */
-/*     } */
-/* } */
-
 static void fibonacci(Monitor *mon, int s) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
     awl_config_t* C = &S;
@@ -633,10 +596,6 @@ static void fibonacci(Monitor *mon, int s) {
 static void dwindle(Monitor *mon) {
     fibonacci(mon, 1);
 }
-
-/* static void spiral(Monitor *mon) { */
-/*     fibonacci(mon, 0); */
-/* } */
 
 awl_vtable_t AWL_VTABLE_SYM = {
     .init = &awl_plugin_init,

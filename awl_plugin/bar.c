@@ -373,6 +373,7 @@ static uint32_t pulsewidget_draw( Bar* bar, uint32_t x, pixman_image_t* foregrou
 static void pulsewidget_scroll( Bar* bar, uint32_t pointer_x, int amount );
 static void pulsewidget_click( Bar* bar, uint32_t pointer_x, int button );
 static uint32_t ipwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
+static uint32_t tempwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
 static uint32_t separator_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
 static uint32_t statuswidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
 static void statuswidget_click( Bar* bar, uint32_t pointer_x, int button );
@@ -985,6 +986,10 @@ static void setup_bar(Bar *bar) {
         .callback_click = statuswidget_click,
     };
     bar->widgets_right[bar->n_widgets_right++] = (widget_t){
+        .draw = tempwidget_draw,
+        .width = TEXT_WIDTH( "CPU:45°C", -1, bar->textpadding ),
+    };
+    bar->widgets_right[bar->n_widgets_right++] = (widget_t){
         .draw = ipwidget_draw,
         .width = TEXT_WIDTH( "ipaddr", -1, bar->textpadding ),
     };
@@ -1355,6 +1360,20 @@ static uint32_t ipwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground,
         return TEXT_WIDTH( awl_ip.address_string, -1, bar->textpadding );
     }
     return TEXT_WIDTH( "ipaddr", -1, bar->textpadding );
+}
+
+static uint32_t tempwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
+    uint32_t y = (bar->height + font->ascent - font->descent) / 2;
+    uint32_t width = 0;
+    while (!awl_temp.ready) { usleep(10); }
+    for (int i=0; i<awl_temp.ntemps; ++i) {
+        char text[128] = {0};
+        snprintf( text, 127, "%s:%.0f°C", awl_temp.f_labels[awl_temp.idx[i]], awl_temp.temps[i] ); // TODO limits, colors
+        draw_text( text, x, y, foreground, background, &fg_color_status, &bg_color_status,
+                   bar->width, bar->height, bar->textpadding );
+        width += TEXT_WIDTH(text, -1, bar->textpadding);
+    }
+    return width;
 }
 
 static void pulsewidget_scroll( Bar* bar, uint32_t pointer_x, int amount ) {

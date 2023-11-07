@@ -6,6 +6,8 @@
 * CPU/RAM/SWAP widget
 * clock widget
 * pulseaudio widget
+* temperature widget
+* ip address widget
 * monokai colorscheme
 * some of the dwl patches included (layouts etc)
 
