@@ -115,6 +115,7 @@ typedef struct widget_t widget_t;
 struct widget_t {
     uint32_t width;
     uint32_t (*draw)(Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background);
+    void (*callback_view)(Bar* bar, uint32_t x_rel);
     void (*callback_click)(Bar* bar, uint32_t x_rel, int button);
     void (*callback_scroll)(Bar* bar, uint32_t x_rel, int amount);
 };
@@ -366,6 +367,7 @@ static void tagwidget_scroll( Bar* bar, uint32_t pointer_x, int amount );
 static void tagwidget_click( Bar* bar, uint32_t pointer_x, int button );
 static uint32_t layoutwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
 static void layoutwidget_scroll( Bar* bar, uint32_t pointer_x, int amount );
+static void layoutwidget_click( Bar* bar, uint32_t pointer_x, int button );
 static uint32_t clockwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
 static uint32_t pulsewidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
 static void pulsewidget_scroll( Bar* bar, uint32_t pointer_x, int amount );
@@ -376,6 +378,7 @@ static void statuswidget_click( Bar* bar, uint32_t pointer_x, int button );
 static uint32_t taskbarwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
 static void taskbarwidget_scroll( Bar* bar, uint32_t pointer_x, int amount );
 static void taskbarwidget_click( Bar* bar, uint32_t pointer_x, int button );
+static void taskbarwidget_view( Bar* bar, uint32_t pointer_x );
 
 static int draw_frame(Bar *bar) {
     /* Allocate buffer to be attached to the surface */
@@ -414,7 +417,8 @@ static int draw_frame(Bar *bar) {
     uint32_t x_end = bar->width;
     for (int w=0; w<bar->n_widgets_right; ++w) {
         if (bar->widgets_right[w].draw)
-            bar->widgets_right[w].width = bar->widgets_right[w].draw( bar, x_end - bar->widgets_right[w].width, foreground, background );
+            bar->widgets_right[w].width = bar->widgets_right[w].draw( bar, x_end - bar->widgets_right[w].width,
+                    foreground, background );
         x_end -= bar->widgets_right[w].width;
     }
 
@@ -583,17 +587,25 @@ static void pointer_motion(void *data, struct wl_pointer *pointer, uint32_t time
     (void)pointer;
     (void)time;
     Seat *seat = (Seat *)data;
+    Bar* bar = seat->bar;
+    if (!bar) return;
 
     seat->pointer_x = wl_fixed_to_int(surface_x);
     seat->pointer_y = wl_fixed_to_int(surface_y);
+
+    // center widget
+    if (bar->has_center_widget && bar->center_widget.callback_view &&
+        seat->pointer_x >= bar->center_widget_start/buffer_scale &&
+        seat->pointer_x <= (bar->center_widget_start+bar->center_widget_space)/buffer_scale)
+            bar->center_widget.callback_view( bar, seat->pointer_x - bar->center_widget_start/buffer_scale );
 }
 
 static void pointer_frame(void *data, struct wl_pointer *pointer) {
     (void)pointer;
+    if (!data) return;
     Seat *seat = (Seat *)data;
-
-    if (!seat->bar) return;
-
+    Bar* bar = seat->bar;
+    if (!bar) return;
     int discrete_event = 0;
     struct pointer_event* event = &seat->pointer_event;
     if (event->event_mask & POINTER_EVENT_AXIS_DISCRETE &&
@@ -601,8 +613,6 @@ static void pointer_frame(void *data, struct wl_pointer *pointer) {
         discrete_event = event->axes[WL_POINTER_AXIS_VERTICAL_SCROLL].discrete;
     }
     memset(event, 0, sizeof(*event));
-
-    Bar* bar = seat->bar;
 
     if (discrete_event) {
         // left widgets
@@ -628,9 +638,8 @@ static void pointer_frame(void *data, struct wl_pointer *pointer) {
             }
         }
         // center widget
-        if (bar->has_center_widget)
-            if (bar->center_widget.callback_scroll)
-                bar->center_widget.callback_scroll( bar, seat->pointer_x - c, discrete_event );
+        if (bar->has_center_widget && bar->center_widget.callback_scroll)
+            bar->center_widget.callback_scroll( bar, seat->pointer_x - c, discrete_event );
         return;
     }
 
@@ -658,9 +667,8 @@ static void pointer_frame(void *data, struct wl_pointer *pointer) {
             }
         }
         // center widget
-        if (bar->has_center_widget)
-            if (bar->center_widget.callback_click)
-                bar->center_widget.callback_click( bar, seat->pointer_x - c, seat->pointer_button );
+        if (bar->has_center_widget && bar->center_widget.callback_click)
+            bar->center_widget.callback_click( bar, seat->pointer_x - c, seat->pointer_button );
         seat->pointer_button = 0; return;
     }
 
@@ -851,8 +859,8 @@ static void dwl_wm_output_title_ary(void *data, struct zdwl_ipc_output_v2 *dwl_w
     Bar *bar = (Bar *)data;
 
     awl_title_t* titles = (awl_title_t*)ary->data;
-    bar->n_window_titles = ary->size / sizeof(awl_title_t);
     bar->window_titles = realloc(bar->window_titles, ary->size);
+    bar->n_window_titles = ary->size / sizeof(awl_title_t);
     if (bar->window_titles && titles)
         memcpy(bar->window_titles, titles, ary->size);
 }
@@ -941,6 +949,7 @@ static void setup_bar(Bar *bar) {
     bar->widgets_left[bar->n_widgets_left++] = (widget_t){
         .draw = layoutwidget_draw,
         .callback_scroll = layoutwidget_scroll,
+        .callback_click = layoutwidget_click,
     };
 
     // widgets aligned to the right
@@ -967,6 +976,7 @@ static void setup_bar(Bar *bar) {
     // central widget
     bar->center_widget = (widget_t){
         .draw = taskbarwidget_draw,
+        .callback_view = taskbarwidget_view,
         .callback_scroll = taskbarwidget_scroll,
         .callback_click = taskbarwidget_click,
     };
@@ -1284,6 +1294,17 @@ static void layoutwidget_scroll( Bar* bar, uint32_t pointer_x, int amount ) {
     bar->redraw = true;
 }
 
+static void layoutwidget_click( Bar* bar, uint32_t pointer_x, int button ) {
+    (void)bar;
+    (void)pointer_x;
+    switch (button) {
+        case BTN_LEFT: cycle_layout( &( (const Arg){.i=1} ) ); break;
+        case BTN_RIGHT: cycle_layout( &( (const Arg){.i=-1} ) ); break;
+        default: break;
+    }
+    bar->redraw = true;
+}
+
 static uint32_t clockwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
     if (awlb_date_txt)
@@ -1439,25 +1460,42 @@ static void taskbarwidget_scroll( Bar* bar, uint32_t pointer_x, int amount ) {
     bar->redraw = true;
 }
 
+static void taskbarwidget_view( Bar* bar, uint32_t pointer_x ) {
+    taskbarwidget_click( bar, pointer_x, 0 );
+}
+
 static void taskbarwidget_click( Bar* bar, uint32_t pointer_x, int button ) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_config_t* C = AWL_VTABLE_SYM.config;
+    if (!B || !C) return;
+
     uint32_t xspace = bar->center_widget_space;
-    uint32_t x = bar->center_widget_start;
-    pointer_x += bar->center_widget_start/buffer_scale;
+    uint32_t x = 0;
+    Client* c = NULL;
     window_array_to_list( bar, 1 );
     if (bar->cpy_n_window_list > 0) {
         uint32_t space_per_window = xspace / bar->cpy_n_window_list;
         uint32_t pad = xspace - space_per_window*bar->cpy_n_window_list;
-
         x += pad/2 + pad%2;
         for (awl_title_t* T = bar->cpy_window_list; T != NULL; T = T->hh.next) {
             if (pointer_x >= x/buffer_scale && pointer_x <= (x+space_per_window)/buffer_scale) {
-                // TODO toggle works, but update not
-                T->c->visible = !T->c->visible;
+                c = T->c;
+                if (button) c->visible = !c->visible;
                 goto taskbarwidget_click_return;
             }
+            x += space_per_window;
         }
     }
-    return;
 taskbarwidget_click_return:
-        HASH_CLEAR(hh, bar->cpy_window_list);
+    HASH_CLEAR(hh, bar->cpy_window_list);
+    if (c) {
+        bar->redraw = 1;
+        arrange(B->selmon);
+        if (button)
+            focusclient(c->visible ? c : focustop(B->selmon), 0);
+        else if (c->visible)
+            focusclient(c, 0);
+        printstatus();
+    }
+    return;
 }

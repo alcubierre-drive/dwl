@@ -1,6 +1,4 @@
 #include "init.h"
-#include "../awl_state.h"
-#include "../awl_extension.h"
 #include "../awl_log.h"
 #include "../awl_util.h"
 #include "bar.h"

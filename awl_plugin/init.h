@@ -1,9 +1,13 @@
 #pragma once
 
 #include "../awl_arg.h"
+#include "../awl_state.h"
+#include "../awl_extension.h"
 
 void cycle_tag( const Arg* arg );
 void cycle_layout( const Arg* arg );
+
+extern awl_vtable_t AWL_VTABLE_SYM;
 
 // awl.h functions with only their prototypes given here
 void focusstack( const Arg* arg );
