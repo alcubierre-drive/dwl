@@ -24,6 +24,7 @@ static awl_config_t S = {0};
 static void movestack( const Arg *arg );
 static void client_hide( const Arg* arg );
 static void tagmon_f( const Arg* arg );
+static void bordertoggle( const Arg* arg );
 
 static void gaplessgrid(Monitor *m);
 static void bstack(Monitor *m);
@@ -202,6 +203,7 @@ static void awl_plugin_init(void) {
     static const char *vol_mute_cmd[] = {"pactl", "set-sink-mute", "@DEFAULT_SINK@", "toggle", NULL};
     static const char *mic_mute_cmd[] = {"pactl", "set-source-mute", "@DEFAULT_SOURCE@", "toggle", NULL};
     static const char *vol_switch_cmd[] = {"pulse_port_switch", "-t", "-N", NULL};
+    static const char *screenshot_cmd[] = {"grim", NULL};
 
     static const char *display_cmd[] = {"wdisplays", NULL};
 
@@ -238,18 +240,19 @@ static void awl_plugin_init(void) {
     ADD_KEY( MODKEY_SH, XKB_KEY_J,          movestack,          {.i = +1} )
     ADD_KEY( MODKEY_SH, XKB_KEY_K,          movestack,          {.i = -1} )
 
+    ADD_KEY( MODKEY,    XKB_KEY_b,          bordertoggle,       {0} )
+
     ADD_KEY( 0, XKB_KEY_XF86MonBrightnessUp,    spawn,          {.v=brightness_p_cmd} )
     ADD_KEY( 0, XKB_KEY_XF86MonBrightnessDown,  spawn,          {.v=brightness_m_cmd} )
     ADD_KEY( 0, XKB_KEY_XF86AudioRaiseVolume,   spawn,          {.v=vol_p_cmd} )
     ADD_KEY( 0, XKB_KEY_XF86AudioLowerVolume,   spawn,          {.v=vol_m_cmd} )
     ADD_KEY( 0, XKB_KEY_XF86AudioMute,          spawn,          {.v=vol_mute_cmd} )
     ADD_KEY( 0, XKB_KEY_XF86AudioMicMute,       spawn,          {.v=mic_mute_cmd} )
+    ADD_KEY( 0, XKB_KEY_Print,                  spawn,          {.v=screenshot_cmd} );
     ADD_KEY( MODKEY, XKB_KEY_F1,                spawn,          {.v=vol_switch_cmd} )
     ADD_KEY( MODKEY, XKB_KEY_d,                 spawn,          {.v=display_cmd} );
-
+    ADD_KEY( 0, XKB_KEY_XF86Display,            spawn,          {.v=display_cmd} );
     // TODO missing
-    /* "killall arandr || arandr" */
-    /*   XF86Display */
     /* "systemctl --user stop backlight-tooler.timer; backlight-tooler -m toggle" */
     /*   XF86Favorites */
     /* "backlight-tooler -m auto" */
@@ -441,6 +444,19 @@ static void client_hide( const Arg* arg ) {
 static void tagmon_f( const Arg* arg ) {
     tagmon( arg );
     focusmon( arg );
+}
+
+static void bordertoggle( const Arg* arg ) {
+    (void)arg;
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_config_t* C = &S;
+    if (!B || !C) return;
+    Monitor* selmon = B->selmon;
+    if (!selmon) return;
+    Client* c = focustop(B->selmon);
+    if (!c) return;
+    c->bw = c->bw ? 0 : C->borderpx;
+    arrange(selmon);
 }
 
 static void gaplessgrid(Monitor *m) {
