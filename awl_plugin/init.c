@@ -54,8 +54,8 @@ static void awl_plugin_init(void) {
     S.borderpx = 2;
     COLOR_SET( S.bordercolor, molokai_light_gray );
     COLOR_SET( S.focuscolor, molokai_blue );
-    COLOR_SET( S.urgentcolor, molokai_red );
-    COLOR_SET( S.fullscreen_bg, molokai_green );
+    COLOR_SET( S.urgentcolor, molokai_orange );
+    COLOR_SET( S.fullscreen_bg, 0x00000000 );
 
     pixman_color_t c16 = {0};
 
