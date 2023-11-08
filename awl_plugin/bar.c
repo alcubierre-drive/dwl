@@ -383,7 +383,9 @@ static uint32_t ipwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground,
 
 static uint32_t tempwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
 
+#ifndef AWL_SKIP_BATWIDGET
 static uint32_t batwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
+#endif
 
 static uint32_t separator_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
 
@@ -1412,11 +1414,14 @@ static uint32_t tempwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foregroun
                     awl_temp.f_t_min[awl_temp.idx[i]], awl_temp.f_t_max[awl_temp.idx[i]] ) );
         draw_text( text, x, y, foreground, background, &fgcolor, &bg_color_status,
                    bar->width, bar->height, bar->textpadding );
-        width += TEXT_WIDTH(text, -1, bar->textpadding);
+        uint32_t w = TEXT_WIDTH(text, -1, bar->textpadding);
+        width += w;
+        x += w;
     }
     return width;
 }
 
+#ifndef AWL_SKIP_BATWIDGET
 static uint32_t batwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
     if (awl_bat.charging < 0) return 0;
@@ -1432,6 +1437,7 @@ static uint32_t batwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground
                bar->width, bar->height, bar->textpadding );
     return TEXT_WIDTH( text, -1, bar->textpadding );
 }
+#endif
 
 static void pulsewidget_scroll( Bar* bar, uint32_t pointer_x, int amount ) {
     (void)bar;

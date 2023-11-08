@@ -290,10 +290,20 @@ static void awl_plugin_init(void) {
     start_bat_thread( &awl_bat, 1 );
     awlb_direction = 0;
 
+    #ifndef AWL_CPU_THERMAL_ZONE
     strcpy( awl_temp.f_files[awl_temp.f_ntemps], "/sys/class/thermal/thermal_zone7/temp" );
+    #else // AWL_CPU_THERMAL_ZONE
+    strcpy( awl_temp.f_files[awl_temp.f_ntemps], "/sys/class/thermal/" AWL_CPU_THERMAL_ZONE "/temp" );
+    #endif // AWL_CPU_THERMAL_ZONE
     strcpy( awl_temp.f_labels[awl_temp.f_ntemps], "CPU" );
     awl_temp.f_t_max[awl_temp.f_ntemps] = 80;
     awl_temp.f_t_min[awl_temp.f_ntemps++] = 40;
+    #ifdef AWL_GPU_THERMAL_ZONE
+    strcpy( awl_temp.f_files[awl_temp.f_ntemps], "/sys/class/thermal/thermal_zone1/temp" );
+    strcpy( awl_temp.f_labels[awl_temp.f_ntemps], "GPU" );
+    awl_temp.f_t_max[awl_temp.f_ntemps] = 70;
+    awl_temp.f_t_min[awl_temp.f_ntemps++] = 40;
+    #endif // AWL_GPU_THERMAL_ZONE
     start_temp_thread( &awl_temp, 1 );
 
     int s = pthread_create( &S.BarThread, NULL, awl_bar_run, NULL );
