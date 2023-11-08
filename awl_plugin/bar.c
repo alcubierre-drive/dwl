@@ -1424,7 +1424,10 @@ static uint32_t batwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground
     char text[16] = {0};
     snprintf( text, 15, "%3.0f%%", awl_bat.charge * 100.0 );
 
-    pixman_color_t fgcolor = awl_bat.charging ? color_8bit_to_16bit( molokai_green ) : fg_color_status;
+    pixman_color_t fgcolor = fg_color_status;
+    if (awl_bat.charge < 0.3)   fgcolor = color_8bit_to_16bit( molokai_orange );
+    if (awl_bat.charge < 0.15)  fgcolor = color_8bit_to_16bit( molokai_red );
+    if (awl_bat.charging)       fgcolor = color_8bit_to_16bit( molokai_green );
     draw_text( text, x, y, foreground, background, &fgcolor, &bg_color_status,
                bar->width, bar->height, bar->textpadding );
     return TEXT_WIDTH( text, -1, bar->textpadding );

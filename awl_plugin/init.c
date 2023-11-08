@@ -101,7 +101,7 @@ static void awl_plugin_init(void) {
     ARRAY_APPEND(Rule, rules, "telegram", NULL, 1<<7, 0, -1 );
     // floating rules
     ARRAY_APPEND(Rule, rules, "nomacs", NULL, 0, 1, -1 );
-    ARRAY_APPEND(Rule, rules, NULL, "Figure", 0, 1, -1 );
+    ARRAY_APPEND(Rule, rules, "python3", "Figure", 0, 1, -1 );
     ARRAY_APPEND(Rule, rules, "wdisplays", NULL, 0, 1, -1 );
     // TODO tray application (RUST)
     ARRAY_APPEND(Rule, rules, "gtk-tray", "AWL", 0, 1, -1 );
