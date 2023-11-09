@@ -1167,7 +1167,7 @@ static void event_loop(void) {
         Bar *bar;
         wl_list_for_each(bar, &bar_list, link) {
             if (bar->redraw) {
-                if (!bar->hidden)
+                if (!bar->hidden && bar->configured)
                     draw_frame(bar);
                 bar->redraw = false;
             }

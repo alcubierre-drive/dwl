@@ -58,7 +58,7 @@ typedef struct {
     struct wl_pointer *wl_pointer;
     uint32_t registry_name;
 
-    SingleWindow *bar;
+    SingleWindow *win;
     uint32_t pointer_x, pointer_y;
     uint32_t pointer_button;
     double continuous_event;
@@ -74,6 +74,7 @@ struct Window {
     int has_init;
     int redraw_fd;
 
+    int only_current_output;
     int hidden;
     int running;
 
@@ -95,6 +96,17 @@ struct Window {
     struct wl_pointer_listener pointer_listener;
     struct wl_seat_listener seat_listener;
     struct wl_registry_listener registry_listener;
+
+    void (*draw)( SingleWindow* win, pixman_image_t* foreground, pixman_image_t* background );
+    void (*click)( SingleWindow* win, int button );
+    void (*scroll)( SingleWindow* win, int amount );
+
+    uint32_t width_want, height_want; // zero for auto/max
+    uint32_t anchor; // ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT
+    uint32_t layer; // ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY
+    char* name; // "awl_cal_popup"
+
+    double continuous_event_norm; // 10.0;
 };
 
 static int allocate_shm_file(size_t size) {
@@ -137,130 +149,123 @@ static void seat_capabilities(void *data, struct wl_seat *wl_seat,
           uint32_t capabilities);
 static void seat_name(void *data, struct wl_seat *wl_seat, const char *name);
 
-static void teardown_window(SingleWindow *bar);
+static void teardown_window(SingleWindow *win);
 static void teardown_seat(WaylandSeat *seat);
 
 void window_refresh( Window* w ) {
     if (!w->has_init) return;
-    SingleWindow* bar;
-    wl_list_for_each(bar, &w->window_list, link)
-        bar->redraw = 1;
+    SingleWindow* win;
+    wl_list_for_each(win, &w->window_list, link)
+        win->redraw = 1;
     eventfd_write(w->redraw_fd, 1);
 }
 
-void hide_window(SingleWindow *bar) {
-    if (!bar->hidden) {
-        zwlr_layer_surface_v1_destroy(bar->layer_surface);
-        wl_surface_destroy(bar->wl_surface);
+void hide_window(SingleWindow *win) {
+    if (!win->hidden) {
+        zwlr_layer_surface_v1_destroy(win->layer_surface);
+        wl_surface_destroy(win->wl_surface);
 
-        bar->configured = 0;
-        bar->hidden = 1;
+        win->configured = 0;
+        win->hidden = 1;
     }
 }
 
-
-static void draw_window(SingleWindow *bar) {
-    if (!bar) return;
-    Window* w = bar->parent;
+static void draw_window(SingleWindow *win) {
+    if (!win) return;
+    Window* w = win->parent;
     /* Allocate buffer to be attached to the surface */
-    int fd = allocate_shm_file(bar->bufsize);
+    int fd = allocate_shm_file(win->bufsize);
     if (fd == -1) return;
 
-    uint32_t *data = mmap(NULL, bar->bufsize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    uint32_t *data = mmap(NULL, win->bufsize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (data == MAP_FAILED) return;
 
-    struct wl_shm_pool *pool = wl_shm_create_pool(w->shm, fd, bar->bufsize);
-    struct wl_buffer* buffer = wl_shm_pool_create_buffer(pool, 0, bar->width, bar->height,
-        bar->stride, WL_SHM_FORMAT_ARGB8888);
+    struct wl_shm_pool *pool = wl_shm_create_pool(w->shm, fd, win->bufsize);
+    struct wl_buffer* buffer = wl_shm_pool_create_buffer(pool, 0, win->width, win->height,
+        win->stride, WL_SHM_FORMAT_ARGB8888);
     wl_shm_pool_destroy(pool);
     close(fd);
 
     // pixman image
-    pixman_image_t *final = pixman_image_create_bits(PIXMAN_a8r8g8b8, bar->width, bar->height, data, bar->width * 4);
+    pixman_image_t *final = pixman_image_create_bits(PIXMAN_a8r8g8b8, win->width, win->height, data, win->width * 4);
 
     // text layers
-    pixman_image_t *foreground = pixman_image_create_bits(PIXMAN_a8r8g8b8, bar->width, bar->height, NULL, bar->width * 4);
-    pixman_image_t *background = pixman_image_create_bits(PIXMAN_a8r8g8b8, bar->width, bar->height, NULL, bar->width * 4);
+    pixman_image_t *foreground = pixman_image_create_bits(PIXMAN_a8r8g8b8, win->width, win->height, NULL, win->width * 4);
+    pixman_image_t *background = pixman_image_create_bits(PIXMAN_a8r8g8b8, win->width, win->height, NULL, win->width * 4);
 
-    uint32_t x = 0;
-    uint32_t x_end = bar->width;
+    if (win->parent->draw) (*win->parent->draw)( win, foreground, background );
+    // XXX
+    pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &white, 1, &(pixman_box32_t){ .x1 = 0, .x2 = win->width, .y1 = 0, .y2 = win->height });
 
-    pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &white, 1, &(pixman_box32_t){ .x1 = x, .x2 = x_end, .y1 = 0, .y2 = bar->height });
-
-    /* Draw background and foreground on bar */
-    pixman_image_composite32(PIXMAN_OP_OVER, background, NULL, final, 0, 0, 0, 0, 0, 0, bar->width, bar->height);
-    pixman_image_composite32(PIXMAN_OP_OVER, foreground, NULL, final, 0, 0, 0, 0, 0, 0, bar->width, bar->height);
+    /* Draw background and foreground on win */
+    pixman_image_composite32(PIXMAN_OP_OVER, background, NULL, final, 0, 0, 0, 0, 0, 0, win->width, win->height);
+    pixman_image_composite32(PIXMAN_OP_OVER, foreground, NULL, final, 0, 0, 0, 0, 0, 0, win->width, win->height);
 
     pixman_image_unref(foreground);
     pixman_image_unref(background);
     pixman_image_unref(final);
 
-    munmap(data, bar->bufsize);
-    wl_surface_set_buffer_scale(bar->wl_surface, w->buffer_scale);
-    wl_surface_attach(bar->wl_surface, buffer, 0, 0);
-    wl_surface_damage_buffer(bar->wl_surface, 0, 0, bar->width, bar->height);
-    wl_surface_commit(bar->wl_surface);
+    munmap(data, win->bufsize);
+    wl_surface_set_buffer_scale(win->wl_surface, w->buffer_scale);
+    wl_surface_attach(win->wl_surface, buffer, 0, 0);
+    wl_surface_damage_buffer(win->wl_surface, 0, 0, win->width, win->height);
+    wl_surface_commit(win->wl_surface);
 }
 
 static void window_layer_surface_configure(void *data, struct zwlr_layer_surface_v1 *surface,
             uint32_t serial, uint32_t w, uint32_t h) {
-    SingleWindow *bar = data;
+    SingleWindow *win = data;
 
-    w = w * bar->parent->buffer_scale;
-    h = h * bar->parent->buffer_scale;
+    w = w * win->parent->buffer_scale;
+    h = h * win->parent->buffer_scale;
 
     zwlr_layer_surface_v1_ack_configure(surface, serial);
 
-    if (bar->configured && w == bar->width && h == bar->height)
+    if (win->configured && w == win->width && h == win->height)
         return;
 
-    bar->width = w;
-    bar->height = h;
-    bar->stride = bar->width * 4;
-    bar->bufsize = bar->stride * bar->height;
-    bar->configured = 1;
+    win->width = w;
+    win->height = h;
+    win->stride = win->width * 4;
+    win->bufsize = win->stride * win->height;
+    win->configured = 1;
 
-    draw_window(bar);
+    draw_window(win);
 }
 
 static void window_layer_surface_closed(void *data, struct zwlr_layer_surface_v1 *surface) {
     (void)surface;
-    SingleWindow *bar = data;
-    bar->parent->running = 0;
+    SingleWindow *win = data;
+    hide_window(win);
 }
 
-static void show_window(SingleWindow *bar) {
-    Window* w = bar->parent;
-    bar->wl_surface = wl_compositor_create_surface(w->compositor);
-    if (!bar->wl_surface)
+static void show_window(SingleWindow *win) {
+    Window* w = win->parent;
+    win->wl_surface = wl_compositor_create_surface(w->compositor);
+    if (!win->wl_surface)
         fprintf( stderr, "Could not create wl_surface" );
 
-    bar->layer_surface = zwlr_layer_shell_v1_get_layer_surface(w->layer_shell,
-            bar->wl_surface, bar->wl_output, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY,
-            "awl_cal_popup");
-    if (!bar->layer_surface)
+    win->layer_surface = zwlr_layer_shell_v1_get_layer_surface(w->layer_shell,
+            win->wl_surface, win->wl_output, w->layer, w->name);
+    if (!win->layer_surface)
         fprintf( stderr, "Could not create layer_surface" );
-    zwlr_layer_surface_v1_add_listener(bar->layer_surface, &w->layer_surface_listener, bar);
+    zwlr_layer_surface_v1_add_listener(win->layer_surface, &w->layer_surface_listener, win);
 
-    /* zwlr_layer_surface_v1_set_size(bar->layer_surface, 0, 0); */
-    // TODO
-    zwlr_layer_surface_v1_set_size(bar->layer_surface, 128, 128);
-                                   //bar->width/buffer_scale, 0);
-                                   //bar->height/buffer_scale);
-    zwlr_layer_surface_v1_set_anchor(bar->layer_surface, ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM|
-                                                         ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
-    /* zwlr_layer_surface_v1_set_exclusive_zone(bar->layer_surface, bar->height / buffer_scale); */
-    wl_surface_commit(bar->wl_surface);
-    bar->hidden = 0;
+    zwlr_layer_surface_v1_set_size(win->layer_surface, w->width_want/w->buffer_scale, w->height_want/w->buffer_scale);
+    zwlr_layer_surface_v1_set_anchor(win->layer_surface, w->anchor);
+    /* zwlr_layer_surface_v1_set_exclusive_zone(win->layer_surface, win->height / buffer_scale); */
+    wl_surface_commit(win->wl_surface);
+    win->hidden = 0;
 }
 
-static void setup_window(Window* w, SingleWindow *bar) {
-    bar->hidden = w->hidden;
-    if (!bar->hidden)
-        show_window(bar);
+static void setup_window(Window* w, SingleWindow *win) {
+    win->hidden = w->hidden;
+    if (!win->hidden)
+        show_window(win);
 }
 
 static void window_handle_global(void *data, struct wl_registry *registry, uint32_t name, const char *interface, uint32_t version) {
+    DBG_MSG("%p %p %i %s %i", data, registry, name, interface, version);
     (void)version;
     Window* w = data;
     if (!strcmp(interface, wl_compositor_interface.name)) {
@@ -270,34 +275,58 @@ static void window_handle_global(void *data, struct wl_registry *registry, uint3
     } else if (!strcmp(interface, zwlr_layer_shell_v1_interface.name)) {
         w->layer_shell = wl_registry_bind(registry, name, &zwlr_layer_shell_v1_interface, 1);
     } else if (!strcmp(interface, wl_output_interface.name)) {
-        SingleWindow *bar = calloc(1, sizeof(SingleWindow));
-        bar->parent = w;
-        bar->registry_name = name;
-        bar->wl_output = wl_registry_bind(registry, name, &wl_output_interface, 1);
-        if (w->running)
-            setup_window(w, bar);
-        wl_list_insert(&w->window_list, &bar->link);
+        if (w->only_current_output) {
+            if (!wl_list_length(&w->window_list)) {
+                SingleWindow *win = calloc(1, sizeof(SingleWindow));
+                win->parent = w;
+                win->registry_name = name;
+                if (w->running)
+                    setup_window(w, win);
+                wl_list_insert(&w->window_list, &win->link);
+            }
+        } else {
+            SingleWindow *win = calloc(1, sizeof(SingleWindow));
+            win->parent = w;
+            win->registry_name = name;
+            win->wl_output = wl_registry_bind(registry, name, &wl_output_interface, 1);
+            if (w->running)
+                setup_window(w, win);
+            wl_list_insert(&w->window_list, &win->link);
+        }
     } else if (!strcmp(interface, wl_seat_interface.name)) {
-        WaylandSeat *seat = calloc(1, sizeof(WaylandSeat));
-        seat->continuous_event = 0.0;
-        seat->continuous_event_norm = 10.0; // TODO change this somewhere?
-        seat->parent = w;
-        seat->registry_name = name;
-        seat->wl_seat = wl_registry_bind(registry, name, &wl_seat_interface, 7);
-        wl_seat_add_listener(seat->wl_seat, &w->seat_listener, seat);
-        wl_list_insert(&w->seat_list, &seat->link);
+        if (w->only_current_output) {
+            if (!wl_list_length(&w->seat_list)) {
+                WaylandSeat *seat = calloc(1, sizeof(WaylandSeat));
+                seat->continuous_event = 0.0;
+                seat->continuous_event_norm = w->continuous_event_norm;
+                seat->parent = w;
+                seat->registry_name = name;
+                seat->wl_seat = wl_registry_bind(registry, name, &wl_seat_interface, 7);
+                wl_seat_add_listener(seat->wl_seat, &w->seat_listener, seat);
+                wl_list_insert(&w->seat_list, &seat->link);
+            }
+        } else {
+            WaylandSeat *seat = calloc(1, sizeof(WaylandSeat));
+            seat->continuous_event = 0.0;
+            seat->continuous_event_norm = w->continuous_event_norm;
+            seat->parent = w;
+            seat->registry_name = name;
+            seat->wl_seat = wl_registry_bind(registry, name, &wl_seat_interface, 7);
+            wl_seat_add_listener(seat->wl_seat, &w->seat_listener, seat);
+            wl_list_insert(&w->seat_list, &seat->link);
+        }
     }
 }
 
 static void window_handle_global_remove(void *data, struct wl_registry *registry, uint32_t name) {
     (void)registry;
     Window* w = data;
-    SingleWindow *bar;
+    SingleWindow *win;
     WaylandSeat *seat;
-    wl_list_for_each(bar, &w->window_list, link) {
-        if (bar->registry_name == name) {
-            wl_list_remove(&bar->link);
-            teardown_window(bar);
+    wl_list_for_each(win, &w->window_list, link) {
+        if (win->registry_name == name) {
+            wl_list_remove(&win->link);
+            teardown_window(win);
             return;
         }
     }
@@ -315,7 +344,21 @@ Window* window_setup( void ) {
     Window* w = calloc(1, sizeof(Window));
     w->buffer_scale = 2;
     w->redraw_fd = -1;
+
+    // XXX change setup to be a bit more convenient
     w->hidden = 1;
+    w->width_want = 128;
+    w->height_want = 128;
+    w->anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT|ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
+    w->layer = ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY;
+    w->name = calloc(1,128);
+    strcpy(w->name, "awl_cal_popup");
+    w->continuous_event_norm = 10.0;
+    w->only_current_output = 1;
+
+    w->layer = ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND;
+    w->width_want = w->height_want = 0;
+
     w->display = wl_display_connect(NULL);
     if (!w->display) fprintf(stderr, "Failed to create display");
     wl_list_init(&w->window_list);
@@ -351,10 +394,10 @@ Window* window_setup( void ) {
     if (!w->compositor || !w->shm || !w->layer_shell)
         fprintf( stderr, "Compositor does not support all needed protocols" );
 
-    /* Setup bars */
-    SingleWindow* bar;
-    wl_list_for_each(bar, &w->window_list, link)
-        setup_window(w, bar);
+    /* Setup windows */
+    SingleWindow* win;
+    wl_list_for_each(win, &w->window_list, link)
+        setup_window(w, win);
     wl_display_roundtrip(w->display);
 
     w->redraw_fd = eventfd(0,0);
@@ -389,12 +432,12 @@ static void window_event_loop(Window* w) {
             eventfd_read(w->redraw_fd, &val);
         }
 
-        SingleWindow *bar;
-        wl_list_for_each(bar, &w->window_list, link) {
-            if (bar->redraw) {
-                if (!bar->hidden && bar->configured)
-                    draw_window(bar);
-                bar->redraw = 0;
+        SingleWindow *win;
+        wl_list_for_each(win, &w->window_list, link) {
+            if (win->redraw) {
+                if (!win->hidden && win->configured)
+                    draw_window(win);
+                win->redraw = 0;
             }
         }
     }
@@ -406,10 +449,10 @@ void window_destroy( Window* w ) {
     eventfd_write(w->redraw_fd, 1);
     if (w->redraw_fd != -1) close( w->redraw_fd );
 
-    SingleWindow *bar, *bar2;
+    SingleWindow *win, *win2;
     WaylandSeat *seat, *seat2;
-    wl_list_for_each_safe(bar, bar2, &w->window_list, link)
-        teardown_window(bar);
+    wl_list_for_each_safe(win, win2, &w->window_list, link)
+        teardown_window(win);
     wl_list_for_each_safe(seat, seat2, &w->seat_list, link)
         teardown_seat(seat);
 
@@ -418,6 +461,7 @@ void window_destroy( Window* w ) {
     wl_shm_destroy(w->shm);
     wl_compositor_destroy(w->compositor);
     wl_display_disconnect(w->display);
+    if (w->name) free(w->name);
     free(w);
 }
 
@@ -432,11 +476,13 @@ static void* thrf( void* arg ) {
         }
         hide_window(www);
         window_refresh(w);
-        sleep(1);
+        usleep(2.e5);
         show_window(www);
         window_refresh(w);
-        sleep(1);
+        usleep(2.e5);
     }
+    w->running = 0;
+    window_refresh(w);
     return NULL;
 }
 int main( void ) {
@@ -460,11 +506,11 @@ static void pointer_enter(void *data, struct wl_pointer *pointer,
     WaylandSeat *seat = (WaylandSeat *)data;
     Window* wp = seat->parent;
 
-    seat->bar = NULL;
-    SingleWindow *bar;
-    wl_list_for_each(bar, &wp->window_list, link) {
-        if (bar->wl_surface == surface) {
-            seat->bar = bar;
+    seat->win = NULL;
+    SingleWindow *win;
+    wl_list_for_each(win, &wp->window_list, link) {
+        if (win->wl_surface == surface) {
+            seat->win = win;
             break;
         }
     }
@@ -494,7 +540,7 @@ static void pointer_leave(void *data, struct wl_pointer *pointer,
     (void)surface;
     WaylandSeat *seat = (WaylandSeat *)data;
 
-    seat->bar = NULL;
+    seat->win = NULL;
 }
 
 static void pointer_button(void *data, struct wl_pointer *pointer, uint32_t serial,
@@ -512,8 +558,8 @@ static void pointer_motion(void *data, struct wl_pointer *pointer, uint32_t time
     (void)pointer;
     (void)time;
     WaylandSeat *seat = (WaylandSeat *)data;
-    SingleWindow* bar = seat->bar;
-    if (!bar) return;
+    SingleWindow* win = seat->win;
+    if (!win) return;
 
     seat->pointer_x = wl_fixed_to_int(surface_x);
     seat->pointer_y = wl_fixed_to_int(surface_y);
@@ -523,8 +569,8 @@ static void pointer_frame(void *data, struct wl_pointer *pointer) {
     (void)pointer;
     if (!data) return;
     WaylandSeat *seat = data;
-    SingleWindow* bar = seat->bar;
-    if (!bar) return;
+    SingleWindow* win = seat->win;
+    if (!win) return;
     int discrete_event = 0;
     struct PointerEvent* event = &seat->pointer_event;
     if (event->event_mask & (POINTER_EVENT_AXIS_DISCRETE|POINTER_EVENT_AXIS) &&
@@ -539,13 +585,10 @@ static void pointer_frame(void *data, struct wl_pointer *pointer) {
         }
     }
     memset(event, 0, sizeof(*event));
-    if (discrete_event) {
-        fprintf(stderr, "discrete_event %i\n", discrete_event);
-    }
 
-    if (seat->pointer_button) {
-        fprintf(stderr, "button event %i\n", seat->pointer_button);
-    }
+    Window* w = seat->parent;
+    if (discrete_event && w->scroll) (*w->scroll)(win, discrete_event);
+    if (seat->pointer_button && w->click) (*w->click)(win, seat->pointer_button);
 
 }
 
@@ -613,13 +656,13 @@ static void seat_name(void *data, struct wl_seat *wl_seat, const char *name) {
     (void)name;
 }
 
-static void teardown_window(SingleWindow *bar) {
-    if (!bar->hidden) {
-        zwlr_layer_surface_v1_destroy(bar->layer_surface);
-        wl_surface_destroy(bar->wl_surface);
+static void teardown_window(SingleWindow *win) {
+    if (!win->hidden) {
+        zwlr_layer_surface_v1_destroy(win->layer_surface);
+        wl_surface_destroy(win->wl_surface);
     }
-    wl_output_destroy(bar->wl_output);
-    free(bar);
+    if (win->wl_output) wl_output_destroy(win->wl_output);
+    free(win);
 }
 
 static void teardown_seat(WaylandSeat *seat) {
