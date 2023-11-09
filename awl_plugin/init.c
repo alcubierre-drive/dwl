@@ -312,7 +312,10 @@ static void awl_plugin_init(void) {
         awl_err_printf( "pthread create: %s", strerror(s) );
     pthread_create( &S.BarRefreshThread, NULL, awl_bar_refresh, &_refresh_sec );
 
-    wallpaper_init( "/home/lennart/Wallpapers/Castello.png" );
+    char wpname[1024];
+    strcpy( wpname, getenv("HOME") );
+    strcat( wpname, "/Wallpapers/Castello.png" );
+    wallpaper_init( wpname );
 }
 
 static void awl_plugin_free(void) {
