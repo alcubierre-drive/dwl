@@ -71,7 +71,10 @@ static void* ip_thread_run( void* arg ) {
                 addr += strlen(addr);
             }
         }
-
+        if (!*ip->address_string) {
+            ip->is_online = 0;
+            strcat(ip->address_string, "invalid");
+        }
 loopend:
         ip->ready = 1;
         freeifaddrs(ifaddr);

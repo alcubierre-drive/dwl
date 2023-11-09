@@ -44,11 +44,6 @@ pixman_image_t * awl_png_load(FILE *fp, const char *path) {
         goto err;
     }
 
-    if (setjmp(png_jmpbuf(png_ptr))) {
-        awl_err_printf("%s: libpng error", path);
-        goto err;
-    }
-
     png_init_io(png_ptr, fp);
     png_set_sig_bytes(png_ptr, 8);
 
@@ -72,7 +67,7 @@ pixman_image_t * awl_png_load(FILE *fp, const char *path) {
 
     /* Tell libpng to expand to RGB(A) when necessary, and tell pixman
      * whether we have alpha or not */
-    pixman_format_code_t format;
+    pixman_format_code_t format = {0};
     switch (color_type) {
     case PNG_COLOR_TYPE_GRAY:
     case PNG_COLOR_TYPE_GRAY_ALPHA:
