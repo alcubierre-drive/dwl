@@ -6,6 +6,7 @@
 #include "stats.h"
 #include "pulsetest.h"
 #include "temp.h"
+#include "wallpaper.h"
 
 #define COLOR_SET( C, hex ) \
     { C[0] = ((hex >> 24) & 0xFF) / 255.0f; \
@@ -310,6 +311,8 @@ static void awl_plugin_init(void) {
     if (s != 0)
         awl_err_printf( "pthread create: %s", strerror(s) );
     pthread_create( &S.BarRefreshThread, NULL, awl_bar_refresh, &_refresh_sec );
+
+    wallpaper_init( "/home/lennart/Wallpapers/Castello.png" );
 }
 
 static void awl_plugin_free(void) {
@@ -330,6 +333,8 @@ static void awl_plugin_free(void) {
     awlb_pulse_info = NULL;
     pthread_cancel( S.BarRefreshThread );
     awl_log_printf( "cancel bar refresh thread" );
+
+    wallpaper_destroy();
 
     awl_state_t* B = AWL_VTABLE_SYM.state;
     awl_log_printf( "cleanup vtable state: %p", B );

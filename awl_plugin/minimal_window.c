@@ -179,10 +179,6 @@ static void draw_window(AWL_SingleWindow *win) {
     pixman_image_t *background = pixman_image_create_bits(PIXMAN_a8r8g8b8, win->width, win->height, NULL, win->width * 4);
 
     if (win->parent->draw) (*win->parent->draw)( win, foreground, background );
-    // XXX omit this weird filling of alpha/white stuff :)
-    pixman_color_t white = {.red = 0xAAAA, .green = 0xAAAA, .blue = 0xAAAA, .alpha = 0xAAAA};
-    pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &white, 1, &(pixman_box32_t){
-            .x1 = 0, .x2 = win->width, .y1 = 0, .y2 = win->height });
 
     /* Draw background and foreground on win */
     pixman_image_composite32(PIXMAN_OP_OVER, background, NULL, final, 0, 0, 0, 0, 0, 0, win->width, win->height);
@@ -344,6 +340,9 @@ AWL_Window* awl_minimal_window_setup( const awl_minimal_window_props_t* props ) 
         w->name = strdup(props->name);
     w->continuous_event_norm = props->continuous_event_norm;
     w->only_current_output = props->only_current_output;
+    w->draw = props->draw;
+    w->click = props->click;
+    w->scroll = props->scroll;
 
     w->display = wl_display_connect(NULL);
     if (!w->display) fprintf(stderr, "Failed to create display");
