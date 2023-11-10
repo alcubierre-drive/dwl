@@ -74,8 +74,7 @@ static const awl_minimal_window_props_t awl_minimal_window_props_defaults = {
 };
 
 AWL_Window* awl_minimal_window_setup( const awl_minimal_window_props_t* props );
-void awl_minimal_window_event_loop_start( AWL_Window* w );
-void awl_minimal_window_event_loop_stop( AWL_Window* w );
+void awl_minimal_window_wait_ready( AWL_Window* w );
 
 void awl_minimal_window_hide( AWL_Window* w );
 void awl_minimal_window_show( AWL_Window* w );
@@ -86,12 +85,9 @@ void awl_minimal_window_destroy( AWL_Window* w );
 /*
 int main() {
     AWL_Window* w = awl_minimal_window_setup( NULL );
-    awl_minimal_window_event_loop_start( w );
-
     sleep(1);
     awl_minimal_window_show( w );
     sleep(1);
-
     awl_minimal_window_destroy( w );
     return 0;
 }

@@ -322,6 +322,7 @@ static void window_handle_global_remove(void *data, struct wl_registry *registry
     }
 }
 
+static void* awl_minimal_window_event_loop_thread( void* arg );
 
 AWL_Window* awl_minimal_window_setup( const awl_minimal_window_props_t* props ) {
     if (!props)
@@ -343,7 +344,11 @@ AWL_Window* awl_minimal_window_setup( const awl_minimal_window_props_t* props ) 
     w->draw = props->draw;
     w->click = props->click;
     w->scroll = props->scroll;
+    pthread_create( &w->event_thread, NULL, awl_minimal_window_event_loop_thread, w );
+    return w;
+}
 
+static void awl_minimal_window_setup_async( AWL_Window* w ) {
     w->display = wl_display_connect(NULL);
     if (!w->display) fprintf(stderr, "Failed to create display");
     wl_list_init(&w->window_list);
@@ -387,12 +392,13 @@ AWL_Window* awl_minimal_window_setup( const awl_minimal_window_props_t* props ) 
 
     w->redraw_fd = eventfd(0,0);
     w->has_init = 1;
-
-    return w;
 }
 
 static void* awl_minimal_window_event_loop_thread( void* arg ) {
     AWL_Window* w = arg;
+    awl_minimal_window_setup_async( w );
+    w->running = 1;
+
     int wl_fd = wl_display_get_fd(w->display);
 
     while (w->running) {
@@ -430,17 +436,13 @@ static void* awl_minimal_window_event_loop_thread( void* arg ) {
     return NULL;
 }
 
-void awl_minimal_window_event_loop_start( AWL_Window* w ) {
-    if (!w->running) {
-        w->running = 1;
-        pthread_create( &w->event_thread, NULL, awl_minimal_window_event_loop_thread, w );
-    } else {
-        fprintf( stderr, "event loop already running\n" );
-    }
-}
-
 void awl_minimal_window_destroy( AWL_Window* w ) {
-    if (w->running) awl_minimal_window_event_loop_stop( w );
+    awl_minimal_window_wait_ready(w);
+    if (w->running) {
+        w->running = 0;
+        awl_minimal_window_refresh(w);
+        pthread_join( w->event_thread, NULL );
+    }
     w->has_init = 0;
     eventfd_write(w->redraw_fd, 1);
     if (w->redraw_fd != -1) close( w->redraw_fd );
@@ -636,6 +638,7 @@ static void teardown_seat(WaylandSeat *seat) {
 }
 
 void awl_minimal_window_hide( AWL_Window* w ) {
+    awl_minimal_window_wait_ready(w);
     AWL_SingleWindow* win;
     wl_list_for_each(win, &w->window_list, link) {
         hide_window(win);
@@ -644,6 +647,7 @@ void awl_minimal_window_hide( AWL_Window* w ) {
 }
 
 void awl_minimal_window_show( AWL_Window* w ) {
+    awl_minimal_window_wait_ready(w);
     AWL_SingleWindow* win;
     wl_list_for_each(win, &w->window_list, link) {
         show_window(win);
@@ -651,12 +655,7 @@ void awl_minimal_window_show( AWL_Window* w ) {
     awl_minimal_window_refresh(w);
 }
 
-void awl_minimal_window_event_loop_stop( AWL_Window* w ) {
-    if (w->running) {
-        w->running = 0;
-        awl_minimal_window_refresh(w);
-        pthread_join( w->event_thread, NULL );
-    } else {
-        fprintf( stderr, "no event loop running\n" );
-    }
+void awl_minimal_window_wait_ready( AWL_Window* w ) {
+    while (!w->has_init) usleep(1000);
 }
+
