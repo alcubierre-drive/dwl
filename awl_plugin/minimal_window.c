@@ -8,6 +8,8 @@
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <pthread.h>
+#include "../awl_log.h"
+#include "../awl.h"
 
 #include "xdg-shell-protocol.h"
 
@@ -226,13 +228,13 @@ static void show_window(AWL_SingleWindow *win) {
     AWL_Window* w = win->parent;
     win->wl_surface = wl_compositor_create_surface(w->compositor);
     if (!win->wl_surface)
-        fprintf( stderr, "Could not create wl_surface" );
+        awl_err_printf( "Could not create wl_surface" );
 
     static const char default_name[] = "awl_window";
     win->layer_surface = zwlr_layer_shell_v1_get_layer_surface(w->layer_shell,
             win->wl_surface, win->wl_output, w->layer, w->name ? w->name : default_name);
     if (!win->layer_surface)
-        fprintf( stderr, "Could not create layer_surface" );
+        awl_err_printf( "Could not create layer_surface" );
     zwlr_layer_surface_v1_add_listener(win->layer_surface, &w->layer_surface_listener, win);
 
     zwlr_layer_surface_v1_set_size(win->layer_surface, w->width_want/w->buffer_scale, w->height_want/w->buffer_scale);
@@ -349,8 +351,9 @@ AWL_Window* awl_minimal_window_setup( const awl_minimal_window_props_t* props ) 
 }
 
 static void awl_minimal_window_setup_async( AWL_Window* w ) {
+    while (!awl_is_ready()) usleep(100);
     w->display = wl_display_connect(NULL);
-    if (!w->display) fprintf(stderr, "Failed to create display");
+    if (!w->display) awl_err_printf("Failed to create display");
     wl_list_init(&w->window_list);
     wl_list_init(&w->seat_list);
     w->registry = wl_display_get_registry(w->display);
@@ -382,7 +385,7 @@ static void awl_minimal_window_setup_async( AWL_Window* w ) {
     wl_display_roundtrip(w->display);
 
     if (!w->compositor || !w->shm || !w->layer_shell)
-        fprintf( stderr, "Compositor does not support all needed protocols" );
+        awl_err_printf( "Compositor does not support all needed protocols" );
 
     /* Setup windows */
     AWL_SingleWindow* win;
@@ -414,7 +417,7 @@ static void* awl_minimal_window_event_loop_thread( void* arg ) {
             if (errno == EINTR)
                 continue;
             else
-                fprintf( stderr, "select" );
+                awl_err_printf( "select" );
         }
         if (FD_ISSET(wl_fd, &rfds))
             if (wl_display_dispatch(w->display) == -1)
