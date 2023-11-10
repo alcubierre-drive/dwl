@@ -67,6 +67,14 @@ static void* wp_idx_thread_fun( void* arg ) {
     return NULL;
 }
 
+static void wallpaper_click( AWL_SingleWindow* win, int button ) {
+    (void)win;
+    (void)button;
+    int idx = (wallpaper_index+1)%wallpaper_number;
+    wallpaper_index = idx;
+    awl_minimal_window_refresh(w);
+}
+
 void wallpaper_init( const char* fname, int update_seconds ) {
     if (glob( fname, 0, NULL, &wallpaper_glob ))
         wallpaper_number = 0;
@@ -80,6 +88,7 @@ void wallpaper_init( const char* fname, int update_seconds ) {
     p.name = fname;
     p.only_current_output = 0;
     p.draw = wallpaper_draw;
+    p.click = wallpaper_click;
 
     wp_idx_thread_update = update_seconds;
     pthread_create( &wp_idx_thread, NULL, &wp_idx_thread_fun, NULL );

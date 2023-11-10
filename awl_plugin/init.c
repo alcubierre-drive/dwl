@@ -65,10 +65,10 @@ static void awl_plugin_init(void) {
     c16 = color_8bit_to_16bit( molokai_orange );
     c16.alpha = 0x7777;
     bg_color_tags_occ = c16;
-    c16 = color_8bit_to_16bit( molokai_red );
+    c16 = color_8bit_to_16bit( molokai_purple );
     c16.alpha = 0x7777;
     bg_color_tags_act = c16;
-    c16 = color_8bit_to_16bit( molokai_purple );
+    c16 = color_8bit_to_16bit( molokai_red );
     c16.alpha = 0x7777;
     bg_color_tags_urg = c16;
     c16 = color_8bit_to_16bit( molokai_purple );
