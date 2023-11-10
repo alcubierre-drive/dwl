@@ -314,8 +314,8 @@ static void awl_plugin_init(void) {
 
     char wpname[1024];
     strcpy( wpname, getenv("HOME") );
-    strcat( wpname, "/Wallpapers/Castello.png" );
-    wallpaper_init( wpname );
+    strcat( wpname, "/Wallpapers/*.png" );
+    wallpaper_init( wpname, 1800 );
 }
 
 static void awl_plugin_free(void) {
