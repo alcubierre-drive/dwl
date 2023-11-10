@@ -8,6 +8,20 @@
 #include "temp.h"
 #include "wallpaper.h"
 
+static awl_config_t S = {0};
+
+awl_config_t* awl_plugin_config( void ) {
+    return &S;
+}
+
+awl_state_t* awl_plugin_state( void ) {
+    return AWL_VTABLE_SYM.state;
+}
+
+awl_plugin_data_t* awl_plugin_data( void ) {
+    return S.P;
+}
+
 #define COLOR_SET( C, hex ) \
     { C[0] = ((hex >> 24) & 0xFF) / 255.0f; \
       C[1] = ((hex >> 16) & 0xFF) / 255.0f; \
@@ -19,23 +33,55 @@
 #define ARRAY_INIT( type, ary, capacity ) S. ary = (type*)ecalloc( capacity, sizeof(type) );
 #define ARRAY_APPEND( type, ary, ... ) S. ary[S.n_##ary ++] = (type){__VA_ARGS__};
 
-extern awl_vtable_t AWL_VTABLE_SYM;
-static awl_config_t S = {0};
-
 static void movestack( const Arg *arg );
 static void client_hide( const Arg* arg );
 static void tagmon_f( const Arg* arg );
 static void bordertoggle( const Arg* arg );
+static void cycle_tag( const Arg* arg );
+static void cycle_layout( const Arg* arg );
 
 static void gaplessgrid(Monitor *m);
 static void bstack(Monitor *m);
 static void dwindle(Monitor *mon);
 
-awl_temperature_t awl_temp = {0};
-awl_ipaddr_t awl_ip = {0};
-awl_battery_t awl_bat = {0};
-static float _cpu[128] = {0}, _mem[128] = {0}, _swp[128] = {0};
-static float _refresh_sec = 0.2;
+static void setup_bar_colors( void ) {
+    pixman_color_t c16 = {0};
+    // tag colors
+    barcolors.bg_tags = color_8bit_to_16bit( molokai_dark_gray );
+    c16 = color_8bit_to_16bit( molokai_orange );
+    c16.alpha = 0x7777;
+    barcolors.bg_tags_occ = c16;
+    c16 = color_8bit_to_16bit( molokai_purple );
+    c16.alpha = 0x7777;
+    barcolors.bg_tags_act = c16;
+    c16 = color_8bit_to_16bit( molokai_red );
+    c16.alpha = 0x7777;
+    barcolors.bg_tags_urg = c16;
+    c16 = color_8bit_to_16bit( molokai_purple );
+    c16.alpha = 0x2222;
+    barcolors.fg_tags = alpha_blend_16( white, c16 );
+
+    // status/layout colors
+    barcolors.bg_status = barcolors.bg_lay = color_8bit_to_16bit( molokai_light_gray );
+    barcolors.fg_status = barcolors.fg_lay = barcolors.fg_tags;
+
+    // window colors
+    c16 = color_8bit_to_16bit( molokai_purple );
+    c16.alpha = 0x4444;
+    barcolors.bg_win = alpha_blend_16( color_8bit_to_16bit(molokai_dark_gray), c16 );
+    c16.alpha = 0x9999;
+    barcolors.bg_win_act = alpha_blend_16( color_8bit_to_16bit(molokai_dark_gray), c16 );
+    barcolors.bg_win_urg = barcolors.bg_tags_occ;
+    barcolors.bg_win_min = barcolors.bg_tags;
+    barcolors.fg_win = barcolors.fg_tags;
+
+    // widget colors
+    barcolors.bg_stats = barcolors.bg_tags;
+    barcolors.fg_stats_cpu = color_8bit_to_16bit( molokai_blue );
+    barcolors.fg_stats_mem = color_8bit_to_16bit( molokai_orange );
+    barcolors.fg_stats_swp = color_8bit_to_16bit( molokai_green );
+
+}
 
 static void awl_plugin_init(void) {
 
@@ -57,43 +103,7 @@ static void awl_plugin_init(void) {
     COLOR_SET( S.focuscolor, molokai_blue );
     COLOR_SET( S.urgentcolor, molokai_orange );
     COLOR_SET( S.fullscreen_bg, 0x00000000 );
-
-    pixman_color_t c16 = {0};
-
-    // tag colors
-    bg_color_tags = color_8bit_to_16bit( molokai_dark_gray );
-    c16 = color_8bit_to_16bit( molokai_orange );
-    c16.alpha = 0x7777;
-    bg_color_tags_occ = c16;
-    c16 = color_8bit_to_16bit( molokai_purple );
-    c16.alpha = 0x7777;
-    bg_color_tags_act = c16;
-    c16 = color_8bit_to_16bit( molokai_red );
-    c16.alpha = 0x7777;
-    bg_color_tags_urg = c16;
-    c16 = color_8bit_to_16bit( molokai_purple );
-    c16.alpha = 0x2222;
-    fg_color_tags = alpha_blend_16( white, c16 );
-
-    // status/layout colors
-    bg_color_status = bg_color_lay = color_8bit_to_16bit( molokai_light_gray );
-    fg_color_status = fg_color_lay = fg_color_tags;
-
-    // window colors
-    c16 = color_8bit_to_16bit( molokai_purple );
-    c16.alpha = 0x4444;
-    bg_color_win = alpha_blend_16( color_8bit_to_16bit(molokai_dark_gray), c16 );
-    c16.alpha = 0x9999;
-    bg_color_win_act = alpha_blend_16( color_8bit_to_16bit(molokai_dark_gray), c16 );
-    bg_color_win_urg = bg_color_tags_occ;
-    bg_color_win_min = bg_color_tags;
-    fg_color_win = fg_color_tags;
-
-    // widget colors
-    bg_color_stats = bg_color_tags;
-    fg_color_stats_cpu = color_8bit_to_16bit( molokai_blue );
-    fg_color_stats_mem = color_8bit_to_16bit( molokai_orange );
-    fg_color_stats_swp = color_8bit_to_16bit( molokai_green );
+    setup_bar_colors();
 
     /* id, title, tags, isfloating, monitor */
     ARRAY_INIT(Rule, rules, 32);
@@ -139,29 +149,9 @@ static void awl_plugin_init(void) {
     S.disable_while_typing = 1;
     S.left_handed = 0;
     S.middle_button_emulation = 0;
-    /* You can choose between:
-    LIBINPUT_CONFIG_SCROLL_NO_SCROLL
-    LIBINPUT_CONFIG_SCROLL_2FG
-    LIBINPUT_CONFIG_SCROLL_EDGE
-    LIBINPUT_CONFIG_SCROLL_ON_BUTTON_DOWN
-    */
     S.scroll_method = LIBINPUT_CONFIG_SCROLL_2FG;
-    /* You can choose between:
-    LIBINPUT_CONFIG_CLICK_METHOD_NONE
-    LIBINPUT_CONFIG_CLICK_METHOD_BUTTON_AREAS
-    LIBINPUT_CONFIG_CLICK_METHOD_CLICKFINGER
-    */
     S.click_method = LIBINPUT_CONFIG_CLICK_METHOD_BUTTON_AREAS;
-    /* You can choose between:
-    LIBINPUT_CONFIG_SEND_EVENTS_ENABLED
-    LIBINPUT_CONFIG_SEND_EVENTS_DISABLED
-    LIBINPUT_CONFIG_SEND_EVENTS_DISABLED_ON_EXTERNAL_MOUSE
-    */
     S.send_events_mode = LIBINPUT_CONFIG_SEND_EVENTS_ENABLED;
-    /* You can choose between:
-    LIBINPUT_CONFIG_ACCEL_PROFILE_FLAT
-    LIBINPUT_CONFIG_ACCEL_PROFILE_ADAPTIVE
-    */
     S.accel_profile = LIBINPUT_CONFIG_ACCEL_PROFILE_ADAPTIVE;
     S.accel_speed = 0.0;
     /* You can choose between:
@@ -180,33 +170,31 @@ static void awl_plugin_init(void) {
     #define MODKEY_SH AWL_MODKEY|WLR_MODIFIER_SHIFT
     #define MODKEY_CT AWL_MODKEY|WLR_MODIFIER_CTRL
     #define MODKEY_CT_SH AWL_MODKEY|WLR_MODIFIER_CTRL|WLR_MODIFIER_SHIFT
-
-    #define ADD_KEY( MOD, KEY, FUN, ARG ) ARRAY_APPEND(Key, keys, MOD, KEY, FUN, ARG);
+    #define ADD_KEY( MOD, KEY, FUN, ARG ) \
+        ARRAY_APPEND(Key, keys, MOD, KEY, FUN, ARG);
     #define ADD_TAG( KEY, SKEY, TAG) \
-    ADD_KEY( MODKEY,       KEY,  view,       {.ui = 1 << TAG} ) \
-    ADD_KEY( MODKEY_CT,    KEY,  toggleview, {.ui = 1 << TAG} ) \
-    ADD_KEY( MODKEY_SH,    SKEY, tag,        {.ui = 1 << TAG} ) \
-    ADD_KEY( MODKEY_CT_SH, SKEY, toggletag,  {.ui = 1 << TAG} )
+        ADD_KEY( MODKEY,       KEY,  view,       {.ui = 1 << TAG} ) \
+        ADD_KEY( MODKEY_CT,    KEY,  toggleview, {.ui = 1 << TAG} ) \
+        ADD_KEY( MODKEY_SH,    SKEY, tag,        {.ui = 1 << TAG} ) \
+        ADD_KEY( MODKEY_CT_SH, SKEY, toggletag,  {.ui = 1 << TAG} )
+    #ifndef AWL_TERM_CMD
+    #define AWL_TERM_CMD "kitty"
+    #endif
+    #ifndef AWL_MENU_CMD
+    #define AWL_MENU_CMD "bemenu-run"
+    #endif
 
-#ifndef AWL_TERM_CMD
-#define AWL_TERM_CMD "kitty"
-#endif
-#ifndef AWL_MENU_CMD
-#define AWL_MENU_CMD "bemenu-run"
-#endif
-    static const char *termcmd[] = {AWL_TERM_CMD, NULL};
-    static const char *menucmd[] = {AWL_MENU_CMD, NULL};
-
-    static const char *brightness_m_cmd[] = {"backlight-tooler", "-m", "dec", "-V", "0.05", NULL};
-    static const char *brightness_p_cmd[] = {"backlight-tooler", "-m", "inc", "-V", "0.05", NULL};
-    static const char *vol_p_cmd[] = {"pactl", "set-sink-volume", "@DEFAULT_SINK@", "+5%", NULL};
-    static const char *vol_m_cmd[] = {"pactl", "set-sink-volume", "@DEFAULT_SINK@", "-5%", NULL};
-    static const char *vol_mute_cmd[] = {"pactl", "set-sink-mute", "@DEFAULT_SINK@", "toggle", NULL};
-    static const char *mic_mute_cmd[] = {"pactl", "set-source-mute", "@DEFAULT_SOURCE@", "toggle", NULL};
-    static const char *vol_switch_cmd[] = {"pulse_port_switch", "-t", "-N", NULL};
-    static const char *screenshot_cmd[] = {"grim", NULL};
-
-    static const char *display_cmd[] = {"wdisplays", NULL};
+    const char *termcmd[] = {AWL_TERM_CMD, NULL};
+    const char *menucmd[] = {AWL_MENU_CMD, NULL};
+    const char *brightness_m_cmd[] = {"backlight-tooler", "-m", "dec", "-V", "0.05", NULL};
+    const char *brightness_p_cmd[] = {"backlight-tooler", "-m", "inc", "-V", "0.05", NULL};
+    const char *vol_p_cmd[] = {"pactl", "set-sink-volume", "@DEFAULT_SINK@", "+5%", NULL};
+    const char *vol_m_cmd[] = {"pactl", "set-sink-volume", "@DEFAULT_SINK@", "-5%", NULL};
+    const char *vol_mute_cmd[] = {"pactl", "set-sink-mute", "@DEFAULT_SINK@", "toggle", NULL};
+    const char *mic_mute_cmd[] = {"pactl", "set-source-mute", "@DEFAULT_SOURCE@", "toggle", NULL};
+    const char *vol_switch_cmd[] = {"pulse_port_switch", "-t", "-N", NULL};
+    const char *screenshot_cmd[] = {"grim", NULL};
+    const char *display_cmd[] = {"wdisplays", NULL};
 
     ADD_KEY( MODKEY,    XKB_KEY_p,          spawn,              {.v=menucmd} )
     ADD_KEY( MODKEY,    XKB_KEY_Return,     spawn,              {.v=termcmd} )
@@ -262,7 +250,6 @@ static void awl_plugin_init(void) {
     /*   XF86Launch2 */
     /* "bluetooth toggle" */
     /*   XF86Launch3 */
-
     ADD_TAG( XKB_KEY_1, XKB_KEY_exclam,     0)
     ADD_TAG( XKB_KEY_2, XKB_KEY_quotedbl,   1)
     ADD_TAG( XKB_KEY_3, XKB_KEY_section,    2)
@@ -280,38 +267,50 @@ static void awl_plugin_init(void) {
     ARRAY_APPEND(Button, buttons, MODKEY, BTN_RIGHT,  moveresize,     {.ui = CurResize});
     awl_log_printf( "created %i mousebindings", S.n_buttons );
 
-    start_stats_thread( _cpu, 32, _mem, 32, _swp, 32, 1 );
-    awlb_mem_info = _mem;
-    awlb_cpu_info = _cpu;
-    awlb_swp_info = _swp;
-    awlb_mem_len = awlb_cpu_len = awlb_swp_len = 32;
-    awlb_date_txt = start_date_thread( 10 );
-    awlb_pulse_info = start_pulse_thread();
-    start_ip_thread( &awl_ip, 1 );
-    start_bat_thread( &awl_bat, 1 );
-    awlb_direction = 0;
+    awl_plugin_data_t* P = ecalloc(1, sizeof(awl_plugin_data_t));
+    P->refresh_sec = 0.2;
 
+    P->ncpu = P->nmem = P->nswp = 32;
+    start_stats_thread( P->cpu, P->ncpu, P->mem, P->nmem, P->swp, P->nswp, 1 );
+    P->stats_dir = 0;
+    P->date = start_date_thread( 10 );
+    P->pulse = start_pulse_thread();
+    start_ip_thread( &P->ip, 1 );
+    start_bat_thread( &P->bat, 1 );
     #ifndef AWL_CPU_THERMAL_ZONE
-    strcpy( awl_temp.f_files[awl_temp.f_ntemps], "/sys/class/thermal/thermal_zone7/temp" );
+    strcpy( P->temp.f_files[P->temp.f_ntemps], "/sys/class/thermal/thermal_zone7/temp" );
     #else // AWL_CPU_THERMAL_ZONE
-    strcpy( awl_temp.f_files[awl_temp.f_ntemps], "/sys/class/thermal/" AWL_CPU_THERMAL_ZONE "/temp" );
+    strcpy( P->temp.f_files[P->temp.f_ntemps], "/sys/class/thermal/" AWL_CPU_THERMAL_ZONE "/temp" );
     #endif // AWL_CPU_THERMAL_ZONE
-    strcpy( awl_temp.f_labels[awl_temp.f_ntemps], "CPU" );
-    awl_temp.f_t_max[awl_temp.f_ntemps] = 80;
-    awl_temp.f_t_min[awl_temp.f_ntemps++] = 40;
+    strcpy( P->temp.f_labels[P->temp.f_ntemps], "CPU" );
+    P->temp.f_t_max[P->temp.f_ntemps] = 80;
+    P->temp.f_t_min[P->temp.f_ntemps++] = 40;
     #ifdef AWL_GPU_THERMAL_ZONE
-    strcpy( awl_temp.f_files[awl_temp.f_ntemps], "/sys/class/thermal/thermal_zone1/temp" );
-    strcpy( awl_temp.f_labels[awl_temp.f_ntemps], "GPU" );
-    awl_temp.f_t_max[awl_temp.f_ntemps] = 70;
-    awl_temp.f_t_min[awl_temp.f_ntemps++] = 40;
+    strcpy( P->temp.f_files[P->temp.f_ntemps], "/sys/class/thermal/thermal_zone1/temp" );
+    strcpy( P->temp.f_labels[P->temp.f_ntemps], "GPU" );
+    P->temp.f_t_max[P->temp.f_ntemps] = 70;
+    P->temp.f_t_min[P->temp.f_ntemps++] = 40;
     #endif // AWL_GPU_THERMAL_ZONE
-    start_temp_thread( &awl_temp, 1 );
+    start_temp_thread( &P->temp, 1 );
+
+    P->cycle_layout = cycle_layout;
+    P->cycle_tag = cycle_tag;
+    P->movestack = movestack;
+    P->client_hide = client_hide;
+    P->tagmon_f = tagmon_f;
+    P->bordertoggle = bordertoggle;
+
+    // it is imortant to set the plugin data before actually going into the bar
+    // setup; the bar needs plugin data...
+    S.P = P;
 
     int s = pthread_create( &S.BarThread, NULL, awl_bar_run, NULL );
     if (s != 0)
         awl_err_printf( "pthread create: %s", strerror(s) );
-    pthread_create( &S.BarRefreshThread, NULL, awl_bar_refresh, &_refresh_sec );
+    pthread_create( &S.BarRefreshThread, NULL, awl_bar_refresh, &P->refresh_sec );
 
+    // wallpaper somewhat separate. this is ok. it checks for awl_is_ready in
+    // its own non-blocking thread
     char wpname[1024];
     strcpy( wpname, getenv("HOME") );
     strcat( wpname, "/Wallpapers/*.png" );
@@ -327,18 +326,25 @@ static void awl_plugin_free(void) {
     free(S.buttons);
 
     stop_stats_thread();
+    S.P->date = NULL;
     stop_date_thread();
+    S.P->pulse = NULL;
     stop_pulse_thread();
     stop_ip_thread();
     stop_bat_thread();
     stop_temp_thread();
-    awlb_date_txt = NULL;
-    awlb_pulse_info = NULL;
+
+    // again wallpaper somewhat separate
+    wallpaper_destroy();
+
+    // cancel bar refreshing
     pthread_cancel( S.BarRefreshThread );
     awl_log_printf( "cancel bar refresh thread" );
 
-    wallpaper_destroy();
-
+    // and cancel the bar thread itself
+    // this is kinda clumsy, now that we have the minimal window that's all
+    // self-contained. The bar could also be a minimal window. It's not doing
+    // anything else, honestly.
     awl_state_t* B = AWL_VTABLE_SYM.state;
     awl_log_printf( "cleanup vtable state: %p", B );
     if (B) {
@@ -354,11 +360,12 @@ static void awl_plugin_free(void) {
             awl_err_printf( "pthread join: %s", strerror(s) );
     }
 
+    free(S.P);
     memset(&S, 0, sizeof(awl_config_t));
     awl_log_printf( "successfully freed plugin resources" );
 }
 
-void cycle_tag( const Arg* arg ) {
+static void cycle_tag( const Arg* arg ) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
     if (!B) return;
 
@@ -377,7 +384,7 @@ void cycle_tag( const Arg* arg ) {
     printstatus();
 }
 
-void cycle_layout( const Arg* arg ) {
+static void cycle_layout( const Arg* arg ) {
     (void)arg;
     awl_state_t* B = AWL_VTABLE_SYM.state;
     if (!B) return;
@@ -555,7 +562,8 @@ static void bstack(Monitor *m) {
         if (!c->visible || !VISIBLEON(c, m) || c->isfloating)
             continue;
         if ((int)i < m->nmaster) {
-            w = (m->w.width - mx) / (MMIN((int)n, m->nmaster) - i);
+            #define MIN(A,B) ((A)<(B)?(A):(B))
+            w = (m->w.width - mx) / (MIN((int)n, m->nmaster) - i);
             resize(c, (struct wlr_box) { .x = m->w.x + mx, .y = m->w.y, .width = w, .height = mh }, 0);
             mx += c->geom.width;
         } else {

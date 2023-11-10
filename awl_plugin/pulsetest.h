@@ -1,6 +1,6 @@
 #pragma once
 
-typedef struct {
+typedef struct pulse_test_t {
     float value;
     int muted;
 

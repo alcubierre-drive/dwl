@@ -1,4 +1,6 @@
-#include "bar.h"
+#include "colors.h"
+
+#define MIN( A, B ) ( (A) < (B) ? (A) : (B) )
 
 pixman_color_t color_8bit_to_16bit( uint32_t c ) {
     uint8_t red = (c & 0xFF000000) >> 24,
@@ -27,10 +29,10 @@ static fcolor_t pixman2fcolor( pixman_color_t p ) {
 }
 static pixman_color_t fcolor2pixman( fcolor_t c ) {
     pixman_color_t p;
-    p.red = MMIN(c.r * 0xFFFF, 0xFFFF);
-    p.green = MMIN(c.g * 0xFFFF, 0xFFFF);
-    p.blue = MMIN(c.b * 0xFFFF, 0xFFFF);
-    p.alpha = MMIN(c.a * 0xFFFF, 0xFFFF);
+    p.red = MIN(c.r * 0xFFFF, 0xFFFF);
+    p.green = MIN(c.g * 0xFFFF, 0xFFFF);
+    p.blue = MIN(c.b * 0xFFFF, 0xFFFF);
+    p.alpha = MIN(c.a * 0xFFFF, 0xFFFF);
     return p;
 }
 

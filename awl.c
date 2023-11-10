@@ -45,8 +45,8 @@ void awl_change_modkey( uint32_t modkey ) {
 }
 
 /* macros */
-static inline int MIN( int A, int B ) { return A < B ? A : B; }
-static inline int MAX( int A, int B ) { return A > B ? A : B; }
+static inline int minimum( int A, int B ) { return A < B ? A : B; }
+static inline int maximum( int A, int B ) { return A > B ? A : B; }
 #define IDLE_NOTIFY_ACTIVITY \
     wlr_idle_notify_activity(B->idle, B->seat), wlr_idle_notifier_v1_notify_activity(B->idle_notifier, B->seat)
 
@@ -98,14 +98,14 @@ void applybounds(Client *c, struct wlr_box *bbox) {
         struct wlr_box min = {0}, max = {0};
         client_get_size_hints(c, &max, &min);
         /* try to set size hints */
-        c->geom.width = MAX(min.width + (2 * (int)c->bw), c->geom.width);
-        c->geom.height = MAX(min.height + (2 * (int)c->bw), c->geom.height);
+        c->geom.width = maximum(min.width + (2 * (int)c->bw), c->geom.width);
+        c->geom.height = maximum(min.height + (2 * (int)c->bw), c->geom.height);
         /* Some clients set their max size to INT_MAX, which does not violate the
          * protocol but it's unnecesary, as they can set their max size to zero. */
         if (max.width > 0 && !(2 * (int)c->bw > INT_MAX - max.width)) /* Checks for overflow */
-            c->geom.width = MIN(max.width + (2 * c->bw), c->geom.width);
+            c->geom.width = minimum(max.width + (2 * c->bw), c->geom.width);
         if (max.height > 0 && !(2 * (int)c->bw > INT_MAX - max.height)) /* Checks for overflow */
-            c->geom.height = MIN(max.height + (2 * c->bw), c->geom.height);
+            c->geom.height = minimum(max.height + (2 * c->bw), c->geom.height);
     }
 
     if (c->geom.x >= bbox->x + bbox->width)
@@ -921,7 +921,7 @@ void dwl_ipc_output_printstatus_to(DwlIpcOutput *ipc_output) {
                 if (!t) t = B->broken;
 
                 ttl->name[sizeof(ttl->name)-1] = '\0';
-                memcpy( ttl->name, t, MIN(strlen(t)+1, sizeof(ttl->name)-1) );
+                memcpy( ttl->name, t, minimum(strlen(t)+1, sizeof(ttl->name)-1) );
 
                 ttl->floating = c->isfloating;
                 ttl->focused = (c == focused);
@@ -1167,7 +1167,7 @@ void handlesig(int signo) {
 void incnmaster(const Arg *arg) {
     if (!arg || !B->selmon)
         return;
-    B->selmon->nmaster = MAX(B->selmon->nmaster + arg->i, 0);
+    B->selmon->nmaster = maximum(B->selmon->nmaster + arg->i, 0);
     arrange(B->selmon);
 }
 
@@ -2143,7 +2143,7 @@ void tile(Monitor *m) {
             continue;
         if (i < (unsigned)m->nmaster) {
             resize(c, (struct wlr_box){.x = m->w.x, .y = m->w.y + my, .width = mw,
-                .height = (m->w.height - my) / (MIN(n, m->nmaster) - i)}, 0);
+                .height = (m->w.height - my) / (minimum(n, m->nmaster) - i)}, 0);
             my += c->geom.height;
         } else {
             resize(c, (struct wlr_box){.x = m->w.x + mw, .y = m->w.y + ty,

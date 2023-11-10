@@ -4,6 +4,7 @@
 #include <time.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <stdlib.h>
 
 static char date_string[128] = {0};
 static int date_thread_run = 0;

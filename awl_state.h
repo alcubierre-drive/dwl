@@ -4,6 +4,7 @@
 
 typedef struct awl_state_t awl_state_t;
 typedef struct awl_config_t awl_config_t;
+typedef struct awl_plugin_data_t awl_plugin_data_t;
 
 #define ARRAY( type, name ) type* name; int n_##name;
 
@@ -47,6 +48,7 @@ struct awl_config_t {
 
     pthread_t BarThread;
     pthread_t BarRefreshThread;
+    awl_plugin_data_t* P;
 };
 
 struct awl_state_t {
