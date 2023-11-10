@@ -184,17 +184,17 @@ static void awl_plugin_init(void) {
     #define AWL_MENU_CMD "bemenu-run"
     #endif
 
-    const char *termcmd[] = {AWL_TERM_CMD, NULL};
-    const char *menucmd[] = {AWL_MENU_CMD, NULL};
-    const char *brightness_m_cmd[] = {"backlight-tooler", "-m", "dec", "-V", "0.05", NULL};
-    const char *brightness_p_cmd[] = {"backlight-tooler", "-m", "inc", "-V", "0.05", NULL};
-    const char *vol_p_cmd[] = {"pactl", "set-sink-volume", "@DEFAULT_SINK@", "+5%", NULL};
-    const char *vol_m_cmd[] = {"pactl", "set-sink-volume", "@DEFAULT_SINK@", "-5%", NULL};
-    const char *vol_mute_cmd[] = {"pactl", "set-sink-mute", "@DEFAULT_SINK@", "toggle", NULL};
-    const char *mic_mute_cmd[] = {"pactl", "set-source-mute", "@DEFAULT_SOURCE@", "toggle", NULL};
-    const char *vol_switch_cmd[] = {"pulse_port_switch", "-t", "-N", NULL};
-    const char *screenshot_cmd[] = {"grim", NULL};
-    const char *display_cmd[] = {"wdisplays", NULL};
+    static const char *termcmd[] = {AWL_TERM_CMD, NULL};
+    static const char *menucmd[] = {AWL_MENU_CMD, NULL};
+    static const char *brightness_m_cmd[] = {"backlight-tooler", "-m", "dec", "-V", "0.05", NULL};
+    static const char *brightness_p_cmd[] = {"backlight-tooler", "-m", "inc", "-V", "0.05", NULL};
+    static const char *vol_p_cmd[] = {"pactl", "set-sink-volume", "@DEFAULT_SINK@", "+5%", NULL};
+    static const char *vol_m_cmd[] = {"pactl", "set-sink-volume", "@DEFAULT_SINK@", "-5%", NULL};
+    static const char *vol_mute_cmd[] = {"pactl", "set-sink-mute", "@DEFAULT_SINK@", "toggle", NULL};
+    static const char *mic_mute_cmd[] = {"pactl", "set-source-mute", "@DEFAULT_SOURCE@", "toggle", NULL};
+    static const char *vol_switch_cmd[] = {"pulse_port_switch", "-t", "-N", NULL};
+    static const char *screenshot_cmd[] = {"grim", NULL};
+    static const char *display_cmd[] = {"wdisplays", NULL};
 
     ADD_KEY( MODKEY,    XKB_KEY_p,          spawn,              {.v=menucmd} )
     ADD_KEY( MODKEY,    XKB_KEY_Return,     spawn,              {.v=termcmd} )
