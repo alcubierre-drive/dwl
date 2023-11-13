@@ -59,7 +59,7 @@ static void calendar_draw( AWL_SingleWindow* win, pixman_image_t* fg, pixman_ima
     uint32_t width_want = TEXT_WIDTH(" Mo Tu We Th Fr Sa Su", -1, 20);
     if (!width_want) return;
 
-    int x = 20,
+    int x = 15,
         y = 0,
         dy = 35;
     char line[64] = {0};
@@ -85,7 +85,7 @@ static void calendar_draw( AWL_SingleWindow* win, pixman_image_t* fg, pixman_ima
         x = draw_text( line, x, y, fg, bg, current ? &barcolors.fg_stats_mem : &barcolors.fg_status, &barcolors.bg_status, win->width, dy, 0 );
         counter++;
         if (counter == 7) {
-            x = 20;
+            x = 15;
             y += dy;
             counter=0;
         }
