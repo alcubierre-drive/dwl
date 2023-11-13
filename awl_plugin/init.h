@@ -8,6 +8,7 @@
 #include "temp.h"
 #include "bat.h"
 #include "pulsetest.h"
+#include "date.h"
 
 awl_config_t* awl_plugin_config( void );
 awl_state_t* awl_plugin_state( void );
@@ -24,6 +25,8 @@ typedef struct awl_plugin_data_t {
     float cpu[128], mem[128], swp[128];
     int ncpu, nmem, nswp;
     int stats_dir;
+
+    awl_calendar_t* cal;
 
     void (*cycle_tag)(const Arg* arg);
     void (*cycle_layout)(const Arg* arg);

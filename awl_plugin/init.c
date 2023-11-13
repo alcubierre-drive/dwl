@@ -319,6 +319,8 @@ static void awl_plugin_init(void) {
     P->tagmon_f = tagmon_f;
     P->bordertoggle = bordertoggle;
 
+    P->cal = calendar_popup();
+
     // it is imortant to set the plugin data before actually going into the bar
     // setup; the bar needs plugin data...
     S.P = P;
@@ -352,6 +354,7 @@ static void awl_plugin_free(void) {
     stop_ip_thread();
     stop_bat_thread();
     stop_temp_thread();
+    if (S.P->cal) calendar_destroy( S.P->cal );
 
     // again wallpaper somewhat separate
     wallpaper_destroy();
@@ -379,6 +382,7 @@ static void awl_plugin_free(void) {
             awl_err_printf( "pthread join: %s", strerror(s) );
     }
 
+    // free the plugin data somewhat last
     free(S.P);
     memset(&S, 0, sizeof(awl_config_t));
     awl_log_printf( "successfully freed plugin resources" );

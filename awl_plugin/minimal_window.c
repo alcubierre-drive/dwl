@@ -658,6 +658,16 @@ void awl_minimal_window_show( AWL_Window* w ) {
     awl_minimal_window_refresh(w);
 }
 
+int awl_minimal_window_is_hidden( AWL_Window* w ) {
+    awl_minimal_window_wait_ready(w);
+    int hidden = 0;
+    AWL_SingleWindow* win;
+    wl_list_for_each(win, &w->window_list, link) {
+        hidden += win->hidden;
+    }
+    return hidden;
+}
+
 void awl_minimal_window_wait_ready( AWL_Window* w ) {
     while (!w->has_init) usleep(1000);
 }

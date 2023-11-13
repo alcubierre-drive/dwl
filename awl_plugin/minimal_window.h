@@ -79,6 +79,7 @@ void awl_minimal_window_wait_ready( AWL_Window* w );
 void awl_minimal_window_hide( AWL_Window* w );
 void awl_minimal_window_show( AWL_Window* w );
 void awl_minimal_window_refresh( AWL_Window* w );
+int awl_minimal_window_is_hidden( AWL_Window* w );
 
 void awl_minimal_window_destroy( AWL_Window* w );
 
