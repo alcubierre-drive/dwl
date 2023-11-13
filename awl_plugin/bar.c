@@ -1439,7 +1439,11 @@ static uint32_t tempwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foregroun
     while (!P->temp.ready) usleep(10);
     for (int i=0; i<P->temp.ntemps; ++i) {
         char text[128] = {0};
-        snprintf( text, 127, "%s:%.0f°C", P->temp.f_labels[P->temp.idx[i]], P->temp.temps[i] );
+        // only put the label if the string is set
+        if (*P->temp.f_labels[P->temp.idx[i]])
+            snprintf( text, 127, "%s:%.0f°C", P->temp.f_labels[P->temp.idx[i]], P->temp.temps[i] );
+        else
+            snprintf( text, 127, "%.0f°C", P->temp.temps[i] );
         pixman_color_t fgcolor = color_8bit_to_16bit( temp_color( P->temp.temps[i],
                     P->temp.f_t_min[P->temp.idx[i]], P->temp.f_t_max[P->temp.idx[i]] ) );
         draw_text( text, x, y, foreground, background, &fgcolor, &barcolors.bg_status,

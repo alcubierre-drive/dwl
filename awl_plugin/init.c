@@ -95,10 +95,12 @@ static void awl_plugin_init(void) {
     setenv("SSH_AUTH_SOCK","1",1);
     setenv("NO_AT_BRIDGE","1",1);
 
-    awl_log_printf( "color setup" );
+    awl_log_printf( "general setup" );
     S.sloppyfocus = 1;
     S.bypass_surface_visibility = 0;
     S.borderpx = 2;
+
+    awl_log_printf( "color setup" );
     COLOR_SET( S.bordercolor, molokai_light_gray );
     COLOR_SET( S.focuscolor, molokai_blue );
     COLOR_SET( S.urgentcolor, molokai_orange );
@@ -119,10 +121,10 @@ static void awl_plugin_init(void) {
     awl_log_printf( "created %i rules", S.n_rules );
 
     ARRAY_INIT(Layout, layouts, 16);
-    ARRAY_APPEND(Layout, layouts, "[T]", tile );
-    ARRAY_APPEND(Layout, layouts, "[=]", bstack );
-    ARRAY_APPEND(Layout, layouts, "[M]", monocle );
     ARRAY_APPEND(Layout, layouts, "[◻]", gaplessgrid );
+    ARRAY_APPEND(Layout, layouts, "[M]", monocle );
+    ARRAY_APPEND(Layout, layouts, "[=]", bstack );
+    ARRAY_APPEND(Layout, layouts, "[T]", tile );
     ARRAY_APPEND(Layout, layouts, "[@]", dwindle );
     S.cur_layout = 0;
     awl_log_printf( "created %i layouts", S.n_layouts );
@@ -282,7 +284,11 @@ static void awl_plugin_init(void) {
     #else // AWL_CPU_THERMAL_ZONE
     strcpy( P->temp.f_files[P->temp.f_ntemps], "/sys/class/thermal/" AWL_CPU_THERMAL_ZONE "/temp" );
     #endif // AWL_CPU_THERMAL_ZONE
+    #ifndef AWL_CPU_THERMAL_ZONE_NAME
     strcpy( P->temp.f_labels[P->temp.f_ntemps], "CPU" );
+    #else
+    strcpy( P->temp.f_labels[P->temp.f_ntemps], AWL_CPU_THERMAL_ZONE_NAME );
+    #endif
     P->temp.f_t_max[P->temp.f_ntemps] = 80;
     P->temp.f_t_min[P->temp.f_ntemps++] = 40;
     #ifdef AWL_GPU_THERMAL_ZONE

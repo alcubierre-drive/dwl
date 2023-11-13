@@ -118,9 +118,16 @@ typedef struct Client {
     struct wl_listener configure;
     struct wl_listener set_hints;
     unsigned int bw;
-    unsigned int visible;
     uint32_t tags;
-    int isfloating, isurgent, isfullscreen;
+
+    struct { uint8_t
+        visible:1,
+        maximized:1,
+        isfloating:1,
+        isurgent:1,
+        isfullscreen:1;
+    };
+
     uint32_t resize; /* configure serial of a pending resize */
 } Client;
 

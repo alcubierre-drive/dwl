@@ -924,9 +924,12 @@ void dwl_ipc_output_printstatus_to(DwlIpcOutput *ipc_output) {
                 memcpy( ttl->name, t, minimum(strlen(t)+1, sizeof(ttl->name)-1) );
 
                 ttl->floating = c->isfloating;
-                ttl->focused = (c == focused);
                 ttl->urgent = c->isurgent;
+                ttl->fullscreen = c->isfullscreen;
+
+                ttl->focused = (c == focused);
                 ttl->visible = c->visible;
+                ttl->maximized = c->maximized;
 
                 ttl->c = c;
             }
