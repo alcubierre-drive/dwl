@@ -108,7 +108,7 @@ typedef struct awl_persistent_plugin_data_t {
 static const char *cmd_tray[] = { "./tray/awl_tray", NULL };
 static const char *cmd_nm_applet[] = { "nm-applet", NULL };
 static const char *cmd_blueman[] = { "blueman-applet", NULL };
-static const char *cmd_nextcloud[] = { "nextcloud", "--background" };
+/* static const char *cmd_nextcloud[] = { "nextcloud", "--background" }; */
 static const char *cmd_printer[] = {"system-config-printer-applet", NULL};
 static const char *cmd_telegram[] = {"telegram-desktop", NULL};
 static const char *cmd_evolution[] = {"evolution", NULL};
@@ -168,6 +168,7 @@ static void awl_plugin_init(void) {
     ARRAY_APPEND(Rule, rules, "nomacs", NULL, 0, 1, -1 );
     ARRAY_APPEND(Rule, rules, "python3", "Figure", 0, 1, -1 );
     ARRAY_APPEND(Rule, rules, "wdisplays", NULL, 0, 1, -1 );
+    ARRAY_APPEND(Rule, rules, "blueman-manager", NULL, 0, 1, -1 );
     awl_log_printf( "created %i rules", S.n_rules );
 
     ARRAY_INIT(Layout, layouts, 16);
