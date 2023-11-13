@@ -66,12 +66,17 @@ static void wallpaper_draw( AWL_SingleWindow* win, pixman_image_t* fg, pixman_im
     pixman_image_unref(png_image);
 }
 
+
+static int next( int num ) {
+    if (wallpaper_random) return fast_random(num);
+    else return (wallpaper_index+1)%wallpaper_number;
+}
+
 static void* wp_idx_thread_fun( void* arg ) {
     (void)arg;
     while (1) {
         sleep(wp_idx_thread_update);
-        int idx = wallpaper_random ? fast_random(wallpaper_number) : (wallpaper_index+1)%wallpaper_number;
-        wallpaper_index = idx;
+        wallpaper_index = next( wallpaper_number );
         awl_minimal_window_refresh(w);
         /* char cmd[128]; */
         /* sprintf( cmd, "notify-send 'wallpaper %i/%i'", idx, wallpaper_number ); */
@@ -83,8 +88,7 @@ static void* wp_idx_thread_fun( void* arg ) {
 static void wallpaper_click( AWL_SingleWindow* win, int button ) {
     (void)win;
     (void)button;
-    int idx = wallpaper_random ? fast_random(wallpaper_number) : (wallpaper_index+1)%wallpaper_number;
-    wallpaper_index = idx;
+    wallpaper_index = next( wallpaper_number );
     awl_minimal_window_refresh(w);
     /* char cmd[128]; */
     /* sprintf( cmd, "notify-send 'wallpaper %i/%i'", idx, wallpaper_number ); */
@@ -106,8 +110,12 @@ void wallpaper_init( const char* fname, int update_seconds ) {
     p.draw = wallpaper_draw;
     p.click = wallpaper_click;
 
+    // start with sth random :)
+    if (wallpaper_random)
+        wallpaper_index = next( wallpaper_number );
     wp_idx_thread_update = update_seconds;
     pthread_create( &wp_idx_thread, NULL, &wp_idx_thread_fun, NULL );
+
     w = awl_minimal_window_setup( &p );
 }
 

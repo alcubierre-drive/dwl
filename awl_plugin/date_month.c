@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "date_month.h"
+
 static int ndays( int month, int year ) {
     switch (month) {
         // Cases for 31 Days
@@ -42,18 +44,6 @@ static int get_first_day_of_month( int cday /* 1..31 */, int wday /* 0..6 */ ) {
     return mstart;
 }
 
-typedef struct month_state_t {
-    int cmonth,
-        cday,
-        cyear,
-        month,
-        year,
-        wday,
-        sday,
-        lday;
-    char monthname[32];
-} month_state_t;
-
 static int month_idx_to_macro( int idx ) {
     switch(idx) {
         case 1: return MON_1;
@@ -92,6 +82,7 @@ month_state_t month_state_init( void ) {
     st->sday = get_first_day_of_month( st->cday, st->wday );
     st->lday = (st->sday + ndays(st->month, st->year)-1) % 7;
     strcpy( st->monthname, month_idx_to_name(st->month) );
+    st->ndays = ndays(st->month, st->year);
     return St;
 }
 
@@ -124,6 +115,7 @@ void month_state_next( month_state_t* st, int n ) {
     }
 
     strcpy( st->monthname, month_idx_to_name(st->month) );
+    st->ndays = ndays(st->month, st->year);
 }
 
 /* static void month_state_print( const month_state_t* st ) { */

@@ -55,14 +55,52 @@ static month_state_t* MST = NULL;
 
 static void calendar_draw( AWL_SingleWindow* win, pixman_image_t* fg, pixman_image_t* bg ) {
     awl_log_printf("redrawing calendar window");
-    (void)bg;
-    // TODO need to externalize draw_text in order to use it here... or some
-    // funky acrobatics
+
     if (!MST) return;
-    pixman_color_t white = {.red = 0xaaaa, .green = 0xaaaa, .blue = 0xaaaa, .alpha = 0xaaaa};
-    pixman_image_fill_boxes(PIXMAN_OP_OVER, fg, &white, 1, &(pixman_box32_t){
+
+    uint32_t width_want = TEXT_WIDTH(" Mo Tu We Th Fr Sa Su", -1, 20);
+    if (!width_want) return;
+
+    int x = 20,
+        y = 0,
+        dy = 35;
+    char line[64] = {0};
+    y += dy;
+
+    sprintf( line, "%-16s %4d", MST->monthname, MST->year );
+    draw_text( line, x, y, fg, bg, &barcolors.fg_status, &barcolors.bg_status, win->width, dy, 0 );
+    y += dy;
+
+    sprintf( line, " Mo Tu We Th Fr Sa Su" );
+    draw_text( line, x, y, fg, bg, &barcolors.fg_status, &barcolors.bg_status, win->width, dy, 0 );
+    y += dy;
+
+    int counter = 0;
+    for (int i=0; i<MST->sday; ++i) {
+        counter++;
+        sprintf( line, "   " );
+        x = draw_text( line, x, y, fg, bg, &barcolors.fg_status, &barcolors.bg_status, win->width, dy, 0 );
+    }
+    for (int d=1; d<=MST->ndays; d++) {
+        sprintf( line, " %2d", d );
+        int current = MST->year == MST->cyear && MST->month == MST->cmonth && d==MST->cday;
+        x = draw_text( line, x, y, fg, bg, current ? &barcolors.fg_stats_mem : &barcolors.fg_status, &barcolors.bg_status, win->width, dy, 0 );
+        counter++;
+        if (counter == 7) {
+            x = 20;
+            y += dy;
+            counter=0;
+        }
+    }
+
+    // frame
+    pixman_image_fill_boxes(PIXMAN_OP_OVER, bg, &barcolors.fg_stats_cpu, 1, &(pixman_box32_t){
                 .x1 = 0, .x2 = win->width,
                 .y1 = 0, .y2 = win->height,
+            });
+    pixman_image_fill_boxes(PIXMAN_OP_OVER, bg, &barcolors.bg_status, 1, &(pixman_box32_t){
+                .x1 = 3, .x2 = win->width-6,
+                .y1 = 3, .y2 = win->height-6,
             });
 }
 
@@ -73,8 +111,8 @@ awl_calendar_t* calendar_popup( void ) {
     MST = &r->m;
     awl_minimal_window_props_t wp = awl_minimal_window_props_defaults;
     wp.only_current_output = 1;
-    wp.width_want = 240;
-    wp.height_want = 240;
+    wp.width_want = 376;
+    wp.height_want = 300;
     wp.layer = ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY;
     wp.anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM|ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
     wp.name = "awl_cal_popup";

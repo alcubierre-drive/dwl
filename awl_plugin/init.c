@@ -116,8 +116,6 @@ static void awl_plugin_init(void) {
     ARRAY_APPEND(Rule, rules, "nomacs", NULL, 0, 1, -1 );
     ARRAY_APPEND(Rule, rules, "python3", "Figure", 0, 1, -1 );
     ARRAY_APPEND(Rule, rules, "wdisplays", NULL, 0, 1, -1 );
-    // TODO tray application (self-written / hacked together from waybar)
-    ARRAY_APPEND(Rule, rules, "gtk-tray", "AWL", 0, 1, -1 );
     awl_log_printf( "created %i rules", S.n_rules );
 
     ARRAY_INIT(Layout, layouts, 16);
@@ -255,7 +253,7 @@ static void awl_plugin_init(void) {
     ADD_KEY( MODKEY_CT, XKB_KEY_u,              spawn,          {.v=dock_cmd_mode_4} );
     ADD_KEY( MODKEY_SH, XKB_KEY_U,              spawn,          {.v=dock_cmd_mode_5} );
 
-    // TODO missing
+    // TODO potentially missing keyboard shortcuts
     /* "systemctl --user stop backlight-tooler.timer; backlight-tooler -m toggle" */
     /*   XF86Favorites */
     /* "backlight-tooler -m auto" */

@@ -668,6 +668,11 @@ int awl_minimal_window_is_hidden( AWL_Window* w ) {
     return hidden;
 }
 
+void awl_minimal_window_resize( AWL_Window* W, int w, int h ) {
+    W->width_want = w;
+    W->height_want = h;
+}
+
 void awl_minimal_window_wait_ready( AWL_Window* w ) {
     while (!w->has_init) usleep(1000);
 }

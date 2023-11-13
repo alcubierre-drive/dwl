@@ -270,7 +270,7 @@ static int allocate_shm_file(size_t size) {
     return fd;
 }
 
-static uint32_t draw_text(char *text,
+uint32_t draw_text(char *text,
       uint32_t x,
       uint32_t y,
       pixman_image_t *foreground,
@@ -280,6 +280,9 @@ static uint32_t draw_text(char *text,
       uint32_t max_x,
       uint32_t buf_height,
       uint32_t padding ) {
+
+    if (!font) return x;
+
     if (!text || !*text || !max_x)
         return x;
 
@@ -374,9 +377,6 @@ static uint32_t draw_text(char *text,
     return nx;
 }
 
-#define TEXT_WIDTH(text, maxwidth, padding)             \
-    draw_text(text, 0, 0, NULL, NULL, NULL, NULL, maxwidth, 0, padding)
-
 static uint32_t tagwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
 static void tagwidget_scroll( Bar* bar, uint32_t pointer_x, int amount );
 static void tagwidget_click( Bar* bar, uint32_t pointer_x, int button );
@@ -388,6 +388,7 @@ static void layoutwidget_click( Bar* bar, uint32_t pointer_x, int button );
 static uint32_t clockwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
 static void clockwidget_view( Bar* bar, int32_t x );
 static void clockwidget_click( Bar* bar, uint32_t pointer_x, int button );
+static void clockwidget_scroll( Bar* bar, uint32_t pointer_x, int amount );
 
 static uint32_t pulsewidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
 static void pulsewidget_scroll( Bar* bar, uint32_t pointer_x, int amount );
@@ -1015,6 +1016,7 @@ static void setup_bar(Bar *bar) {
         .draw = clockwidget_draw,
         .callback_view = clockwidget_view,
         .callback_click = clockwidget_click,
+        .callback_scroll = clockwidget_scroll,
         .width = TEXT_WIDTH( "XX:XX", -1, bar->textpadding ),
     };
     bar->widgets_right[bar->n_widgets_right++] = (widget_t){
@@ -1138,7 +1140,7 @@ static void handle_global_remove(void *data, struct wl_registry *registry, uint3
     Bar *bar;
     Seat *seat;
 
-    awl_log_printf("in global remove\n");
+    awl_log_printf("in global remove");
     wl_list_for_each(bar, &bar_list, link) {
         if (bar->registry_name == name) {
             wl_list_remove(&bar->link);
@@ -1249,9 +1251,9 @@ void* awl_bar_run( void* arg ) {
     fcft_set_scaling_filter(FCFT_SCALING_FILTER_LANCZOS3);
 
     unsigned int dpi = 96 * buffer_scale;
-    char buf[10];
-    snprintf(buf, sizeof buf, "dpi=%u", dpi);
-    if (!(font = fcft_from_name(1, (const char *[]) {fontstr}, buf)))
+    char buf[16];
+    sprintf(buf, "dpi=%u", dpi);
+    if (!(font = fcft_from_name(1, (const char *[]){fontstr}, buf)))
         awl_err_printf( "Could not load font %s", fontstr );
     textpadding = font->height / 2;
     height = font->height / buffer_scale + vertical_padding * 2;
@@ -1404,7 +1406,6 @@ static uint32_t clockwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foregrou
     return TEXT_WIDTH( "XX:XX", -1, bar->textpadding );
 }
 
-// TODO
 static void clockwidget_view( Bar* bar, int32_t x ) {
     awl_plugin_data_t* P = awl_plugin_data();
     if (!P) return;
@@ -1414,6 +1415,15 @@ static void clockwidget_view( Bar* bar, int32_t x ) {
     if (x < 0) calendar_hide( P->cal );
     else calendar_show( P->cal );
 }
+
+static void clockwidget_scroll( Bar* bar, uint32_t pointer_x, int amount ) {
+    awl_plugin_data_t* P = awl_plugin_data();
+    if (!P) return;
+    (void)bar;
+    (void)pointer_x;
+    calendar_next( P->cal, amount );
+}
+
 
 static void clockwidget_click( Bar* bar, uint32_t pointer_x, int button ) {
     awl_plugin_data_t* P = awl_plugin_data();

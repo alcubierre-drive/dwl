@@ -9,6 +9,7 @@ typedef struct month_state_t {
         wday,
         sday,
         lday;
+    int ndays;
     char monthname[32];
 } month_state_t;
 
