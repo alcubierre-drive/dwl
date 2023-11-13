@@ -6,9 +6,19 @@
 #include <glob.h>
 #include <pthread.h>
 
+static int fast_random( int max ) {
+    unsigned result = 0;
+    FILE* f = fopen("/dev/urandom","r");
+    fread( &result, sizeof(unsigned), 1, f );
+    fclose( f );
+    return result % max;
+}
+
 static glob_t wallpaper_glob = {0};
 static int wallpaper_number = 0;
 static int wallpaper_index = 0;
+
+static int wallpaper_random = 1;
 
 static int wp_idx_thread_update = 0;
 static pthread_t wp_idx_thread = {0};
@@ -60,9 +70,12 @@ static void* wp_idx_thread_fun( void* arg ) {
     (void)arg;
     while (1) {
         sleep(wp_idx_thread_update);
-        int idx = (wallpaper_index+1)%wallpaper_number;
+        int idx = wallpaper_random ? fast_random(wallpaper_number) : (wallpaper_index+1)%wallpaper_number;
         wallpaper_index = idx;
         awl_minimal_window_refresh(w);
+        /* char cmd[128]; */
+        /* sprintf( cmd, "notify-send 'wallpaper %i/%i'", idx, wallpaper_number ); */
+        /* system(cmd); */
     }
     return NULL;
 }
@@ -70,9 +83,12 @@ static void* wp_idx_thread_fun( void* arg ) {
 static void wallpaper_click( AWL_SingleWindow* win, int button ) {
     (void)win;
     (void)button;
-    int idx = (wallpaper_index+1)%wallpaper_number;
+    int idx = wallpaper_random ? fast_random(wallpaper_number) : (wallpaper_index+1)%wallpaper_number;
     wallpaper_index = idx;
     awl_minimal_window_refresh(w);
+    /* char cmd[128]; */
+    /* sprintf( cmd, "notify-send 'wallpaper %i/%i'", idx, wallpaper_number ); */
+    /* system(cmd); */
 }
 
 void wallpaper_init( const char* fname, int update_seconds ) {
