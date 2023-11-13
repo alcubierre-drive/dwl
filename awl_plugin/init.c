@@ -116,7 +116,7 @@ static void awl_plugin_init(void) {
     ARRAY_APPEND(Rule, rules, "nomacs", NULL, 0, 1, -1 );
     ARRAY_APPEND(Rule, rules, "python3", "Figure", 0, 1, -1 );
     ARRAY_APPEND(Rule, rules, "wdisplays", NULL, 0, 1, -1 );
-    // TODO tray application (RUST)
+    // TODO tray application (self-written / hacked together from waybar)
     ARRAY_APPEND(Rule, rules, "gtk-tray", "AWL", 0, 1, -1 );
     awl_log_printf( "created %i rules", S.n_rules );
 
@@ -243,6 +243,18 @@ static void awl_plugin_init(void) {
     ADD_KEY( MODKEY, XKB_KEY_F1,                spawn,          {.v=vol_switch_cmd} )
     ADD_KEY( MODKEY, XKB_KEY_d,                 spawn,          {.v=display_cmd} );
     ADD_KEY( 0, XKB_KEY_XF86Display,            spawn,          {.v=display_cmd} );
+
+    static const char* dock_cmd_mode_1[] = {"docked", "1", NULL};
+    static const char* dock_cmd_mode_2[] = {"docked", "2", NULL};
+    static const char* dock_cmd_mode_3[] = {"docked", "3", NULL};
+    static const char* dock_cmd_mode_4[] = {"docked", "4", NULL};
+    static const char* dock_cmd_mode_5[] = {"docked", "5", NULL};
+    ADD_KEY( MODKEY_CT_SH, XKB_KEY_D,           spawn,          {.v=dock_cmd_mode_1} );
+    ADD_KEY( MODKEY_CT, XKB_KEY_d,              spawn,          {.v=dock_cmd_mode_2} );
+    ADD_KEY( MODKEY_SH, XKB_KEY_D,              spawn,          {.v=dock_cmd_mode_3} );
+    ADD_KEY( MODKEY_CT, XKB_KEY_u,              spawn,          {.v=dock_cmd_mode_4} );
+    ADD_KEY( MODKEY_SH, XKB_KEY_U,              spawn,          {.v=dock_cmd_mode_5} );
+
     // TODO missing
     /* "systemctl --user stop backlight-tooler.timer; backlight-tooler -m toggle" */
     /*   XF86Favorites */
@@ -252,6 +264,7 @@ static void awl_plugin_init(void) {
     /*   XF86Launch2 */
     /* "bluetooth toggle" */
     /*   XF86Launch3 */
+
     ADD_TAG( XKB_KEY_1, XKB_KEY_exclam,     0)
     ADD_TAG( XKB_KEY_2, XKB_KEY_quotedbl,   1)
     ADD_TAG( XKB_KEY_3, XKB_KEY_section,    2)
