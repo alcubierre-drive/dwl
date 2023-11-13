@@ -14,7 +14,8 @@ awl_state_t* awl_state_init( void ) {
     B->layermap[B->n_layermap++] = LyrBottom;
     B->layermap[B->n_layermap++] = LyrTop;
     B->layermap[B->n_layermap++] = LyrOverlay;
-
+    B->persistent_plugin_data = ecalloc(1024,1);
+    B->persistent_plugin_data_nbytes = 1024;
     return B;
 }
 

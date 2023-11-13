@@ -99,6 +99,7 @@ struct awl_state_t {
     Monitor *selmon;
 
     void *persistent_plugin_data;
+    size_t persistent_plugin_data_nbytes;
 };
 
 awl_state_t* awl_state_init( void );

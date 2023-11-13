@@ -403,6 +403,7 @@ static uint32_t batwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground
 #endif
 
 static uint32_t separator_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
+static uint32_t systray_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
 
 static uint32_t statuswidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
 static void statuswidget_click( Bar* bar, uint32_t pointer_x, int button );
@@ -1024,6 +1025,14 @@ static void setup_bar(Bar *bar) {
         .width = TEXT_WIDTH( "|", -1, 0 ),
     };
     bar->widgets_right[bar->n_widgets_right++] = (widget_t){
+        .draw = systray_draw,
+        .width = 128,
+    };
+    bar->widgets_right[bar->n_widgets_right++] = (widget_t){
+        .draw = separator_draw,
+        .width = TEXT_WIDTH( "|", -1, 0 ),
+    };
+    bar->widgets_right[bar->n_widgets_right++] = (widget_t){
         .draw = pulsewidget_draw,
         .width = TEXT_WIDTH( "100%", -1, bar->textpadding ),
         .callback_scroll = pulsewidget_scroll,
@@ -1551,6 +1560,12 @@ static uint32_t separator_draw( Bar* bar, uint32_t x, pixman_image_t* foreground
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
     draw_text( "|", x, y, foreground, background, &barcolors.fg_status, &barcolors.bg_status, bar->width, bar->height, 0 );
     return TEXT_WIDTH( "|", -1, 0 );
+}
+
+static uint32_t systray_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
+    (void)foreground;
+    pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &barcolors.bg_status, 1, &(pixman_box32_t){.x1=x, .y1=0, .x2=x+128, .y2=bar->height});
+    return 128;
 }
 
 static uint32_t statuswidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {

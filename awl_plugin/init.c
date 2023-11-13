@@ -7,6 +7,7 @@
 #include "pulsetest.h"
 #include "temp.h"
 #include "wallpaper.h"
+#include <assert.h>
 
 static awl_config_t S = {0};
 
@@ -83,7 +84,58 @@ static void setup_bar_colors( void ) {
 
 }
 
+static pid_t spawn_pid( const char** arg ) {
+    pid_t fork_ = fork();
+    if (fork_) {
+        return fork_;
+    } else {
+        execvp(arg[0], (char**) arg);
+        die("execvp %s failed:", arg[0]);
+        return fork_;
+    }
+}
+
+typedef struct awl_persistent_plugin_data_t {
+    pid_t pid_tray;
+    pid_t pid_nm_applet;
+    pid_t pid_blueman;
+    pid_t pid_nextcloud;
+    pid_t pid_printer;
+    pid_t pid_telegram;
+    pid_t pid_evolution;
+} awl_persistent_plugin_data_t;
+
+static const char *cmd_tray[] = { "./tray/awl_tray", NULL };
+static const char *cmd_nm_applet[] = { "nm-applet", NULL };
+static const char *cmd_blueman[] = { "blueman-applet", NULL };
+static const char *cmd_nextcloud[] = { "nextcloud", "--background" };
+static const char *cmd_printer[] = {"system-config-printer-applet", NULL};
+static const char *cmd_telegram[] = {"telegram-desktop", NULL};
+static const char *cmd_evolution[] = {"evolution", NULL};
+
 static void awl_plugin_init(void) {
+
+    awl_log_printf("persistent data…");
+    awl_persistent_plugin_data_t* data = AWL_VTABLE_SYM.state->persistent_plugin_data;
+    if (sizeof(awl_persistent_plugin_data_t) > AWL_VTABLE_SYM.state->persistent_plugin_data_nbytes) {
+        awl_err_printf("too little space for plugin data");
+        data = NULL;
+    }
+    if (data) {
+        #define AUTOSTART( thing ) { \
+            if (kill(data->pid_##thing, 0) == -1 || !data->pid_##thing) { \
+                awl_log_printf( "autostarting " #thing ); \
+                data->pid_##thing = spawn_pid( (const char**)cmd_##thing ); \
+            } \
+        }
+        AUTOSTART( tray );
+        AUTOSTART( nm_applet );
+        AUTOSTART( blueman );
+        /* AUTOSTART( nextcloud ); */
+        AUTOSTART( printer );
+        AUTOSTART( telegram );
+        AUTOSTART( evolution );
+    }
 
     awl_log_printf("setting up environment");
     setenv("MOZ_ENABLE_WAYLAND", "1", 1);
