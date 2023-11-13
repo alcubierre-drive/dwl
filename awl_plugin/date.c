@@ -54,8 +54,6 @@ struct awl_calendar_t {
 static month_state_t* MST = NULL;
 
 static void calendar_draw( AWL_SingleWindow* win, pixman_image_t* fg, pixman_image_t* bg ) {
-    awl_log_printf("redrawing calendar window");
-
     if (!MST) return;
 
     uint32_t width_want = TEXT_WIDTH(" Mo Tu We Th Fr Sa Su", -1, 20);
