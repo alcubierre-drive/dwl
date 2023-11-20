@@ -399,7 +399,7 @@ void Item::makeMenu() {
       g_object_ref_sink(G_OBJECT(dbus_menu));
       g_object_weak_ref(G_OBJECT(dbus_menu), (GWeakNotify)onMenuDestroyed, this);
       gtk_menu = Glib::wrap(GTK_MENU(dbus_menu));
-      gtk_menu->attach_to_widget(event_box);
+      /* gtk_menu->attach_to_widget(event_box); */
     }
   }
 }
@@ -412,11 +412,7 @@ bool Item::handleClick(GdkEventButton* const& ev) {
   if ((ev->button == 1 && item_is_menu) || ev->button == 3) {
     makeMenu();
     if (gtk_menu != nullptr) {
-#if GTK_CHECK_VERSION(3, 22, 0)
       gtk_menu->popup_at_pointer(reinterpret_cast<GdkEvent*>(ev));
-#else
-      gtk_menu->popup(ev->button, ev->time);
-#endif
       return true;
     } else {
       proxy_->call("ContextMenu", parameters);

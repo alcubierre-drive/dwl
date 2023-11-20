@@ -103,15 +103,17 @@ typedef struct awl_persistent_plugin_data_t {
     pid_t pid_printer;
     pid_t pid_telegram;
     pid_t pid_evolution;
+    pid_t pid_locker;
 } awl_persistent_plugin_data_t;
 
-static const char *cmd_tray[] = { "./tray/awl_tray", NULL };
+/* static const char *cmd_tray[] = { "./tray/awl_tray", NULL }; */
 static const char *cmd_nm_applet[] = { "nm-applet", NULL };
 static const char *cmd_blueman[] = { "blueman-applet", NULL };
 /* static const char *cmd_nextcloud[] = { "nextcloud", "--background" }; */
 static const char *cmd_printer[] = {"system-config-printer-applet", NULL};
 static const char *cmd_telegram[] = {"telegram-desktop", NULL};
 static const char *cmd_evolution[] = {"evolution", NULL};
+static const char *cmd_locker[] = {"systemd-lock-handler", "swaylock", NULL};
 
 static void awl_plugin_init(void) {
 
@@ -128,13 +130,14 @@ static void awl_plugin_init(void) {
                 data->pid_##thing = spawn_pid( (const char**)cmd_##thing ); \
             } \
         }
-        AUTOSTART( tray );
+        /* AUTOSTART( tray ); */
         AUTOSTART( nm_applet );
         AUTOSTART( blueman );
         /* AUTOSTART( nextcloud ); */
         AUTOSTART( printer );
         AUTOSTART( telegram );
         AUTOSTART( evolution );
+        AUTOSTART( locker );
     }
 
     awl_log_printf("setting up environment");
@@ -248,6 +251,7 @@ static void awl_plugin_init(void) {
     static const char *vol_switch_cmd[] = {"pulse_port_switch", "-t", "-N", NULL};
     static const char *screenshot_cmd[] = {"grim", NULL};
     static const char *display_cmd[] = {"wdisplays", NULL};
+    static const char *lock_cmd[] = {"swaylock", NULL};
 
     ADD_KEY( MODKEY,    XKB_KEY_p,          spawn,              {.v=menucmd} )
     ADD_KEY( MODKEY,    XKB_KEY_Return,     spawn,              {.v=termcmd} )
@@ -278,7 +282,8 @@ static void awl_plugin_init(void) {
 
     ADD_KEY( MODKEY,    XKB_KEY_Right,      cycle_tag,          {.i= 1} )
     ADD_KEY( MODKEY,    XKB_KEY_Left,       cycle_tag,          {.i=-1} )
-    ADD_KEY( MODKEY,    XKB_KEY_space,      cycle_layout,       {0} )
+    ADD_KEY( MODKEY,    XKB_KEY_space,      cycle_layout,       {.i= 1} )
+    ADD_KEY( MODKEY_SH, XKB_KEY_space,      cycle_layout,       {.i=-1} )
     ADD_KEY( MODKEY_SH, XKB_KEY_J,          movestack,          {.i = +1} )
     ADD_KEY( MODKEY_SH, XKB_KEY_K,          movestack,          {.i = -1} )
 
@@ -294,6 +299,7 @@ static void awl_plugin_init(void) {
     ADD_KEY( MODKEY, XKB_KEY_F1,                spawn,          {.v=vol_switch_cmd} )
     ADD_KEY( MODKEY, XKB_KEY_d,                 spawn,          {.v=display_cmd} );
     ADD_KEY( 0, XKB_KEY_XF86Display,            spawn,          {.v=display_cmd} );
+    ADD_KEY( MODKEY_SH, XKB_KEY_G,              spawn,          {.v=lock_cmd} );
 
     static const char* dock_cmd_mode_1[] = {"docked", "1", NULL};
     static const char* dock_cmd_mode_2[] = {"docked", "2", NULL};
@@ -459,12 +465,13 @@ static void cycle_tag( const Arg* arg ) {
 }
 
 static void cycle_layout( const Arg* arg ) {
-    (void)arg;
     awl_state_t* B = AWL_VTABLE_SYM.state;
     if (!B) return;
 
-    S.cur_layout++;
-    S.cur_layout %= S.n_layouts;
+    if (arg->i > 0)
+        S.cur_layout = (S.cur_layout+1) % S.n_layouts;
+    else
+        S.cur_layout = (S.cur_layout + S.n_layouts-1) % S.n_layouts;
 
     Arg A = {.i = S.cur_layout};
     setlayout( &A );
