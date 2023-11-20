@@ -62,6 +62,7 @@ struct AWL_Window {
     int only_current_output;
     int hidden;
     int running;
+    pthread_mutex_t showmtx;
 
     uint32_t buffer_scale;
 
@@ -148,6 +149,11 @@ void awl_minimal_window_refresh( AWL_Window* w ) {
 }
 
 void hide_window(AWL_SingleWindow *win) {
+    if (!win) return;
+    AWL_Window* w = win->parent;
+    if (!w) return;
+    if (pthread_mutex_trylock( &w->showmtx ) == EBUSY) return;
+
     if (!win->hidden) {
         zwlr_layer_surface_v1_destroy(win->layer_surface);
         wl_surface_destroy(win->wl_surface);
@@ -155,17 +161,22 @@ void hide_window(AWL_SingleWindow *win) {
         win->configured = 0;
         win->hidden = 1;
     }
+
+    pthread_mutex_unlock( &w->showmtx );
 }
 
 static void draw_window(AWL_SingleWindow *win) {
     if (!win) return;
     AWL_Window* w = win->parent;
+    if (!w) return;
+    if (pthread_mutex_trylock( &w->showmtx ) == EBUSY) return;
+
     /* Allocate buffer to be attached to the surface */
     int fd = allocate_shm_file(win->bufsize);
-    if (fd == -1) return;
+    if (fd == -1) goto enddraw;
 
     uint32_t *data = mmap(NULL, win->bufsize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    if (data == MAP_FAILED) return;
+    if (data == MAP_FAILED) goto enddraw;
 
     struct wl_shm_pool *pool = wl_shm_create_pool(w->shm, fd, win->bufsize);
     struct wl_buffer* buffer = wl_shm_pool_create_buffer(pool, 0, win->width, win->height,
@@ -195,6 +206,8 @@ static void draw_window(AWL_SingleWindow *win) {
     wl_surface_attach(win->wl_surface, buffer, 0, 0);
     wl_surface_damage_buffer(win->wl_surface, 0, 0, win->width, win->height);
     wl_surface_commit(win->wl_surface);
+enddraw:
+    pthread_mutex_unlock( &w->showmtx );
 }
 
 static void window_layer_surface_configure(void *data, struct zwlr_layer_surface_v1 *surface,
@@ -225,7 +238,11 @@ static void window_layer_surface_closed(void *data, struct zwlr_layer_surface_v1
 }
 
 static void show_window(AWL_SingleWindow *win) {
+    if (!win) return;
     AWL_Window* w = win->parent;
+    if (!w) return;
+    if (pthread_mutex_trylock( &w->showmtx ) == EBUSY) return;
+
     win->wl_surface = wl_compositor_create_surface(w->compositor);
     if (!win->wl_surface)
         awl_err_printf( "Could not create wl_surface" );
@@ -242,6 +259,7 @@ static void show_window(AWL_SingleWindow *win) {
     /* zwlr_layer_surface_v1_set_exclusive_zone(win->layer_surface, win->height / buffer_scale); */
     wl_surface_commit(win->wl_surface);
     win->hidden = 0;
+    pthread_mutex_unlock( &w->showmtx );
 }
 
 static void setup_window(AWL_Window* w, AWL_SingleWindow *win) {
@@ -346,6 +364,7 @@ AWL_Window* awl_minimal_window_setup( const awl_minimal_window_props_t* props ) 
     w->draw = props->draw;
     w->click = props->click;
     w->scroll = props->scroll;
+    pthread_mutex_init( &w->showmtx, NULL );
     pthread_create( &w->event_thread, NULL, awl_minimal_window_event_loop_thread, w );
     return w;
 }
@@ -449,6 +468,10 @@ void awl_minimal_window_destroy( AWL_Window* w ) {
     w->has_init = 0;
     eventfd_write(w->redraw_fd, 1);
     if (w->redraw_fd != -1) close( w->redraw_fd );
+
+    pthread_mutex_trylock( &w->showmtx );
+    pthread_mutex_unlock( &w->showmtx );
+    pthread_mutex_destroy( &w->showmtx );
 
     AWL_SingleWindow *win, *win2;
     WaylandSeat *seat, *seat2;
