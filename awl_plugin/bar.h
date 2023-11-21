@@ -29,6 +29,10 @@ uint32_t draw_text(char *text, uint32_t x, uint32_t y,
       pixman_image_t *fg, pixman_image_t *bg,
       pixman_color_t *fg_color, pixman_color_t *bg_color,
       uint32_t max_x, uint32_t buf_height, uint32_t padding );
+uint32_t draw_text_at(char *text, uint32_t x, uint32_t y,
+        pixman_image_t *foreground, pixman_image_t *background,
+        pixman_color_t *fg_color, pixman_color_t *bg_color, uint32_t max_x,
+        uint32_t padding, uint32_t padding_add_y );
 
 #define TEXT_WIDTH(text, maxwidth, padding) \
     draw_text(text, 0, 0, NULL, NULL, NULL, NULL, maxwidth, 0, padding)
