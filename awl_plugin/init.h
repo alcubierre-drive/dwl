@@ -60,7 +60,6 @@ printstatus
 resize
 setlayout
 setmfact
-spawn
 tag
 tagmon
 tile

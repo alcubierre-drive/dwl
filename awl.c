@@ -2092,40 +2092,6 @@ void setup(void) {
     }
 }
 
-// TODO this is a copy
-static pid_t spawn_pid( char** arg ) {
-    int pid_fd = memfd_create("awl_spawn_pid", MFD_ALLOW_SEALING|MFD_CLOEXEC);
-    if (pid_fd == -1)
-        return 0;
-    ftruncate( pid_fd, sizeof(pid_t) );
-
-    pid_t pid = fork();
-    if (pid == 0) {
-        pid_t ppid = fork();
-        if (ppid == 0) {
-            close(pid_fd);
-            execvp(arg[0], arg);
-            die("execvp %s failed:", arg[0]);
-        } else {
-            lseek(pid_fd, 0, SEEK_SET);
-            write(pid_fd, &ppid, sizeof(pid_t));
-            close(pid_fd);
-            _exit(0);
-        }
-    } else {
-        waitpid(pid, NULL, 0);
-        lseek(pid_fd, 0, SEEK_SET);
-        read(pid_fd, &pid, sizeof(pid_t));
-        close(pid_fd);
-    }
-
-    return pid;
-}
-
-void spawn(const Arg *arg) {
-    spawn_pid( (char**)arg->v );
-}
-
 void startdrag(struct wl_listener *listener, void *data) {
     (void)listener;
     struct wlr_drag *drag = data;

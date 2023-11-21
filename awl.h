@@ -322,7 +322,7 @@ void setmon(Client *c, Monitor *m, uint32_t newtags);
 void setpsel(struct wl_listener *listener, void *data);
 void setsel(struct wl_listener *listener, void *data);
 void setup(void);
-void spawn(const Arg *arg);
+/* void spawn(const Arg *arg); */
 void startdrag(struct wl_listener *listener, void *data);
 void tag(const Arg *arg);
 void tagmon(const Arg *arg);
