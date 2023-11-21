@@ -25,9 +25,7 @@ static pthread_t wp_idx_thread = {0};
 
 static AWL_Window* w = NULL;
 
-static void wallpaper_draw( AWL_SingleWindow* win, pixman_image_t* fg, pixman_image_t* bg ) {
-    (void)bg;
-
+static void wallpaper_draw( AWL_SingleWindow* win, pixman_image_t* fg ) {
     awl_log_printf("in wallpaper draw function");
 
     if (!wallpaper_number) return;

@@ -51,7 +51,7 @@ typedef struct awl_minimal_window_props_t {
     int only_current_output; // only one window on the current output
     double continuous_event_norm; // renormalization of pad scrolling
 
-    void (*draw)( AWL_SingleWindow* win, pixman_image_t* foreground, pixman_image_t* background );
+    void (*draw)( AWL_SingleWindow* win, pixman_image_t* img );
     void (*click)( AWL_SingleWindow* win, int button );
     void (*scroll)( AWL_SingleWindow* win, int amount );
 } awl_minimal_window_props_t;

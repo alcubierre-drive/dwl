@@ -83,7 +83,7 @@ struct AWL_Window {
     struct wl_seat_listener seat_listener;
     struct wl_registry_listener registry_listener;
 
-    void (*draw)( AWL_SingleWindow* win, pixman_image_t* foreground, pixman_image_t* background );
+    void (*draw)( AWL_SingleWindow* win, pixman_image_t* img );
     void (*click)( AWL_SingleWindow* win, int button );
     void (*scroll)( AWL_SingleWindow* win, int amount );
 
@@ -184,21 +184,9 @@ static void draw_window(AWL_SingleWindow *win) {
     wl_shm_pool_destroy(pool);
     close(fd);
 
-    // pixman image
+    // pixman image that's passed to the window drawing function
     pixman_image_t *final = pixman_image_create_bits(PIXMAN_a8r8g8b8, win->width, win->height, data, win->width * 4);
-
-    // text layers
-    pixman_image_t *foreground = pixman_image_create_bits(PIXMAN_a8r8g8b8, win->width, win->height, NULL, win->width * 4);
-    pixman_image_t *background = pixman_image_create_bits(PIXMAN_a8r8g8b8, win->width, win->height, NULL, win->width * 4);
-
-    if (win->parent->draw) (*win->parent->draw)( win, foreground, background );
-
-    /* Draw background and foreground on win */
-    pixman_image_composite32(PIXMAN_OP_OVER, background, NULL, final, 0, 0, 0, 0, 0, 0, win->width, win->height);
-    pixman_image_composite32(PIXMAN_OP_OVER, foreground, NULL, final, 0, 0, 0, 0, 0, 0, win->width, win->height);
-
-    pixman_image_unref(foreground);
-    pixman_image_unref(background);
+    if (win->parent->draw) (*win->parent->draw)( win, final );
     pixman_image_unref(final);
 
     munmap(data, win->bufsize);

@@ -53,7 +53,7 @@ struct awl_calendar_t {
 };
 static month_state_t* MST = NULL;
 
-static void calendar_draw( AWL_SingleWindow* win, pixman_image_t* fg, pixman_image_t* bg ) {
+static void calendar_draw( AWL_SingleWindow* win, pixman_image_t* img ) {
     if (!MST) return;
 
     uint32_t width_want = TEXT_WIDTH(" Mo Tu We Th Fr Sa Su", -1, 20);
@@ -64,6 +64,9 @@ static void calendar_draw( AWL_SingleWindow* win, pixman_image_t* fg, pixman_ima
         dy = 35;
     char line[64] = {0};
     y += dy;
+
+    pixman_image_t *fg = pixman_image_create_bits(PIXMAN_a8r8g8b8, win->width, win->height, NULL, win->width*4);
+    pixman_image_t *bg = img;
 
     sprintf( line, "%-16s %4d", MST->monthname, MST->year );
     draw_text( line, x, y, fg, bg, &barcolors.fg_status, &barcolors.bg_status, win->width, dy, 0 );
@@ -100,6 +103,10 @@ static void calendar_draw( AWL_SingleWindow* win, pixman_image_t* fg, pixman_ima
                 .x1 = 3, .x2 = win->width-6,
                 .y1 = 3, .y2 = win->height-6,
             });
+
+    // and fill into bg, free fg
+    pixman_image_composite32(PIXMAN_OP_OVER, fg, NULL, bg, 0, 0, 0, 0, 0, 0, win->width, win->height);
+    pixman_image_unref(fg);
 }
 
 awl_calendar_t* calendar_popup( void ) {
