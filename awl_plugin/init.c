@@ -8,6 +8,7 @@
 #include "temp.h"
 #include "wallpaper.h"
 #include <assert.h>
+#include <unistd.h>
 
 static awl_config_t S = {0};
 
@@ -85,13 +86,19 @@ static void setup_bar_colors( void ) {
 }
 
 static pid_t spawn_pid( const char** arg ) {
-    pid_t fork_ = fork();
-    if (fork_) {
-        return fork_;
+    pid_t pid = vfork();
+    if (pid == 0) {
+        pid = fork();
+        if (pid == 0) {
+            execvp(arg[0], (char**)arg);
+            die("execvp %s failed:", arg[0]);
+        } else {
+            _exit(0);
+        }
+        return pid;
     } else {
-        execvp(arg[0], (char**) arg);
-        die("execvp %s failed:", arg[0]);
-        return fork_;
+        wait(NULL);
+        return pid;
     }
 }
 

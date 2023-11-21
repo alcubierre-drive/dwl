@@ -2090,13 +2090,26 @@ void setup(void) {
     }
 }
 
-void spawn(const Arg *arg) {
-    if (fork() == 0) {
-        dup2(STDERR_FILENO, STDOUT_FILENO);
-        setsid();
-        execvp(((char **)arg->v)[0], (char **)arg->v);
-        die("dwl: execvp %s failed:", ((char **)arg->v)[0]);
+// TODO this is a copy
+static pid_t spawn_pid( char** arg ) {
+    pid_t pid = vfork();
+    if (pid == 0) {
+        pid = fork();
+        if (pid == 0) {
+            execvp(arg[0], arg);
+            die("execvp %s failed:", arg[0]);
+        } else {
+            _exit(0);
+        }
+        return pid;
+    } else {
+        wait(NULL);
+        return pid;
     }
+}
+
+void spawn(const Arg *arg) {
+    spawn_pid( (char**)arg->v );
 }
 
 void startdrag(struct wl_listener *listener, void *data) {
