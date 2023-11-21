@@ -206,6 +206,7 @@ static void draw_window(AWL_SingleWindow *win) {
     wl_surface_attach(win->wl_surface, buffer, 0, 0);
     wl_surface_damage_buffer(win->wl_surface, 0, 0, win->width, win->height);
     wl_surface_commit(win->wl_surface);
+    wl_buffer_destroy(buffer);
 enddraw:
     pthread_mutex_unlock( &w->showmtx );
 }

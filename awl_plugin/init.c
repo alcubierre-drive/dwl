@@ -1,3 +1,6 @@
+#define _GNU_SOURCE
+#include <sys/mman.h>
+
 #include "init.h"
 #include "../awl_log.h"
 #include "../awl_util.h"
@@ -85,21 +88,33 @@ static void setup_bar_colors( void ) {
 
 }
 
-static pid_t spawn_pid( const char** arg ) {
-    pid_t pid = vfork();
+static pid_t spawn_pid( char** arg ) {
+    int pid_fd = memfd_create("awl_spawn_pid", MFD_ALLOW_SEALING|MFD_CLOEXEC);
+    if (pid_fd == -1)
+        return 0;
+    ftruncate( pid_fd, sizeof(pid_t) );
+
+    pid_t pid = fork();
     if (pid == 0) {
-        pid = fork();
-        if (pid == 0) {
-            execvp(arg[0], (char**)arg);
+        pid_t ppid = fork();
+        if (ppid == 0) {
+            close(pid_fd);
+            execvp(arg[0], arg);
             die("execvp %s failed:", arg[0]);
         } else {
+            lseek(pid_fd, 0, SEEK_SET);
+            write(pid_fd, &ppid, sizeof(pid_t));
+            close(pid_fd);
             _exit(0);
         }
-        return pid;
     } else {
-        wait(NULL);
-        return pid;
+        waitpid(pid, NULL, 0);
+        lseek(pid_fd, 0, SEEK_SET);
+        read(pid_fd, &pid, sizeof(pid_t));
+        close(pid_fd);
     }
+
+    return pid;
 }
 
 typedef struct awl_persistent_plugin_data_t {
@@ -134,7 +149,7 @@ static void awl_plugin_init(void) {
         #define AUTOSTART( thing ) { \
             if (kill(data->pid_##thing, 0) == -1 || !data->pid_##thing) { \
                 awl_log_printf( "autostarting " #thing ); \
-                data->pid_##thing = spawn_pid( (const char**)cmd_##thing ); \
+                data->pid_##thing = spawn_pid( (char**)cmd_##thing ); \
             } \
         }
         /* AUTOSTART( tray ); */
