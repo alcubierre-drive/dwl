@@ -345,6 +345,8 @@ void xytonode(double x, double y, struct wlr_surface **psurface,
         Client **pc, LayerSurface **pl, double *nx, double *ny);
 void zoom(const Arg *arg);
 
+pid_t vfork( void );
+
 /* global event handlers */
 extern struct wl_listener cursor_axis;
 extern struct wl_listener cursor_button;
