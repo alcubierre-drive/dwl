@@ -50,6 +50,8 @@ static void gaplessgrid(Monitor *m);
 static void bstack(Monitor *m);
 static void dwindle(Monitor *mon);
 
+static void spawn_from_plugin( const Arg* arg );
+
 static void setup_bar_colors( void ) {
     pixman_color_t c16 = {0};
     // tag colors
@@ -155,15 +157,6 @@ typedef struct awl_persistent_plugin_data_t {
     pid_t pid_locker;
 } awl_persistent_plugin_data_t;
 
-/* static const char *cmd_tray[] = { "./tray/awl_tray", NULL }; */
-static const char *cmd_nm_applet[] = { "nm-applet", NULL };
-static const char *cmd_blueman[] = { "blueman-applet", NULL };
-/* static const char *cmd_nextcloud[] = { "nextcloud", "--background" }; */
-static const char *cmd_printer[] = {"system-config-printer-applet", NULL};
-static const char *cmd_telegram[] = {"telegram-desktop", NULL};
-static const char *cmd_evolution[] = {"evolution", NULL};
-static const char *cmd_locker[] = {"systemd-lock-handler", "swaylock", NULL};
-
 static void awl_plugin_init(void) {
 
     awl_log_printf("persistent data…");
@@ -173,20 +166,20 @@ static void awl_plugin_init(void) {
         data = NULL;
     }
     if (data) {
-        #define AUTOSTART( thing ) { \
+        #define AUTOSTART( thing, cmd ) { \
             if (kill(data->pid_##thing, 0) == -1 || !data->pid_##thing) { \
                 awl_log_printf( "autostarting " #thing ); \
-                data->pid_##thing = spawn_pid( (char**)cmd_##thing ); \
+                data->pid_##thing = spawn_pid_str( cmd ); \
             } \
         }
-        /* AUTOSTART( tray ); */
-        /* AUTOSTART( nextcloud ); */
-        AUTOSTART( nm_applet );
-        AUTOSTART( blueman );
-        AUTOSTART( printer );
-        AUTOSTART( telegram );
-        AUTOSTART( evolution );
-        AUTOSTART( locker );
+        /* AUTOSTART( tray, "./tray/awl_tray" ); */
+        /* AUTOSTART( nextcloud, "nextcloud --background" ); */
+        AUTOSTART( nm_applet, "nm-applet" );
+        AUTOSTART( blueman, "blueman-applet" );
+        AUTOSTART( printer, "system-config-printer-applet" );
+        AUTOSTART( telegram, "telegram-desktop" );
+        AUTOSTART( evolution, "evolution" );
+        AUTOSTART( locker, "systemd-lock-handler swaylock" );
     }
 
     awl_log_printf("setting up environment");
@@ -198,6 +191,10 @@ static void awl_plugin_init(void) {
     setenv("SYSTEMD_EDITOR","/usr/bin/nvim",1);
     setenv("SSH_AUTH_SOCK","1",1);
     setenv("NO_AT_BRIDGE","1",1);
+    char buf[256] = {0};
+    strcpy( buf, getenv("HOME") );
+    strcat( buf, "/Desktop" );
+    setenv("GRIM_DEFAULT_DIR", buf, 1);
 
     awl_log_printf( "general setup" );
     S.sloppyfocus = 1;
@@ -283,6 +280,7 @@ static void awl_plugin_init(void) {
         ADD_KEY( MODKEY_CT,    KEY,  toggleview, {.ui = 1 << TAG} ) \
         ADD_KEY( MODKEY_SH,    SKEY, tag,        {.ui = 1 << TAG} ) \
         ADD_KEY( MODKEY_CT_SH, SKEY, toggletag,  {.ui = 1 << TAG} )
+
     #ifndef AWL_TERM_CMD
     #define AWL_TERM_CMD "kitty"
     #endif
@@ -290,21 +288,8 @@ static void awl_plugin_init(void) {
     #define AWL_MENU_CMD "bemenu-run"
     #endif
 
-    static const char *termcmd[] = {AWL_TERM_CMD, NULL};
-    static const char *menucmd[] = {AWL_MENU_CMD, NULL};
-    static const char *brightness_m_cmd[] = {"backlight-tooler", "-m", "dec", "-V", "0.05", NULL};
-    static const char *brightness_p_cmd[] = {"backlight-tooler", "-m", "inc", "-V", "0.05", NULL};
-    static const char *vol_p_cmd[] = {"pactl", "set-sink-volume", "@DEFAULT_SINK@", "+5%", NULL};
-    static const char *vol_m_cmd[] = {"pactl", "set-sink-volume", "@DEFAULT_SINK@", "-5%", NULL};
-    static const char *vol_mute_cmd[] = {"pactl", "set-sink-mute", "@DEFAULT_SINK@", "toggle", NULL};
-    static const char *mic_mute_cmd[] = {"pactl", "set-source-mute", "@DEFAULT_SOURCE@", "toggle", NULL};
-    static const char *vol_switch_cmd[] = {"pulse_port_switch", "-t", "-N", NULL};
-    static const char *screenshot_cmd[] = {"grim", NULL};
-    static const char *display_cmd[] = {"wdisplays", NULL};
-    static const char *lock_cmd[] = {"swaylock", NULL};
-
-    ADD_KEY( MODKEY,    XKB_KEY_p,          spawn,              {.v=menucmd} )
-    ADD_KEY( MODKEY,    XKB_KEY_Return,     spawn,              {.v=termcmd} )
+    ADD_KEY( MODKEY,    XKB_KEY_p,          spawn_from_plugin,  {.v=AWL_MENU_CMD} )
+    ADD_KEY( MODKEY,    XKB_KEY_Return,     spawn_from_plugin,  {.v=AWL_TERM_CMD} )
     ADD_KEY( MODKEY,    XKB_KEY_j,          focusstack,         {.i = +1} )
     ADD_KEY( MODKEY,    XKB_KEY_k,          focusstack,         {.i = -1} )
     /* ADD_KEY( MODKEY,    XKB_KEY_i,          incnmaster,         {.i = +1} ) */
@@ -340,28 +325,23 @@ static void awl_plugin_init(void) {
 
     ADD_KEY( MODKEY,    XKB_KEY_b,          bordertoggle,       {0} )
 
-    ADD_KEY( 0, XKB_KEY_XF86MonBrightnessUp,    spawn,          {.v=brightness_p_cmd} )
-    ADD_KEY( 0, XKB_KEY_XF86MonBrightnessDown,  spawn,          {.v=brightness_m_cmd} )
-    ADD_KEY( 0, XKB_KEY_XF86AudioRaiseVolume,   spawn,          {.v=vol_p_cmd} )
-    ADD_KEY( 0, XKB_KEY_XF86AudioLowerVolume,   spawn,          {.v=vol_m_cmd} )
-    ADD_KEY( 0, XKB_KEY_XF86AudioMute,          spawn,          {.v=vol_mute_cmd} )
-    ADD_KEY( 0, XKB_KEY_XF86AudioMicMute,       spawn,          {.v=mic_mute_cmd} )
-    ADD_KEY( 0, XKB_KEY_Print,                  spawn,          {.v=screenshot_cmd} );
-    ADD_KEY( MODKEY, XKB_KEY_F1,                spawn,          {.v=vol_switch_cmd} )
-    ADD_KEY( MODKEY, XKB_KEY_d,                 spawn,          {.v=display_cmd} );
-    ADD_KEY( 0, XKB_KEY_XF86Display,            spawn,          {.v=display_cmd} );
-    ADD_KEY( MODKEY_SH, XKB_KEY_G,              spawn,          {.v=lock_cmd} );
+    ADD_KEY( 0, XKB_KEY_XF86MonBrightnessUp,  spawn_from_plugin,{.v="backlight-tooler -m inc -V 0.05"} );
+    ADD_KEY( 0, XKB_KEY_XF86MonBrightnessDown,spawn_from_plugin,{.v="backlight-tooler -m dec -V 0.05"} );
+    ADD_KEY( 0, XKB_KEY_XF86AudioRaiseVolume, spawn_from_plugin,{.v="pactl set-sink-volume @DEFAULT_SINK@ +5%"} );
+    ADD_KEY( 0, XKB_KEY_XF86AudioLowerVolume, spawn_from_plugin,{.v="pactl set-sink-volume @DEFAULT_SINK@ -5%"} );
+    ADD_KEY( 0, XKB_KEY_XF86AudioMute,        spawn_from_plugin,{.v="pactl set-sink-mute @DEFAULT_SINK@ toggle"} );
+    ADD_KEY( 0, XKB_KEY_XF86AudioMicMute,     spawn_from_plugin,{.v="pactl set-source-mute @DEFAULT_SOURCE@ toggle"} );
+    ADD_KEY( 0, XKB_KEY_Print,                spawn_from_plugin,{.v="grim"} );
+    ADD_KEY( MODKEY, XKB_KEY_F1,              spawn_from_plugin,{.v="pulse_port_switch -t -N"} );
+    ADD_KEY( MODKEY, XKB_KEY_d,               spawn_from_plugin,{.v="wdisplays"} );
+    ADD_KEY( 0, XKB_KEY_XF86Display,          spawn_from_plugin,{.v="wdisplays"} );
+    ADD_KEY( MODKEY_SH, XKB_KEY_G,            spawn_from_plugin,{.v="swaylock"} );
 
-    static const char* dock_cmd_mode_1[] = {"docked", "1", NULL};
-    static const char* dock_cmd_mode_2[] = {"docked", "2", NULL};
-    static const char* dock_cmd_mode_3[] = {"docked", "3", NULL};
-    static const char* dock_cmd_mode_4[] = {"docked", "4", NULL};
-    static const char* dock_cmd_mode_5[] = {"docked", "5", NULL};
-    ADD_KEY( MODKEY_CT_SH, XKB_KEY_D,           spawn,          {.v=dock_cmd_mode_1} );
-    ADD_KEY( MODKEY_CT, XKB_KEY_d,              spawn,          {.v=dock_cmd_mode_2} );
-    ADD_KEY( MODKEY_SH, XKB_KEY_D,              spawn,          {.v=dock_cmd_mode_3} );
-    ADD_KEY( MODKEY_CT, XKB_KEY_u,              spawn,          {.v=dock_cmd_mode_4} );
-    ADD_KEY( MODKEY_SH, XKB_KEY_U,              spawn,          {.v=dock_cmd_mode_5} );
+    ADD_KEY( MODKEY_CT_SH, XKB_KEY_D,         spawn_from_plugin,{.v="docked 1"} );
+    ADD_KEY( MODKEY_CT, XKB_KEY_d,            spawn_from_plugin,{.v="docked 2"} );
+    ADD_KEY( MODKEY_SH, XKB_KEY_D,            spawn_from_plugin,{.v="docked 3"} );
+    ADD_KEY( MODKEY_CT, XKB_KEY_u,            spawn_from_plugin,{.v="docked 4"} );
+    ADD_KEY( MODKEY_SH, XKB_KEY_U,            spawn_from_plugin,{.v="docked 5"} );
 
     // TODO potentially missing keyboard shortcuts
     /* "systemctl --user stop backlight-tooler.timer; backlight-tooler -m toggle" */
@@ -798,6 +778,10 @@ static void fibonacci(Monitor *mon, int s) {
 
 static void dwindle(Monitor *mon) {
     fibonacci(mon, 1);
+}
+
+static void spawn_from_plugin( const Arg* arg ) {
+    spawn_pid_str( arg->v );
 }
 
 awl_vtable_t AWL_VTABLE_SYM = {
