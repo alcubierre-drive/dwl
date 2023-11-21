@@ -36,14 +36,6 @@
 #define MIN(A,B) ((A)<(B)?(A):(B))
 #define MAX(A,B) ((A)>(B)?(A):(B))
 
-static void shell_command(char *command) {
-    if (fork() == 0) {
-        setsid();
-        execl("/bin/sh", "sh", "-c", command, NULL);
-        exit(EXIT_SUCCESS);
-    }
-}
-
 static bool has_init = false;
 static int redraw_fd = -1;
 
@@ -1656,7 +1648,7 @@ static void pulsewidget_scroll( Bar* bar, uint32_t pointer_x, int amount ) {
     (void)pointer_x;
     static char cmd[128];
     sprintf( cmd, "pactl set-sink-volume @DEFAULT_SINK@ %+d%%", -amount*2 );
-    shell_command( cmd );
+    spawn_pid_str( cmd );
 }
 
 static void pulsewidget_click( Bar* bar, uint32_t pointer_x, int button ) {
@@ -1664,11 +1656,12 @@ static void pulsewidget_click( Bar* bar, uint32_t pointer_x, int button ) {
     (void)pointer_x;
     switch (button) {
         case BTN_LEFT:
-            shell_command("pavucontrol"); break;
+            spawn_pid_str("pavucontrol"); break;
         case BTN_RIGHT:
-            shell_command("pulse_port_switch -t -N"); break;
+            spawn_pid_str("pulse_port_switch -t -N"); break;
         case BTN_MIDDLE:
-            /* shell_command(); break; */
+            /* // TODO do we want to spawn sth here?
+             * spawn_pid_str(...); break; */
         default:
             break;
     }
@@ -1743,7 +1736,7 @@ static void statuswidget_click( Bar* bar, uint32_t pointer_x, int button ) {
     (void)bar;
     (void)pointer_x;
     (void)button;
-    shell_command( "kitty -e btop" );
+    spawn_pid_str( "kitty -e btop" );
 }
 
 static uint32_t taskbarwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {

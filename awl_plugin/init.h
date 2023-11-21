@@ -10,6 +10,8 @@
 #include "pulsetest.h"
 #include "date.h"
 
+#include <unistd.h>
+
 awl_config_t* awl_plugin_config( void );
 awl_state_t* awl_plugin_state( void );
 
@@ -38,6 +40,9 @@ typedef struct awl_plugin_data_t {
 } awl_plugin_data_t;
 
 awl_plugin_data_t* awl_plugin_data( void );
+
+pid_t spawn_pid( char** arg );
+pid_t spawn_pid_str( const char* cmd );
 
 extern awl_vtable_t AWL_VTABLE_SYM;
 

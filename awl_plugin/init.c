@@ -10,8 +10,8 @@
 #include "pulsetest.h"
 #include "temp.h"
 #include "wallpaper.h"
+#include "vector.h"
 #include <assert.h>
-#include <unistd.h>
 
 static awl_config_t S = {0};
 
@@ -89,7 +89,33 @@ static void setup_bar_colors( void ) {
 
 }
 
-static pid_t spawn_pid( char** arg ) {
+pid_t spawn_pid_str( const char* cmd ) {
+    vector_t argv_vec = vector_init( NULL, sizeof(char*) );
+
+    // split string into vector
+    char *token, *str, *tofree;
+    tofree = str = strdup(cmd);
+    char *s = NULL;
+    while ((token = strsep(&str, " "))) {
+        s = strdup(token);
+        vector_push_back( &argv_vec, &s );
+    }
+    free( tofree );
+    s = NULL, vector_push_back( &argv_vec, &s );
+    char** argv = vector_data( &argv_vec );
+
+    // spawn pid
+    pid_t pid = spawn_pid( argv );
+
+    // free resources
+    for (char** F = argv; *F; F++) free(*F);
+    vector_destroy( &argv_vec );
+
+    // result
+    return pid;
+}
+
+pid_t spawn_pid( char** arg ) {
     int pid_fd = memfd_create("awl_spawn_pid", MFD_ALLOW_SEALING|MFD_CLOEXEC);
     if (pid_fd == -1)
         return 0;
