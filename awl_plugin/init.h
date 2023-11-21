@@ -32,6 +32,7 @@ typedef struct awl_plugin_data_t {
     void (*cycle_layout)(const Arg* arg);
     void (*movestack)( const Arg *arg );
     void (*client_hide)( const Arg* arg );
+    void (*client_max)( const Arg* arg );
     void (*tagmon_f)( const Arg* arg );
     void (*bordertoggle)( const Arg* arg );
 } awl_plugin_data_t;

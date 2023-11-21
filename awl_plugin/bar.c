@@ -1648,9 +1648,15 @@ static uint32_t taskbarwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foregr
             if (!T->visible) bg = alpha_blend_16( bg, barcolors.bg_win_min );
 
             x = draw_text( " ", x, y, foreground, background, &barcolors.fg_win, &bg, nx, bar->height, 0 );
-            if (T->floating) {
-                x = draw_text( "[✈✈✈] ", x, y, foreground, background, &barcolors.fg_win, &bg,
+
+            char* add = NULL;
+            if (T->floating && T->maximized) add = strdup( "[+ ✈] " );
+            else if (T->floating)            add = strdup( "[ ✈ ] " );
+            else if (T->maximized)           add = strdup( "[ + ] " );
+            if (add) {
+                x = draw_text( add, x, y, foreground, background, &barcolors.fg_win, &bg,
                         nx, bar->height, 0 );
+                free(add);
             }
             x = draw_text( T->name, x, y, foreground, background, &barcolors.fg_win, &bg,
                 nx, bar->height, 0 );

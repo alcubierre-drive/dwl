@@ -1450,6 +1450,7 @@ void maximizenotify(struct wl_listener *listener, void *data) {
      * to conform to xdg-shell protocol we still must send a configure.
      * wlr_xdg_surface_schedule_configure() is used to send an empty reply. */
     Client *c = wl_container_of(listener, c, maximize);
+    c->maximized = 1;
     wlr_xdg_surface_schedule_configure(c->surface.xdg);
 }
 
@@ -1714,9 +1715,7 @@ void requeststartdrag(struct wl_listener *listener, void *data) {
         wlr_data_source_destroy(event->drag->source);
 }
 
-void
-resize(Client *c, struct wlr_box geo, int interact)
-{
+void resize(Client *c, struct wlr_box geo, int interact) {
     struct wlr_box *bbox = interact ? &B->sgeom : &c->mon->w;
     client_set_bounds(c, geo.width, geo.height);
     c->geom = geo;
@@ -2159,7 +2158,7 @@ void tile(Monitor *m) {
     Client *c;
 
     wl_list_for_each(c, &B->clients, link)
-        if (VISIBLEON(c, m) && !c->isfloating && !c->isfullscreen && c->visible)
+        if (VISIBLEON(c, m) && !c->isfloating && !c->isfullscreen && c->visible && !c->maximized)
             n++;
     if (n == 0)
         return;
@@ -2172,6 +2171,10 @@ void tile(Monitor *m) {
     wl_list_for_each(c, &B->clients, link) {
         if (!VISIBLEON(c, m) || c->isfloating || c->isfullscreen || !c->visible)
             continue;
+        if (c->maximized) {
+            resize(c, m->w, 0);
+            continue;
+        }
         if (i < (unsigned)m->nmaster) {
             resize(c, (struct wlr_box){.x = m->w.x, .y = m->w.y + my, .width = mw,
                 .height = (m->w.height - my) / (minimum(n, m->nmaster) - i)}, 0);
@@ -2582,27 +2585,38 @@ static void plugin_reload(void) {
     // create a copy of the current config
     awl_config_t *CC = ecalloc( 1, sizeof(awl_config_t) );
     memcpy( CC, V->config, sizeof(awl_config_t) );
-    // dumb this config down... nothing is available
-    CC->rules = NULL, CC->n_rules = 0;
-    CC->layouts = NULL, CC->n_layouts = 0;
-    CC->monrules = NULL, CC->n_monrules = 0;
-    CC->keys = NULL, CC->n_keys = 0;
-    CC->buttons = NULL, CC->n_buttons = 0;
-    CC->P = NULL; // not even the plugin data
 
-    // and set the current config to the slimmed down copy
+    // copy over all the arrays
+    #define ALLOC_COPY( type, array ) \
+    CC->array = ecalloc(CC->n_##array, sizeof(type)); \
+    memcpy(CC->array, C->array, sizeof(type)*CC->n_##array);
+    ALLOC_COPY( Rule, rules );
+    ALLOC_COPY( Layout, layouts );
+    ALLOC_COPY( MonitorRule, monrules );
+    ALLOC_COPY( Key, keys );
+    ALLOC_COPY( Button, buttons );
+    // except for the plugin data (this is opaque)
+    CC->P = NULL;
+
+    // and set the current config to the copy
     C = CC;
 
-    // now we can call the destructor, refresh, read the vtable, set the state,
-    // init...
+    // now call the destructor, refresh, read the vtable, set the state, init...
     V->free();
     awl_extension_refresh(E);
     V = awl_extension_vtable(E);
     V->state = B;
     V->init();
 
-    // and finally set the config to the new one and free the dummy
+    // and finally set the config to the new one
     C = V->config;
+
+    // free the dummy
+    free( CC->rules );
+    free( CC->layouts );
+    free( CC->monrules );
+    free( CC->keys );
+    free( CC->buttons );
     free( CC );
 }
 

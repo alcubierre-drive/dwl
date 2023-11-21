@@ -40,6 +40,7 @@ awl_plugin_data_t* awl_plugin_data( void ) {
 
 static void movestack( const Arg *arg );
 static void client_hide( const Arg* arg );
+static void client_max( const Arg* arg );
 static void tagmon_f( const Arg* arg );
 static void bordertoggle( const Arg* arg );
 static void cycle_tag( const Arg* arg );
@@ -302,6 +303,7 @@ static void awl_plugin_init(void) {
     ADD_KEY( MODKEY,    XKB_KEY_i,          togglebar,          {0} )
     ADD_KEY( MODKEY,    XKB_KEY_n,          client_hide,        {.ui=1} )
     ADD_KEY( MODKEY_CT, XKB_KEY_n,          client_hide,        {.ui=0} )
+    ADD_KEY( MODKEY,    XKB_KEY_m,          client_max,         {0} )
 
     ADD_KEY( MODKEY,    XKB_KEY_Right,      cycle_tag,          {.i= 1} )
     ADD_KEY( MODKEY,    XKB_KEY_Left,       cycle_tag,          {.i=-1} )
@@ -396,6 +398,7 @@ static void awl_plugin_init(void) {
     P->cycle_tag = cycle_tag;
     P->movestack = movestack;
     P->client_hide = client_hide;
+    P->client_max = client_max;
     P->tagmon_f = tagmon_f;
     P->bordertoggle = bordertoggle;
 
@@ -570,6 +573,18 @@ static void client_hide( const Arg* arg ) {
     printstatus();
 }
 
+static void client_max( const Arg* arg ) {
+    (void)arg;
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_config_t* C = &S;
+    if (!B || !C) return;
+
+    Client* sel = focustop(B->selmon);
+    if (sel) sel->maximized = !sel->maximized;
+    arrange(B->selmon);
+    printstatus();
+}
+
 static void tagmon_f( const Arg* arg ) {
     tagmon( arg );
     focusmon( arg );
@@ -597,7 +612,7 @@ static void gaplessgrid(Monitor *m) {
     Client *c;
 
     wl_list_for_each(c, &B->clients, link)
-        if (c->visible && VISIBLEON(c, m) && !c->isfloating)
+        if (c->visible && VISIBLEON(c, m) && !c->isfloating && !c->maximized)
             n++;
     if (n == 0)
         return;
@@ -619,6 +634,11 @@ static void gaplessgrid(Monitor *m) {
         unsigned int cx, cy;
         if (!c->visible || !VISIBLEON(c, m) || c->isfloating || c->isfullscreen)
             continue;
+
+        if (c->maximized) {
+            resize(c, m->w, 0);
+            continue;
+        }
 
         if ((i / rows + 1) > (cols - n % cols))
             rows = n / cols + 1;
@@ -645,7 +665,7 @@ static void bstack(Monitor *m) {
     Client *c;
 
     wl_list_for_each(c, &B->clients, link)
-        if (c->visible && VISIBLEON(c, m) && !c->isfloating)
+        if (c->visible && VISIBLEON(c, m) && !c->isfloating && !c->maximized)
             n++;
     if (n == 0)
         return;
@@ -665,6 +685,10 @@ static void bstack(Monitor *m) {
     wl_list_for_each(c, &B->clients, link) {
         if (!c->visible || !VISIBLEON(c, m) || c->isfloating)
             continue;
+        if (c->maximized) {
+            resize(c, m->w, 0);
+            continue;
+        }
         if ((int)i < m->nmaster) {
             #define MIN(A,B) ((A)<(B)?(A):(B))
             w = (m->w.width - mx) / (MIN((int)n, m->nmaster) - i);
@@ -689,7 +713,7 @@ static void fibonacci(Monitor *mon, int s) {
     Client *c;
 
     wl_list_for_each(c, &B->clients, link)
-        if (c->visible && VISIBLEON(c, mon) && !c->isfloating)
+        if (c->visible && VISIBLEON(c, mon) && !c->isfloating && !c->maximized)
             n++;
     if(n == 0)
         return;
@@ -699,48 +723,50 @@ static void fibonacci(Monitor *mon, int s) {
     nw = mon->w.width;
     nh = mon->w.height;
 
-    wl_list_for_each(c, &B->clients, link)
-        if (c->visible && VISIBLEON(c, mon) && !c->isfloating){
-        if((i % 2 && nh / 2 > 2 * c->bw)
-           || (!(i % 2) && nw / 2 > 2 * c->bw)) {
-            if(i < n - 1) {
-                if(i % 2)
+    wl_list_for_each(c, &B->clients, link) {
+        if (!c->visible || !VISIBLEON(c, mon) || c->isfloating)
+            continue;
+        if (c->maximized) {
+            resize(c, mon->w, 0);
+            continue;
+        }
+        if ((i % 2 && nh / 2 > 2 * c->bw) || (!(i % 2) && nw / 2 > 2 * c->bw)) {
+            if (i < n - 1) {
+                if (i % 2)
                     nh /= 2;
                 else
                     nw /= 2;
-                if((i % 4) == 2 && !s)
+                if ((i % 4) == 2 && !s)
                     nx += nw;
-                else if((i % 4) == 3 && !s)
+                else if ((i % 4) == 3 && !s)
                     ny += nh;
             }
-            if((i % 4) == 0) {
+            if ((i % 4) == 0) {
                 if(s)
                     ny += nh;
                 else
                     ny -= nh;
             }
-            else if((i % 4) == 1)
+            else if ((i % 4) == 1)
                 nx += nw;
-            else if((i % 4) == 2)
+            else if ((i % 4) == 2)
                 ny += nh;
-            else if((i % 4) == 3) {
+            else if ((i % 4) == 3) {
                 if(s)
                     nx += nw;
                 else
                     nx -= nw;
             }
-            if(i == 0)
-            {
-                if(n != 1)
+            if (i == 0) {
+                if (n != 1)
                     nw = mon->w.width * mon->mfact;
                 ny = mon->w.y;
             }
-            else if(i == 1)
+            else if (i == 1)
                 nw = mon->w.width - nw;
             i++;
         }
-        resize(c, (struct wlr_box){.x = nx, .y = ny,
-            .width = nw, .height = nh}, 0);
+        resize(c, (struct wlr_box){.x = nx, .y = ny, .width = nw, .height = nh}, 0);
     }
 }
 
