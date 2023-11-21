@@ -150,7 +150,7 @@ static void awl_plugin_init(void) {
     awl_log_printf("setting up environment");
     setenv("MOZ_ENABLE_WAYLAND", "1", 1);
     setenv("QT_STYLE_OVERRIDE","kvantum",1);
-    setenv("DESKTOP_SESSION","gnome",1);
+    setenv("DESKTOP_SESSION","kde",1);
     setenv("QT_AUTO_SCREEN_SCALE_FACTOR","0",1);
     setenv("EDITOR","nvim",1);
     setenv("SYSTEMD_EDITOR","/usr/bin/nvim",1);
@@ -179,6 +179,7 @@ static void awl_plugin_init(void) {
     ARRAY_APPEND(Rule, rules, "python3", "Figure", 0, 1, -1 );
     ARRAY_APPEND(Rule, rules, "wdisplays", NULL, 0, 1, -1 );
     ARRAY_APPEND(Rule, rules, "blueman-manager", NULL, 0, 1, -1 );
+    ARRAY_APPEND(Rule, rules, "zoom", NULL, 0, 1, -1 );
     awl_log_printf( "created %i rules", S.n_rules );
 
     ARRAY_INIT(Layout, layouts, 16);
@@ -268,7 +269,7 @@ static void awl_plugin_init(void) {
     /* ADD_KEY( MODKEY,    XKB_KEY_d,          incnmaster,         {.i = -1} ) */
     ADD_KEY( MODKEY,    XKB_KEY_h,          setmfact,           {.f = -0.05} )
     ADD_KEY( MODKEY,    XKB_KEY_l,          setmfact,           {.f = +0.05} )
-    ADD_KEY( MODKEY_SH, XKB_KEY_Return,     zoom,               {0} )
+    /* ADD_KEY( MODKEY_SH, XKB_KEY_Return,     zoom,               {0} ) */
     ADD_KEY( MODKEY,    XKB_KEY_Tab,        view,               {0} )
     ADD_KEY( MODKEY_SH, XKB_KEY_C,          killclient,         {0} )
     ADD_KEY( MODKEY_CT, XKB_KEY_space,      togglefloating,     {0} )
