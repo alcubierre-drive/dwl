@@ -138,9 +138,9 @@ static void awl_plugin_init(void) {
             } \
         }
         /* AUTOSTART( tray ); */
+        /* AUTOSTART( nextcloud ); */
         AUTOSTART( nm_applet );
         AUTOSTART( blueman );
-        /* AUTOSTART( nextcloud ); */
         AUTOSTART( printer );
         AUTOSTART( telegram );
         AUTOSTART( evolution );

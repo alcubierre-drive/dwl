@@ -2564,12 +2564,31 @@ static void defer_reload_fun(const Arg* arg) {
 }
 
 static void plugin_reload(void) {
+    // create a copy of the current config
+    awl_config_t *CC = ecalloc( 1, sizeof(awl_config_t) );
+    memcpy( CC, V->config, sizeof(awl_config_t) );
+    // dumb this config down... nothing is available
+    CC->rules = NULL, CC->n_rules = 0;
+    CC->layouts = NULL, CC->n_layouts = 0;
+    CC->monrules = NULL, CC->n_monrules = 0;
+    CC->keys = NULL, CC->n_keys = 0;
+    CC->buttons = NULL, CC->n_buttons = 0;
+    CC->P = NULL; // not even the plugin data
+
+    // and set the current config to the slimmed down copy
+    C = CC;
+
+    // now we can call the destructor, refresh, read the vtable, set the state,
+    // init...
     V->free();
     awl_extension_refresh(E);
     V = awl_extension_vtable(E);
     V->state = B;
     V->init();
+
+    // and finally set the config to the new one and free the dummy
     C = V->config;
+    free( CC );
 }
 
 static void plugin_init(const char* lib) {

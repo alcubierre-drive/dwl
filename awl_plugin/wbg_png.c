@@ -16,6 +16,11 @@ static inline int stride_for_format_and_width(pixman_format_code_t format, int w
     return (((PIXMAN_FORMAT_BPP(format) * width + 7) / 8 + 4 - 1) & -4);
 }
 
+static void data_free( pixman_image_t* pix, void* data ) {
+    (void)pix;
+    free(data);
+}
+
 pixman_image_t * awl_png_load(FILE *fp, const char *path) {
     pixman_image_t *pix = NULL;
 
@@ -52,8 +57,8 @@ pixman_image_t * awl_png_load(FILE *fp, const char *path) {
     int width = png_get_image_width(png_ptr, info_ptr);
     int height = png_get_image_height(png_ptr, info_ptr);
     png_byte color_type = png_get_color_type(png_ptr, info_ptr);
-    png_byte bit_depth __attribute__((unused)) = png_get_bit_depth(png_ptr, info_ptr);
-    int channels __attribute__((unused)) = png_get_channels(png_ptr, info_ptr);
+    png_byte bit_depth = png_get_bit_depth(png_ptr, info_ptr);
+    int channels = png_get_channels(png_ptr, info_ptr);
 
     awl_vrb_printf("%s: %dx%d@%hhubpp, %d channels", path, width, height, bit_depth, channels);
 
@@ -111,7 +116,7 @@ pixman_image_t * awl_png_load(FILE *fp, const char *path) {
     image_data = malloc(height * stride);
 
     awl_vrb_printf("stride=%d, row-bytes=%zu", stride, row_bytes);
-    assert(stride >= row_bytes);
+    assert(stride >= (int)row_bytes);
 
     row_pointers = malloc(height * sizeof(png_bytep));
     for (int i = 0; i < height; i++)
@@ -121,6 +126,8 @@ pixman_image_t * awl_png_load(FILE *fp, const char *path) {
 
     pix = pixman_image_create_bits_no_clear(
         format, width, height, (uint32_t *)image_data, stride);
+
+    pixman_image_set_destroy_function(pix, data_free, image_data);
 
 err:
     if (pix == NULL)
