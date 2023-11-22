@@ -91,6 +91,43 @@ static void setup_bar_colors( void ) {
 
 }
 
+pid_t spawn_pid_str_s( const char* cmd ) {
+    const int bufsize = 1024;
+    const int argc = 16;
+
+    char *buf_ = calloc(1, bufsize);
+    if (!buf_) return 0;
+
+    char *buf = buf_;
+    int buf_remain = bufsize;
+
+    char **argv = (char**)buf;
+    argv[argc-1] = buf + bufsize - 1;
+
+    #define ADVANCE_BUF( len ) \
+    buf += (len); \
+    buf_remain -= (len);
+    char *argstr = ADVANCE_BUF( sizeof(char**)*argc );
+
+    strncpy( argstr, cmd, buf_remain-2 );
+
+    int argcount = 0;
+    for (char *c = argstr; *c; c++) {
+        if (*c == ' ' && argcount < argc-2) {
+            *c = '\0';
+            argv[argcount++] = argstr;
+            argstr = c+1;
+        }
+    }
+    argv[argcount++] = argstr;
+    argv[argcount++] = argv[argc-1];
+
+    pid_t result = spawn_pid( argv );
+
+    free(buf_);
+    return result;
+}
+
 pid_t spawn_pid_str( const char* cmd ) {
     vector_t argv_vec = vector_init( NULL, sizeof(char*) );
 
@@ -219,6 +256,7 @@ static void awl_plugin_init(void) {
     ARRAY_APPEND(Rule, rules, "wdisplays", NULL, 0, 1, -1 );
     ARRAY_APPEND(Rule, rules, "blueman-manager", NULL, 0, 1, -1 );
     ARRAY_APPEND(Rule, rules, "zoom", NULL, 0, 1, -1 );
+    ARRAY_APPEND(Rule, rules, "evolution-alarm-notify", NULL, 1<<8, 1, -1 );
     awl_log_printf( "created %i rules", S.n_rules );
 
     ARRAY_INIT(Layout, layouts, 16);

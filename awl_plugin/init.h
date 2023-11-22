@@ -42,7 +42,8 @@ typedef struct awl_plugin_data_t {
 awl_plugin_data_t* awl_plugin_data( void );
 
 pid_t spawn_pid( char** arg );
-pid_t spawn_pid_str( const char* cmd );
+pid_t spawn_pid_str_s( const char* cmd ); // argc < 16 && strlen(cmd) < 1024-16*8-2
+pid_t spawn_pid_str( const char* cmd ); // long commands
 
 extern awl_vtable_t AWL_VTABLE_SYM;
 
