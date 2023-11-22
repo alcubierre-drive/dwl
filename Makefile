@@ -1,5 +1,6 @@
 CC := gcc
 LD := gcc
+STRIP := strip
 
 PKGS = wlroots wayland-server xkbcommon libinput xcb xcb-icccm fcft pixman-1 \
        wayland-client wayland-cursor libpulse
@@ -46,9 +47,11 @@ protocols: $(AWL_PROTOCOLS) $(PLUGIN_PROTOCOLS)
 
 awl: $(AWL_OBJ)
 	$(LD) $^ -o $@ $(LDFLAGS)
+	$(STRIP) $@
 
 libawlplugin.so: $(PLUGIN_OBJ)
 	$(LD) $^ -o $@ $(LDFLAGS) -shared
+	$(STRIP) $@
 
 WAYLAND_SCANNER   = $(shell pkg-config --variable=wayland_scanner wayland-scanner)
 WAYLAND_PROTOCOLS = $(shell pkg-config --variable=pkgdatadir wayland-protocols)
