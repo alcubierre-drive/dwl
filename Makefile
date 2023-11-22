@@ -7,8 +7,7 @@ PKGS = wlroots wayland-server xkbcommon libinput xcb xcb-icccm fcft pixman-1 \
 CFLAGS += $(shell pkg-config --cflags $(PKGS)) \
 	-I. -DWLR_USE_UNSTABLE -DVERSION=\"0.1\" -D_POSIX_C_SOURCE=200809L \
 	-fPIC -D_DEFAULT_SOURCE
-LDFLAGS += $(shell pkg-config --libs $(PKGS)) \
-	   $(LIBS) -rdynamic
+LDFLAGS += $(shell pkg-config --libs $(PKGS)) $(LIBS)
 
 AWL_SRC := $(shell find . -maxdepth 1 -type f -iname "*.c") \
 	   awl-ipc-unstable-v2-protocol.c
