@@ -261,6 +261,7 @@ static void applyrules(Client *c) {
         if ((!r->title || strstr(title, r->title))
                 && (!r->id || strstr(appid, r->id))) {
             c->isfloating = r->isfloating;
+            c->isontop = r->isontop;
             newtags |= r->tags;
             int i = 0;
             wl_list_for_each(m, &B->mons, link)
@@ -268,7 +269,7 @@ static void applyrules(Client *c) {
                     mon = m;
         }
     }
-    wlr_scene_node_reparent(&c->scene->node, B->layers[c->isfloating ? LyrFloat : LyrTile]);
+    wlr_scene_node_reparent(&c->scene->node, B->layers[c->isontop ? LyrClientsTop : LyrClients]);
     setmon(c, mon, newtags);
 }
 
@@ -1060,6 +1061,7 @@ static void dwl_ipc_output_printstatus_to(DwlIpcOutput *ipc_output) {
                 ttl->focused = (c == focused);
                 ttl->visible = c->visible;
                 ttl->maximized = c->maximized;
+                ttl->ontop = c->isontop;
 
                 ttl->c = c;
             }
@@ -1443,7 +1445,7 @@ static void mapnotify(struct wl_listener *listener, void *data) {
     int i;
 
     /* Create scene tree for this client and its border */
-    c->scene = wlr_scene_tree_create(B->layers[LyrTile]);
+    c->scene = wlr_scene_tree_create(B->layers[LyrClients]);
     wlr_scene_node_set_enabled(&c->scene->node, c->type != XDGShell);
     c->scene_surface = c->type == XDGShell
             ? wlr_scene_xdg_surface_create(c->scene, c->surface.xdg)
@@ -1460,7 +1462,7 @@ static void mapnotify(struct wl_listener *listener, void *data) {
     if (client_is_unmanaged(c)) {
         client_get_geometry(c, &c->geom);
         /* Unmanaged clients always are floating */
-        wlr_scene_node_reparent(&c->scene->node, B->layers[LyrFloat]);
+        wlr_scene_node_reparent(&c->scene->node, B->layers[LyrClients]);
         wlr_scene_node_set_position(&c->scene->node, c->geom.x + C->borderpx,
             c->geom.y + C->borderpx);
         if (client_wants_focus(c)) {
@@ -1492,7 +1494,7 @@ static void mapnotify(struct wl_listener *listener, void *data) {
      /* TODO: https://github.com/djpohly/dwl/pull/334#issuecomment-1330166324 */
     if (c->type == XDGShell && (p = client_get_parent(c))) {
         c->isfloating = 1;
-        wlr_scene_node_reparent(&c->scene->node, B->layers[LyrFloat]);
+        wlr_scene_node_reparent(&c->scene->node, B->layers[LyrClients]);
         setmon(c, p->mon, p->tags);
     } else {
         applyrules(c);
@@ -1856,8 +1858,15 @@ void setfloating(Client *c, int floating) {
     c->isfloating = floating;
     if (!c->mon)
         return;
-    wlr_scene_node_reparent(&c->scene->node, B->layers[c->isfullscreen
-            ? LyrFS : c->isfloating ? LyrFloat : LyrTile]);
+    wlr_scene_node_reparent(&c->scene->node, B->layers[c->isfullscreen ? LyrFS : LyrClients]);
+    arrange(c->mon);
+    printstatus();
+}
+
+void setontop(Client *c, int ontop) {
+    c->isontop = ontop;
+    if (!c->mon) return;
+    wlr_scene_node_reparent(&c->scene->node, B->layers[c->isontop ? LyrClientsTop : LyrClients]);
     arrange(c->mon);
     printstatus();
 }
@@ -1868,8 +1877,7 @@ void setfullscreen(Client *c, int fullscreen) {
         return;
     c->bw = fullscreen ? 0 : C->borderpx;
     client_set_fullscreen(c, fullscreen);
-    wlr_scene_node_reparent(&c->scene->node, B->layers[c->isfullscreen
-            ? LyrFS : c->isfloating ? LyrFloat : LyrTile]);
+    wlr_scene_node_reparent(&c->scene->node, B->layers[c->isfullscreen ? LyrFS : LyrClients]);
 
     if (fullscreen) {
         c->prev = c->geom;

@@ -15,6 +15,8 @@
 
 #define MIN(A,B) ((A)<(B)?(A):(B))
 #define MAX(A,B) ((A)>(B)?(A):(B))
+#define SHOULD_BE_TILED( c ) (!(c)->isfullscreen && !(c)->isfloating && !(c)->maximized)
+#define SHOULD_BE_MAXED( c ) (!(c)->isfullscreen && (c)->maximized)
 
 static awl_config_t S = {0};
 
@@ -60,6 +62,7 @@ static void tagmon(const Arg *arg);
 static void togglebar(const Arg *arg);
 static void togglefloating(const Arg *arg);
 static void togglefullscreen(const Arg *arg);
+static void toggleontop(const Arg *arg);
 static void toggletag(const Arg *arg);
 static void toggleview(const Arg *arg);
 static void view(const Arg *arg);
@@ -266,18 +269,18 @@ static void awl_plugin_init(void) {
     COLOR_SET( S.fullscreen_bg, 0x00000000 );
     setup_bar_colors();
 
-    /* id, title, tags, isfloating, monitor */
+    /* id, title, tags, {isfloating, ontop}, monitor */
     ARRAY_INIT(Rule, rules, 32);
     // tag rules
-    ARRAY_APPEND(Rule, rules, "evolution", NULL, 1<<8, 0, -1 );
-    ARRAY_APPEND(Rule, rules, "telegram", NULL, 1<<7, 0, -1 );
+    ARRAY_APPEND(Rule, rules, "evolution", NULL, 1<<8, {0, 0}, -1 );
+    ARRAY_APPEND(Rule, rules, "telegram", NULL, 1<<7, {0, 0}, -1 );
     // floating rules
-    ARRAY_APPEND(Rule, rules, "nomacs", NULL, 0, 1, -1 );
-    ARRAY_APPEND(Rule, rules, "python3", "Figure", 0, 1, -1 );
-    ARRAY_APPEND(Rule, rules, "wdisplays", NULL, 0, 1, -1 );
-    ARRAY_APPEND(Rule, rules, "blueman-manager", NULL, 0, 1, -1 );
-    ARRAY_APPEND(Rule, rules, "zoom", NULL, 0, 1, -1 );
-    ARRAY_APPEND(Rule, rules, "evolution-alarm-notify", NULL, 1<<8, 1, -1 );
+    ARRAY_APPEND(Rule, rules, "nomacs", NULL, 0, {1, 0}, -1 );
+    ARRAY_APPEND(Rule, rules, "python3", "Figure", 0, {1, 0}, -1 );
+    ARRAY_APPEND(Rule, rules, "wdisplays", NULL, 0, {1, 0}, -1 );
+    ARRAY_APPEND(Rule, rules, "blueman-manager", NULL, 0, {1, 0}, -1 );
+    ARRAY_APPEND(Rule, rules, "zoom", NULL, 0, {1, 0}, -1 );
+    ARRAY_APPEND(Rule, rules, "evolution-alarm-notify", NULL, 1<<8, {1, 0}, -1 );
     P_awl_log_printf( "created %i rules", S.n_rules );
 
     ARRAY_INIT(Layout, layouts, 16);
@@ -359,6 +362,7 @@ static void awl_plugin_init(void) {
     ADD_KEY( MODKEY_SH, XKB_KEY_C,          killclient,         {0} )
     ADD_KEY( MODKEY_CT, XKB_KEY_space,      togglefloating,     {0} )
     ADD_KEY( MODKEY,    XKB_KEY_f,          togglefullscreen,   {0} )
+    ADD_KEY( MODKEY,    XKB_KEY_t,          toggleontop,        {0} )
     ADD_KEY( MODKEY_CT, XKB_KEY_j,          focusmon,           {.i = WLR_DIRECTION_LEFT} )
     ADD_KEY( MODKEY_CT, XKB_KEY_k,          focusmon,           {.i = WLR_DIRECTION_RIGHT} )
     /* ADD_KEY( MODKEY,    XKB_KEY_comma,      focusmon,           {.i = WLR_DIRECTION_LEFT} ) */
@@ -574,8 +578,7 @@ static void cycle_layout( const Arg* arg ) {
 static void movestack( const Arg *arg ) {
     (void)arg;
     awl_state_t* B = AWL_VTABLE_SYM.state;
-    awl_config_t* C = &S;
-    if (!B || !C) return;
+    if (!B) return;
 
     Client *c, *sel = B->focustop(B->selmon);
 
@@ -619,8 +622,7 @@ static void movestack( const Arg *arg ) {
 
 static void client_hide( const Arg* arg ) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
-    awl_config_t* C = &S;
-    if (!B || !C) return;
+    if (!B) return;
 
     int hide = arg->ui;
     if (hide) {
@@ -642,8 +644,7 @@ static void client_hide( const Arg* arg ) {
 
 static void client_max( const Arg* arg ) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
-    awl_config_t* C = &S;
-    if (!B || !C) return;
+    if (!B) return;
 
     Client* sel = B->focustop(B->selmon);
     if (sel) {
@@ -683,14 +684,13 @@ static void bordertoggle( const Arg* arg ) {
 
 static void gaplessgrid(Monitor *m) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
-    awl_config_t* C = &S;
-    if (!B || !C) return;
+    if (!B) return;
 
     unsigned int n = 0, i = 0, ch, cw, cn, rn, rows, cols;
     Client *c;
 
     wl_list_for_each(c, &B->clients, link)
-        if (c->visible && VISIBLEON(c, m) && !c->isfloating && !c->maximized)
+        if (c->visible && VISIBLEON(c, m) && SHOULD_BE_TILED(c))
             n++;
     if (n == 0)
         return;
@@ -709,15 +709,14 @@ static void gaplessgrid(Monitor *m) {
     cn = 0; /* current column number */
     rn = 0; /* current row number */
     wl_list_for_each(c, &B->clients, link) {
-        unsigned int cx, cy;
-        if (!c->visible || !VISIBLEON(c, m) || c->isfloating || c->isfullscreen)
-            if (!c->maximized)
-                continue;
-
-        if (c->maximized) {
-            B->resize(c, m->w, 0);
+        if (!c->visible || !VISIBLEON(c, m))
+            continue;
+        if (!SHOULD_BE_TILED(c)) {
+            if (SHOULD_BE_MAXED(c))
+                B->resize(c, m->w, 0);
             continue;
         }
+        unsigned int cx, cy;
 
         if ((i / rows + 1) > (cols - n % cols))
             rows = n / cols + 1;
@@ -736,15 +735,14 @@ static void gaplessgrid(Monitor *m) {
 
 static void bstack(Monitor *m) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
-    awl_config_t* C = &S;
-    if (!B || !C) return;
+    if (!B) return;
 
     int w, h, mh, mx, tx, ty, tw;
     unsigned int i, n = 0;
     Client *c;
 
     wl_list_for_each(c, &B->clients, link)
-        if (c->visible && VISIBLEON(c, m) && !c->isfloating && !c->maximized)
+        if (c->visible && VISIBLEON(c, m) && SHOULD_BE_TILED(c))
             n++;
     if (n == 0)
         return;
@@ -762,11 +760,11 @@ static void bstack(Monitor *m) {
     i = mx = 0;
     tx = m-> w.x;
     wl_list_for_each(c, &B->clients, link) {
-        if (!c->visible || !VISIBLEON(c, m) || c->isfloating)
-            if (!c->maximized)
-                continue;
-        if (c->maximized) {
-            B->resize(c, m->w, 0);
+        if (!c->visible || !VISIBLEON(c, m))
+            continue;
+        if (!SHOULD_BE_TILED(c)) {
+            if (SHOULD_BE_MAXED(c))
+                B->resize(c, m->w, 0);
             continue;
         }
         if ((int)i < m->nmaster) {
@@ -785,14 +783,13 @@ static void bstack(Monitor *m) {
 
 static void fibonacci(Monitor *mon, int s) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
-    awl_config_t* C = &S;
-    if (!B || !C) return;
+    if (!B) return;
 
     unsigned int i=0, n=0, nx, ny, nw, nh;
     Client *c;
 
     wl_list_for_each(c, &B->clients, link)
-        if (c->visible && VISIBLEON(c, mon) && !c->isfloating && !c->maximized)
+        if (c->visible && VISIBLEON(c, mon) && SHOULD_BE_TILED(c))
             n++;
     if(n == 0)
         return;
@@ -803,11 +800,11 @@ static void fibonacci(Monitor *mon, int s) {
     nh = mon->w.height;
 
     wl_list_for_each(c, &B->clients, link) {
-        if (!c->visible || !VISIBLEON(c, mon) || c->isfloating)
-            if (!c->maximized)
-                continue;
-        if (c->maximized) {
-            B->resize(c, mon->w, 0);
+        if (!c->visible || !VISIBLEON(c, mon))
+            continue;
+        if (!SHOULD_BE_TILED(c)) {
+            if (SHOULD_BE_MAXED(c))
+                B->resize(c, mon->w, 0);
             continue;
         }
         if ((i % 2 && nh / 2 > 2 * c->bw) || (!(i % 2) && nw / 2 > 2 * c->bw)) {
@@ -856,14 +853,13 @@ static void dwindle(Monitor *mon) {
 
 static void tile(Monitor *m) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
-    awl_config_t* C = &S;
-    if (!B || !C) return;
+    if (!B) return;
 
     unsigned int i, n = 0, mw, my, ty;
     Client *c;
 
     wl_list_for_each(c, &B->clients, link)
-        if (VISIBLEON(c, m) && !c->isfloating && !c->isfullscreen && c->visible && !c->maximized)
+        if (c->visible && VISIBLEON(c, m) && SHOULD_BE_TILED(c))
             n++;
     if (n == 0)
         return;
@@ -874,11 +870,11 @@ static void tile(Monitor *m) {
         mw = m->w.width;
     i = my = ty = 0;
     wl_list_for_each(c, &B->clients, link) {
-        if (!VISIBLEON(c, m) || c->isfloating || c->isfullscreen || !c->visible)
-            if (!c->maximized)
-                continue;
-        if (c->maximized) {
-            B->resize(c, m->w, 0);
+        if (!c->visible || !VISIBLEON(c, m))
+            continue;
+        if (!SHOULD_BE_TILED(c)) {
+            if (SHOULD_BE_MAXED(c))
+                B->resize(c, m->w, 0);
             continue;
         }
         if (i < (unsigned)m->nmaster) {
@@ -896,17 +892,16 @@ static void tile(Monitor *m) {
 
 static void monocle(Monitor *m) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
-    awl_config_t* C = &S;
-    if (!B || !C) return;
+    if (!B) return;
 
     Client *c;
     int n = 0;
 
     wl_list_for_each(c, &B->clients, link) {
-        if (!VISIBLEON(c, m) || c->isfloating || c->isfullscreen || !c->visible)
-            continue;
-        B->resize(c, m->w, 0);
-        n++;
+        if (c->visible && VISIBLEON(c, m) && SHOULD_BE_TILED(c)) {
+            B->resize(c, m->w, 0);
+            n++;
+        }
     }
     if (n) {
         snprintf(m->ltsymbol, sizeof(m->ltsymbol)-1, "[%d]", n);
@@ -922,19 +917,16 @@ static void spawn_from_plugin( const Arg* arg ) {
 
 static void incnmaster(const Arg *arg) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
-    awl_config_t* C = &S;
-    if (!B || !C) return;
+    if (!B) return;
 
-    if (!arg || !B->selmon)
-        return;
+    if (!arg || !B->selmon) return;
     B->selmon->nmaster = MAX(B->selmon->nmaster + arg->i, 0);
     B->arrange(B->selmon);
 }
 
 static void focusmon(const Arg *arg) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
-    awl_config_t* C = &S;
-    if (!B || !C) return;
+    if (!B) return;
 
     int i = 0, nmons = wl_list_length(&B->mons);
     if (nmons)
@@ -946,8 +938,7 @@ static void focusmon(const Arg *arg) {
 
 static void focusstack(const Arg *arg) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
-    awl_config_t* C = &S;
-    if (!B || !C) return;
+    if (!B) return;
 
     /* Focus the next or previous client (in tiling order) on selmon */
     Client *c, *sel = B->focustop(B->selmon);
@@ -974,20 +965,17 @@ static void focusstack(const Arg *arg) {
 
 static void killclient(const Arg *arg) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
-    awl_config_t* C = &S;
-    if (!B || !C) return;
+    if (!B) return;
 
     (void)arg;
 
     Client *sel = B->focustop(B->selmon);
-    if (sel)
-        client_send_close(sel);
+    if (sel) client_send_close(sel);
 }
 
 static void moveresize(const Arg *arg) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
-    awl_config_t* C = &S;
-    if (!B || !C) return;
+    if (!B) return;
 
     if (B->cursor_mode != CurNormal && B->cursor_mode != CurPressed)
         return;
@@ -1053,8 +1041,7 @@ static void setmfact(const Arg *arg) {
 
 static void tag(const Arg *arg) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
-    awl_config_t* C = &S;
-    if (!B || !C) return;
+    if (!B) return;
 
     Client *sel = B->focustop(B->selmon);
     if (!sel || (arg->ui & TAGMASK) == 0)
@@ -1068,8 +1055,7 @@ static void tag(const Arg *arg) {
 
 static void tagmon(const Arg *arg) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
-    awl_config_t* C = &S;
-    if (!B || !C) return;
+    if (!B) return;
 
     Client *sel = B->focustop(B->selmon);
     if (sel)
@@ -1078,8 +1064,7 @@ static void tagmon(const Arg *arg) {
 
 static void togglebar(const Arg *arg) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
-    awl_config_t* C = &S;
-    if (!B || !C) return;
+    if (!B) return;
 
     (void)arg;
     DwlIpcOutput *ipc_output;
@@ -1089,31 +1074,34 @@ static void togglebar(const Arg *arg) {
 
 static void togglefloating(const Arg *arg) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
-    awl_config_t* C = &S;
-    if (!B || !C) return;
+    if (!B) return;
 
     (void)arg;
     Client *sel = B->focustop(B->selmon);
-    /* return if fullscreen */
-    if (sel && !sel->isfullscreen)
-        B->setfloating(sel, !sel->isfloating);
+    if (sel && !sel->isfullscreen) B->setfloating(sel, !sel->isfloating);
 }
 
 static void togglefullscreen(const Arg *arg) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
-    awl_config_t* C = &S;
-    if (!B || !C) return;
+    if (!B) return;
 
     (void)arg;
     Client *sel = B->focustop(B->selmon);
-    if (sel)
-        B->setfullscreen(sel, !sel->isfullscreen);
+    if (sel) B->setfullscreen(sel, !sel->isfullscreen);
+}
+
+static void toggleontop(const Arg *arg) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    if (!B) return;
+
+    (void)arg;
+    Client *sel = B->focustop(B->selmon);
+    if (sel && !sel->isfullscreen) B->setontop(sel, !sel->isontop);
 }
 
 static void toggletag(const Arg *arg) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
-    awl_config_t* C = &S;
-    if (!B || !C) return;
+    if (!B) return;
 
     uint32_t newtags;
     Client *sel = B->focustop(B->selmon);
@@ -1131,8 +1119,7 @@ static void toggletag(const Arg *arg) {
 
 static void toggleview(const Arg *arg) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
-    awl_config_t* C = &S;
-    if (!B || !C) return;
+    if (!B) return;
 
     uint32_t newtagset = B->selmon ? B->selmon->tagset[B->selmon->seltags] ^ (arg->ui & TAGMASK) : 0;
 
@@ -1147,8 +1134,7 @@ static void toggleview(const Arg *arg) {
 
 static void view(const Arg *arg) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
-    awl_config_t* C = &S;
-    if (!B || !C) return;
+    if (!B) return;
 
     if (!B->selmon || (arg->ui & TAGMASK) == B->selmon->tagset[B->selmon->seltags])
         return;

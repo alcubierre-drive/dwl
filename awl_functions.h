@@ -11,6 +11,7 @@ void printstatus(void);
 void resize(Client *c, struct wlr_box geo, int interact);
 Monitor* dirtomon(enum wlr_direction dir);
 void setfloating(Client *c, int floating);
+void setontop(Client *c, int ontop);
 void xytonode(double x, double y, struct wlr_surface **psurface, Client **pc,
         LayerSurface **pl, double *nx, double *ny);
 void setmon(Client *c, Monitor *m, uint32_t newtags);

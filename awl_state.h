@@ -111,6 +111,7 @@ struct awl_state_t {
     void (*resize)(Client*, struct wlr_box, int);
     Monitor* (*dirtomon)(enum wlr_direction);
     void (*setfloating)(Client* , int);
+    void (*setontop)(Client*, int);
     void (*xytonode)(double, double, struct wlr_surface**, Client**, LayerSurface**, double* , double*);
     void (*dwl_ipc_output_set_layout)(struct wl_client*, struct wl_resource*, uint32_t);
     void (*setmon)(Client*, Monitor*, uint32_t);

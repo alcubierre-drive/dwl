@@ -14,7 +14,8 @@ struct awl_title_t {
         focused:1,
         visible:1,
         maximized:1,
-        fullscreen:1;
+        fullscreen:1,
+        ontop:1;
     };
 
     // make this hashable

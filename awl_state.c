@@ -24,6 +24,7 @@ awl_state_t* awl_state_init( void ) {
     B->resize = resize;
     B->dirtomon = dirtomon;
     B->setfloating = setfloating;
+    B->setontop = setontop;
     B->xytonode = xytonode;
     B->setmon = setmon;
     B->setfullscreen = setfullscreen;

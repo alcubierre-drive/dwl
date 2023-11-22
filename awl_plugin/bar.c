@@ -1769,9 +1769,27 @@ static uint32_t taskbarwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foregr
             x = draw_text( " ", x, y, foreground, background, &barcolors.fg_win, &bg, nx, bar->height, 0 );
 
             char* add = NULL;
-            if (T->floating && T->maximized) add = strdup( "[+ ✈] " );
-            else if (T->floating)            add = strdup( "[ ✈ ] " );
-            else if (T->maximized)           add = strdup( "[ + ] " );
+
+            enum {
+                idx_maximized,
+                idx_floating,
+                idx_ontop,
+                NUM_IDXS
+            };
+            /* char symbols[NUM_IDXS][8] = { "+", "✈", "↑" }; */
+            char symbols[NUM_IDXS][8] = { "M", "F", "T" };
+            unsigned char sel[NUM_IDXS] = {0};
+            sel[idx_floating] = T->floating;
+            sel[idx_maximized] = T->maximized;
+            sel[idx_ontop] = T->ontop;
+
+            add = calloc(1,sizeof(symbols) + 3);
+            strcat(add, "[");
+            for (int i=0; i<NUM_IDXS; ++i) if (sel[i]) strcat(add, symbols[i]);
+            strcat(add, "] ");
+            if (!strcmp(add, "[] "))
+                free(add), add = NULL;
+
             if (add) {
                 x = draw_text( add, x, y, foreground, background, &barcolors.fg_win, &bg,
                         nx, bar->height, 0 );

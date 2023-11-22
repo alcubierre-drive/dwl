@@ -71,7 +71,7 @@
 /* enums */
 enum { CurNormal, CurPressed, CurMove, CurResize }; /* cursor */
 enum { XDGShell, LayerShell, X11Managed, X11Unmanaged }; /* client types */
-enum { LyrBg, LyrBottom, LyrTile, LyrFloat, LyrTop, LyrFS, LyrOverlay, LyrBlock, NUM_LAYERS }; /* scene layers */
+enum { LyrBg, LyrBottom, LyrClients, LyrClientsTop, LyrTop, LyrFS, LyrOverlay, LyrBlock, NUM_LAYERS }; /* scene layers */
 enum { NetWMWindowTypeDialog, NetWMWindowTypeSplash, NetWMWindowTypeToolbar,
     NetWMWindowTypeUtility, NetLast }; /* EWMH atoms */
 
@@ -116,7 +116,8 @@ typedef struct Client {
         maximized:1,
         isfloating:1,
         isurgent:1,
-        isfullscreen:1;
+        isfullscreen:1,
+        isontop:1;
     };
 
     uint32_t resize; /* configure serial of a pending resize */
@@ -186,7 +187,10 @@ typedef struct {
     const char *id;
     const char *title;
     uint32_t tags;
-    int isfloating;
+    struct { uint8_t
+        isfloating:1,
+        isontop:1;
+    };
     int monitor;
 } Rule;
 
