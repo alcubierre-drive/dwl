@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <pthread.h>
+#include <utlist.h>
 #include "../awl_log.h"
 #include "../awl_state.h"
 #include "init.h"
@@ -40,7 +41,8 @@ struct PointerEvent {
     uint32_t axis_source;
 };
 
-typedef struct {
+typedef struct WaylandSeat WaylandSeat;
+struct WaylandSeat {
     struct wl_seat *wl_seat;
     struct wl_pointer *wl_pointer;
     uint32_t registry_name;
@@ -54,8 +56,8 @@ typedef struct {
 
     AWL_Window* parent;
 
-    struct wl_list link;
-} WaylandSeat;
+    WaylandSeat *prev, *next;
+};
 
 struct AWL_Window {
     int has_init;
@@ -77,8 +79,8 @@ struct AWL_Window {
     struct wl_cursor_image *cursor_image;
     struct wl_surface *cursor_surface;
 
-    struct wl_list window_list;
-    struct wl_list seat_list;
+    AWL_SingleWindow* window_list;
+    WaylandSeat* seat_list;
 
     struct zwlr_layer_surface_v1_listener layer_surface_listener;
     struct wl_pointer_listener pointer_listener;
@@ -145,8 +147,9 @@ static void teardown_seat(WaylandSeat *seat);
 void awl_minimal_window_refresh( AWL_Window* w ) {
     if (!w->has_init) return;
     AWL_SingleWindow* win;
-    wl_list_for_each(win, &w->window_list, link)
+    DL_FOREACH(w->window_list, win) {
         win->redraw = 1;
+    }
     eventfd_write(w->redraw_fd, 1);
 }
 
@@ -270,13 +273,16 @@ static void window_handle_global(void *data, struct wl_registry *registry, uint3
         w->layer_shell = wl_registry_bind(registry, name, &zwlr_layer_shell_v1_interface, 1);
     } else if (!strcmp(interface, wl_output_interface.name)) {
         if (w->only_current_output) {
-            if (!wl_list_length(&w->window_list)) {
-                AWL_SingleWindow *win = calloc(1, sizeof(AWL_SingleWindow));
+            AWL_SingleWindow* win;
+            int counter;
+            DL_COUNT(w->window_list, win, counter);
+            if (!counter) {
+                win = calloc(1, sizeof(AWL_SingleWindow));
                 win->parent = w;
                 win->registry_name = name;
                 if (w->running)
                     setup_window(w, win);
-                wl_list_insert(&w->window_list, &win->link);
+                DL_APPEND(w->window_list, win);
             }
         } else {
             AWL_SingleWindow *win = calloc(1, sizeof(AWL_SingleWindow));
@@ -285,19 +291,22 @@ static void window_handle_global(void *data, struct wl_registry *registry, uint3
             win->wl_output = wl_registry_bind(registry, name, &wl_output_interface, 1);
             if (w->running)
                 setup_window(w, win);
-            wl_list_insert(&w->window_list, &win->link);
+            DL_APPEND(w->window_list, win);
         }
     } else if (!strcmp(interface, wl_seat_interface.name)) {
         if (w->only_current_output) {
-            if (!wl_list_length(&w->seat_list)) {
-                WaylandSeat *seat = calloc(1, sizeof(WaylandSeat));
+            WaylandSeat* seat;
+            int counter;
+            DL_COUNT(w->seat_list, seat, counter);
+            if (!counter) {
+                seat = calloc(1, sizeof(WaylandSeat));
                 seat->continuous_event = 0.0;
                 seat->continuous_event_norm = w->continuous_event_norm;
                 seat->parent = w;
                 seat->registry_name = name;
                 seat->wl_seat = wl_registry_bind(registry, name, &wl_seat_interface, 7);
                 wl_seat_add_listener(seat->wl_seat, &w->seat_listener, seat);
-                wl_list_insert(&w->seat_list, &seat->link);
+                DL_APPEND(w->seat_list, seat);
             }
         } else {
             WaylandSeat *seat = calloc(1, sizeof(WaylandSeat));
@@ -307,7 +316,7 @@ static void window_handle_global(void *data, struct wl_registry *registry, uint3
             seat->registry_name = name;
             seat->wl_seat = wl_registry_bind(registry, name, &wl_seat_interface, 7);
             wl_seat_add_listener(seat->wl_seat, &w->seat_listener, seat);
-            wl_list_insert(&w->seat_list, &seat->link);
+            DL_APPEND(w->seat_list, seat);
         }
     }
 }
@@ -315,18 +324,18 @@ static void window_handle_global(void *data, struct wl_registry *registry, uint3
 static void window_handle_global_remove(void *data, struct wl_registry *registry, uint32_t name) {
     (void)registry;
     AWL_Window* w = data;
-    AWL_SingleWindow *win;
-    WaylandSeat *seat;
-    wl_list_for_each(win, &w->window_list, link) {
+    AWL_SingleWindow *win, *win2;
+    WaylandSeat *seat, *seat2;
+    DL_FOREACH_SAFE(w->window_list, win, win2) {
         if (win->registry_name == name) {
-            wl_list_remove(&win->link);
+            DL_DELETE(w->window_list, win);
             teardown_window(win);
             return;
         }
     }
-    wl_list_for_each(seat, &w->seat_list, link) {
+    DL_FOREACH_SAFE(w->seat_list, seat, seat2) {
         if (seat->registry_name == name) {
-            wl_list_remove(&seat->link);
+            DL_DELETE(w->seat_list, seat);
             teardown_seat(seat);
             return;
         }
@@ -369,8 +378,6 @@ static void awl_minimal_window_setup_async( AWL_Window* w ) {
     while (!B->awl_is_ready()) usleep(100);
     w->display = wl_display_connect(NULL);
     if (!w->display) P_awl_err_printf("Failed to create display");
-    wl_list_init(&w->window_list);
-    wl_list_init(&w->seat_list);
     w->registry = wl_display_get_registry(w->display);
     w->registry_listener = (struct wl_registry_listener) {
         .global = window_handle_global,
@@ -404,8 +411,9 @@ static void awl_minimal_window_setup_async( AWL_Window* w ) {
 
     /* Setup windows */
     AWL_SingleWindow* win;
-    wl_list_for_each(win, &w->window_list, link)
+    DL_FOREACH(w->window_list, win) {
         setup_window(w, win);
+    }
     wl_display_roundtrip(w->display);
 
     w->redraw_fd = eventfd(0,0);
@@ -443,7 +451,7 @@ static void* awl_minimal_window_event_loop_thread( void* arg ) {
         }
 
         AWL_SingleWindow *win;
-        wl_list_for_each(win, &w->window_list, link) {
+        DL_FOREACH(w->window_list, win) {
             if (win->redraw) {
                 if (!win->hidden && win->configured)
                     draw_window(win);
@@ -471,10 +479,14 @@ void awl_minimal_window_destroy( AWL_Window* w ) {
 
     AWL_SingleWindow *win, *win2;
     WaylandSeat *seat, *seat2;
-    wl_list_for_each_safe(win, win2, &w->window_list, link)
+    DL_FOREACH_SAFE(w->window_list, win, win2) {
+        DL_DELETE(w->window_list, win);
         teardown_window(win);
-    wl_list_for_each_safe(seat, seat2, &w->seat_list, link)
+    }
+    DL_FOREACH_SAFE(w->seat_list, seat, seat2) {
+        DL_DELETE(w->seat_list, seat);
         teardown_seat(seat);
+    }
 
     zwlr_layer_shell_v1_destroy(w->layer_shell);
 
@@ -495,7 +507,7 @@ static void pointer_enter(void *data, struct wl_pointer *pointer,
 
     seat->win = NULL;
     AWL_SingleWindow *win;
-    wl_list_for_each(win, &wp->window_list, link) {
+    DL_FOREACH(wp->window_list, win) {
         if (win->wl_surface == surface) {
             seat->win = win;
             break;
@@ -662,7 +674,7 @@ static void teardown_seat(WaylandSeat *seat) {
 void awl_minimal_window_hide( AWL_Window* w ) {
     awl_minimal_window_wait_ready(w);
     AWL_SingleWindow* win;
-    wl_list_for_each(win, &w->window_list, link) {
+    DL_FOREACH(w->window_list, win) {
         hide_window(win);
     }
     awl_minimal_window_refresh(w);
@@ -671,7 +683,7 @@ void awl_minimal_window_hide( AWL_Window* w ) {
 void awl_minimal_window_show( AWL_Window* w ) {
     awl_minimal_window_wait_ready(w);
     AWL_SingleWindow* win;
-    wl_list_for_each(win, &w->window_list, link) {
+    DL_FOREACH(w->window_list, win) {
         show_window(win);
     }
     awl_minimal_window_refresh(w);
@@ -681,7 +693,7 @@ int awl_minimal_window_is_hidden( AWL_Window* w ) {
     awl_minimal_window_wait_ready(w);
     int hidden = 0;
     AWL_SingleWindow* win;
-    wl_list_for_each(win, &w->window_list, link) {
+    DL_FOREACH(w->window_list, win) {
         hidden += win->hidden;
     }
     return hidden;

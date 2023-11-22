@@ -20,7 +20,9 @@
 #include "wlr-layer-shell-unstable-v1-protocol.h"
 
 typedef struct AWL_Window AWL_Window;
-typedef struct {
+typedef struct AWL_SingleWindow AWL_SingleWindow;
+
+struct AWL_SingleWindow {
     struct wl_output *wl_output;
     struct wl_surface *wl_surface;
     struct zwlr_layer_surface_v1 *layer_surface;
@@ -36,8 +38,8 @@ typedef struct {
 
     AWL_Window* parent;
 
-    struct wl_list link;
-} AWL_SingleWindow;
+    AWL_SingleWindow *next, *prev;
+};
 
 typedef struct awl_minimal_window_props_t {
     int buffer_scale;

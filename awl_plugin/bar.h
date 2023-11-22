@@ -7,6 +7,7 @@
 typedef struct Bar Bar;
 void* awl_bar_run( void* arg );
 void* awl_bar_refresh( void* arg );
+void awl_bar_set_running( int running );
 
 typedef struct awlb_color_t {
     pixman_color_t bg_tags, bg_tags_occ, bg_tags_act, bg_tags_urg, fg_tags,
@@ -19,9 +20,6 @@ typedef struct awlb_color_t {
 // TODO we're not doing window stuff yet, so those are accessible to the outside
 // world
 extern awlb_color_t barcolors;
-extern bool awlb_run_display;
-extern struct wl_list bar_list;
-extern struct wl_list seat_list;
 
 // TODO because we're lazy with the draw_text function, we just expose it like
 // so:

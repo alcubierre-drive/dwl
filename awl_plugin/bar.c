@@ -24,6 +24,8 @@
 #include <wayland-cursor.h>
 #include <wayland-util.h>
 
+#include <utlist.h>
+
 #include "../awl.h"
 #include "../awl_arg.h"
 #include "../awl_title.h"
@@ -105,7 +107,11 @@ awlb_color_t barcolors = {
 
 #define TEXT_MAX 2048
 
-bool awlb_run_display = false;
+static bool awl_bar_is_running = false;
+
+void awl_bar_set_running( int running ) {
+    awl_bar_is_running = running;
+}
 
 typedef struct {
     pixman_color_t color;
@@ -168,10 +174,11 @@ struct Bar {
 
     pthread_mutex_t draw_mtx;
 
-    struct wl_list link;
+    Bar *prev, *next;
 };
 
-typedef struct {
+typedef struct Seat Seat;
+struct Seat {
     struct wl_seat *wl_seat;
     struct wl_pointer *wl_pointer;
     uint32_t registry_name;
@@ -181,8 +188,8 @@ typedef struct {
     uint32_t pointer_x, pointer_y;
     uint32_t pointer_button;
 
-    struct wl_list link;
-} Seat;
+    Seat *prev, *next;
+};
 
 static struct wl_display *display;
 static struct wl_compositor *compositor;
@@ -194,8 +201,8 @@ static struct zdwl_ipc_manager_v2 *dwl_wm;
 static struct wl_cursor_image *cursor_image;
 static struct wl_surface *cursor_surface;
 
-struct wl_list bar_list = {0};
-struct wl_list seat_list = {0};
+static Bar* bar_list = NULL;
+static Seat* seat_list = NULL;
 
 static char layouts[128][16] = {0};
 static int n_layouts = 0;
@@ -625,7 +632,7 @@ static void layer_surface_configure(void *data, struct zwlr_layer_surface_v1 *su
 static void layer_surface_closed(void *data, struct zwlr_layer_surface_v1 *surface) {
     (void)data;
     (void)surface;
-    awlb_run_display = false;
+    awl_bar_is_running = false;
 }
 
 static const struct zwlr_layer_surface_v1_listener layer_surface_listener = {
@@ -687,7 +694,7 @@ static void pointer_enter(void *data, struct wl_pointer *pointer,
 
     seat->bar = NULL;
     Bar *bar;
-    wl_list_for_each(bar, &bar_list, link) {
+    DL_FOREACH(bar_list, bar) {
         if (bar->wl_surface == surface) {
             seat->bar = bar;
             break;
@@ -1217,15 +1224,15 @@ static void handle_global(void *data, struct wl_registry *registry,
         Bar *bar = calloc(1, sizeof(Bar));
         bar->registry_name = name;
         bar->wl_output = wl_registry_bind(registry, name, &wl_output_interface, 1);
-        if (awlb_run_display)
+        if (awl_bar_is_running)
             setup_bar(bar);
-        wl_list_insert(&bar_list, &bar->link);
+        DL_APPEND(bar_list, bar);
     } else if (!strcmp(interface, wl_seat_interface.name)) {
         Seat *seat = calloc(1, sizeof(Seat));
         seat->registry_name = name;
         seat->wl_seat = wl_registry_bind(registry, name, &wl_seat_interface, 7);
         wl_seat_add_listener(seat->wl_seat, &seat_listener, seat);
-        wl_list_insert(&seat_list, &seat->link);
+        DL_APPEND(seat_list, seat);
     }
 }
 
@@ -1256,20 +1263,20 @@ static void teardown_seat(Seat *seat) {
 static void handle_global_remove(void *data, struct wl_registry *registry, uint32_t name) {
     (void)data;
     (void)registry;
-    Bar *bar;
-    Seat *seat;
+    Bar *bar, *bar_tmp;
+    Seat *seat, *seat_tmp;
 
     P_awl_log_printf("in global remove");
-    wl_list_for_each(bar, &bar_list, link) {
+    DL_FOREACH_SAFE(bar_list, bar, bar_tmp) {
         if (bar->registry_name == name) {
-            wl_list_remove(&bar->link);
+            DL_DELETE(bar_list, bar);
             teardown_bar(bar);
             return;
         }
     }
-    wl_list_for_each(seat, &seat_list, link) {
+    DL_FOREACH_SAFE(seat_list, seat, seat_tmp) {
         if (seat->registry_name == name) {
-            wl_list_remove(&seat->link);
+            DL_DELETE(seat_list, seat);
             teardown_seat(seat);
             return;
         }
@@ -1285,7 +1292,7 @@ static void event_loop(void) {
     P_awl_log_printf( "bar event loop" );
     int wl_fd = wl_display_get_fd(display);
 
-    while (awlb_run_display) {
+    while (awl_bar_is_running) {
         fd_set rfds;
         FD_ZERO(&rfds);
         FD_SET(wl_fd, &rfds);
@@ -1308,7 +1315,7 @@ static void event_loop(void) {
         }
 
         Bar *bar;
-        wl_list_for_each(bar, &bar_list, link) {
+        DL_FOREACH(bar_list, bar) {
             if (bar->redraw) {
                 if (!bar->hidden && bar->configured)
                     draw_frame(bar);
@@ -1327,10 +1334,14 @@ static void cleanup_fun(void* arg) {
 
     Bar *bar, *bar2;
     Seat *seat, *seat2;
-    wl_list_for_each_safe(bar, bar2, &bar_list, link)
+    DL_FOREACH_SAFE(bar_list, bar, bar2) {
+        DL_DELETE(bar_list, bar);
         teardown_bar(bar);
-    wl_list_for_each_safe(seat, seat2, &seat_list, link)
+    }
+    DL_FOREACH_SAFE(seat_list, seat, seat2) {
+        DL_DELETE(seat_list, seat);
         teardown_seat(seat);
+    }
 
     zwlr_layer_shell_v1_destroy(layer_shell);
     zxdg_output_manager_v1_destroy(output_manager);
@@ -1360,9 +1371,6 @@ void* awl_bar_run( void* arg ) {
     if (!display)
         P_awl_err_printf( "Failed to create display" );
 
-    wl_list_init(&bar_list);
-    wl_list_init(&seat_list);
-
     struct wl_registry *registry = wl_display_get_registry(display);
     wl_registry_add_listener(registry, &registry_listener, NULL);
     wl_display_roundtrip(display);
@@ -1383,14 +1391,15 @@ void* awl_bar_run( void* arg ) {
 
     /* Setup bars */
     Bar* bar;
-    wl_list_for_each(bar, &bar_list, link)
+    DL_FOREACH(bar_list, bar) {
         setup_bar(bar);
+    }
     wl_display_roundtrip(display);
 
     redraw_fd = eventfd(0,0);
 
     pthread_cleanup_push( &cleanup_fun, NULL );
-    awlb_run_display = true;
+    awl_bar_is_running = true;
     has_init = true;
     event_loop();
     has_init = false;
@@ -1402,8 +1411,9 @@ void* awl_bar_run( void* arg ) {
 static void awl_bar_refresh_fun( void ) {
     if (!has_init) return;
     Bar* bar;
-    wl_list_for_each(bar, &bar_list, link)
+    DL_FOREACH(bar_list, bar) {
         bar->redraw = true;
+    }
     eventfd_write(redraw_fd, 1);
 }
 

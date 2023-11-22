@@ -525,7 +525,7 @@ static void awl_plugin_free(void) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
     P_awl_log_printf( "cleanup vtable state: %p", B );
     if (B) {
-        awlb_run_display = false;
+        awl_bar_set_running( 0 );
         int s = pthread_cancel( S.BarThread );
         P_awl_log_printf( "cancelled bar thread" );
         if (s != 0)
