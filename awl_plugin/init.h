@@ -46,26 +46,3 @@ pid_t spawn_pid_str_s( const char* cmd ); // argc < 16 && strlen(cmd) < 1024-16*
 pid_t spawn_pid_str( const char* cmd ); // long commands
 
 extern awl_vtable_t AWL_VTABLE_SYM;
-
-/* functions used from awl.h/awl.c
-arrange
-ecalloc
-focusclient
-focusmon
-focusstack
-focustop
-killclient
-moveresize
-printstatus
-resize
-setlayout
-setmfact
-tag
-tagmon
-togglebar
-togglefloating
-togglefullscreen
-toggletag
-toggleview
-view
-*/
