@@ -9,6 +9,8 @@
 #include <sys/un.h>
 #include <pthread.h>
 #include "../awl_log.h"
+#include "../awl_state.h"
+#include "init.h"
 #include "../awl.h"
 
 #include "xdg-shell-protocol.h"
@@ -359,7 +361,12 @@ AWL_Window* awl_minimal_window_setup( const awl_minimal_window_props_t* props ) 
 }
 
 static void awl_minimal_window_setup_async( AWL_Window* w ) {
-    while (!awl_is_ready()) usleep(100);
+    awl_state_t* B = NULL;
+    while ((B = awl_plugin_state()) == NULL) {
+        awl_err_printf( "could not find state (deadlock?)" );
+        usleep(100);
+    }
+    while (!B->awl_is_ready()) usleep(100);
     w->display = wl_display_connect(NULL);
     if (!w->display) awl_err_printf("Failed to create display");
     wl_list_init(&w->window_list);

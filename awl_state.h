@@ -6,6 +6,8 @@ typedef struct awl_state_t awl_state_t;
 typedef struct awl_config_t awl_config_t;
 typedef struct awl_plugin_data_t awl_plugin_data_t;
 
+typedef struct LayerSurface LayerSurface;
+
 #define ARRAY( type, name ) type* name; int n_##name;
 
 struct awl_config_t {
@@ -102,18 +104,21 @@ struct awl_state_t {
     struct wl_list mons;
     Monitor *selmon;
 
-    void (*arrange)(Monitor *m);
-    void (*focusclient)(Client *c, int lift);
+    void (*arrange)(Monitor*);
+    void (*focusclient)(Client*, int);
     Client* (*focustop)(Monitor *m);
     void (*printstatus)(void);
-    void (*resize)(Client *c, struct wlr_box geo, int interact);
-    Monitor* (*dirtomon)(enum wlr_direction dir);
-    void (*setfloating)(Client *c, int floating);
-    void (*xytonode)(double x, double y, struct wlr_surface **psurface, Client **pc, LayerSurface **pl, double *nx, double *ny);
-    void (*dwl_ipc_output_set_layout)(struct wl_client *client, struct wl_resource *resource, uint32_t index);
-    void (*setmon)(Client *c, Monitor *m, uint32_t newtags);
-    void (*setfullscreen)(Client *c, int fullscreen);
-    void (*ipc_send_toggle_vis)( struct wl_resource* resource );
+    void (*resize)(Client*, struct wlr_box, int);
+    Monitor* (*dirtomon)(enum wlr_direction);
+    void (*setfloating)(Client* , int);
+    void (*xytonode)(double, double, struct wlr_surface**, Client**, LayerSurface**, double* , double*);
+    void (*dwl_ipc_output_set_layout)(struct wl_client*, struct wl_resource*, uint32_t);
+    void (*setmon)(Client*, Monitor*, uint32_t);
+    void (*setfullscreen)(Client*, int);
+    void (*ipc_send_toggle_vis)( struct wl_resource* );
+
+    int (*awl_is_ready)( void );
+    void (*awl_change_modkey)( uint32_t );
 
     void *persistent_plugin_data;
     size_t persistent_plugin_data_nbytes;

@@ -61,19 +61,12 @@
 #include "awl_arg.h"
 
 #define TAGCOUNT (9)
+#define TAGMASK ((1u << TAGCOUNT) - 1)
+#define VISIBLEON(C, M) ((M) && (C)->mon == (M) && ((C)->tags & (M)->tagset[(M)->seltags]))
 #ifndef AWL_MODKEY
 //#define AWL_MODKEY WLR_MODIFIER_LOGO
 #define AWL_MODKEY WLR_MODIFIER_ALT
 #endif
-
-void awl_change_modkey( uint32_t modkey );
-int awl_is_ready( void );
-
-/* macros */
-#define CLEANMASK(mask)         (mask & ~WLR_MODIFIER_CAPS)
-#define VISIBLEON(C, M)         ((M) && (C)->mon == (M) && ((C)->tags & (M)->tagset[(M)->seltags]))
-#define TAGMASK                 ((1u << TAGCOUNT) - 1)
-#define LISTEN(E, L, H)         wl_signal_add((E), ((L)->notify = (H), (L)))
 
 /* enums */
 enum { CurNormal, CurPressed, CurMove, CurResize }; /* cursor */
@@ -150,24 +143,6 @@ typedef struct {
     struct wl_listener destroy;
 } Keyboard;
 
-typedef struct {
-    /* Must keep these three elements in this order */
-    unsigned int type; /* LayerShell */
-    struct wlr_box geom;
-    Monitor *mon;
-    struct wlr_scene_tree *scene;
-    struct wlr_scene_tree *popups;
-    struct wlr_scene_layer_surface_v1 *scene_layer;
-    struct wl_list link;
-    int mapped;
-    struct wlr_layer_surface_v1 *layer_surface;
-
-    struct wl_listener destroy;
-    struct wl_listener map;
-    struct wl_listener unmap;
-    struct wl_listener surface_commit;
-} LayerSurface;
-
 typedef struct Layout {
     const char *symbol;
     void (*arrange)(Monitor *);
@@ -214,15 +189,6 @@ typedef struct {
     int isfloating;
     int monitor;
 } Rule;
-
-typedef struct {
-    struct wlr_scene_tree *scene;
-
-    struct wlr_session_lock_v1 *lock;
-    struct wl_listener new_surface;
-    struct wl_listener unlock;
-    struct wl_listener destroy;
-} SessionLock;
 
 typedef struct {
     struct wl_list link;

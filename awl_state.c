@@ -29,6 +29,9 @@ awl_state_t* awl_state_init( void ) {
     B->setfullscreen = setfullscreen;
     B->ipc_send_toggle_vis = ipc_send_toggle_vis;
 
+    B->awl_is_ready = awl_is_ready;
+    B->awl_change_modkey = awl_change_modkey;
+
     B->persistent_plugin_data = ecalloc(1024,1);
     B->persistent_plugin_data_nbytes = 1024;
     return B;

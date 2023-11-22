@@ -13,6 +13,37 @@
 
 #include "awl-ipc-unstable-v2-protocol.h"
 
+typedef struct {
+    struct wlr_scene_tree *scene;
+
+    struct wlr_session_lock_v1 *lock;
+    struct wl_listener new_surface;
+    struct wl_listener unlock;
+    struct wl_listener destroy;
+} SessionLock;
+
+struct LayerSurface {
+    /* Must keep these three elements in this order */
+    unsigned int type; /* LayerShell */
+    struct wlr_box geom;
+    Monitor *mon;
+    struct wlr_scene_tree *scene;
+    struct wlr_scene_tree *popups;
+    struct wlr_scene_layer_surface_v1 *scene_layer;
+    struct wl_list link;
+    int mapped;
+    struct wlr_layer_surface_v1 *layer_surface;
+
+    struct wl_listener destroy;
+    struct wl_listener map;
+    struct wl_listener unmap;
+    struct wl_listener surface_commit;
+};
+
+// macros
+#define LISTEN(E, L, H) wl_signal_add((E), ((L)->notify = (H), (L)))
+#define CLEANMASK(mask) (mask & ~WLR_MODIFIER_CAPS)
+
 static awl_config_t* C = NULL;
 static awl_state_t* B = NULL;
 static awl_vtable_t* V = NULL;

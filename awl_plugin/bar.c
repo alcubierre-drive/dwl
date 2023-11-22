@@ -1347,7 +1347,12 @@ static void cleanup_fun(void* arg) {
 }
 
 void* awl_bar_run( void* arg ) {
-    while (!awl_is_ready()) usleep(1000);
+    awl_state_t* B = NULL;
+    while ((B = awl_plugin_state()) == NULL) {
+        awl_err_printf( "could not find state (deadlock?)" );
+        usleep(100);
+    }
+    while (!B->awl_is_ready()) usleep(100);
     awl_log_printf( "starting bar thread" );
     (void)arg;
 
