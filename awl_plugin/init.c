@@ -13,6 +13,9 @@
 #include "vector.h"
 #include <assert.h>
 
+#define MIN(A,B) ((A)<(B)?(A):(B))
+#define MAX(A,B) ((A)>(B)?(A):(B))
+
 static awl_config_t S = {0};
 
 awl_config_t* awl_plugin_config( void ) {
@@ -49,6 +52,8 @@ static void cycle_layout( const Arg* arg );
 static void gaplessgrid(Monitor *m);
 static void bstack(Monitor *m);
 static void dwindle(Monitor *mon);
+static void tile(Monitor *m);
+static void monocle(Monitor *m);
 
 static void spawn_from_plugin( const Arg* arg );
 
@@ -334,7 +339,6 @@ static void awl_plugin_init(void) {
     /* ADD_KEY( MODKEY,    XKB_KEY_d,          incnmaster,         {.i = -1} ) */
     ADD_KEY( MODKEY,    XKB_KEY_h,          setmfact,           {.f = -0.05} )
     ADD_KEY( MODKEY,    XKB_KEY_l,          setmfact,           {.f = +0.05} )
-    /* ADD_KEY( MODKEY_SH, XKB_KEY_Return,     zoom,               {0} ) */
     ADD_KEY( MODKEY,    XKB_KEY_Tab,        view,               {0} )
     ADD_KEY( MODKEY_SH, XKB_KEY_C,          killclient,         {0} )
     ADD_KEY( MODKEY_CT, XKB_KEY_space,      togglefloating,     {0} )
@@ -352,7 +356,7 @@ static void awl_plugin_init(void) {
     ADD_KEY( MODKEY,    XKB_KEY_i,          togglebar,          {0} )
     ADD_KEY( MODKEY,    XKB_KEY_n,          client_hide,        {.ui=1} )
     ADD_KEY( MODKEY_CT, XKB_KEY_n,          client_hide,        {.ui=0} )
-    ADD_KEY( MODKEY,    XKB_KEY_m,          client_max,         {0} )
+    ADD_KEY( MODKEY,    XKB_KEY_m,          client_max,         {.i=0} )
 
     ADD_KEY( MODKEY,    XKB_KEY_Right,      cycle_tag,          {.i= 1} )
     ADD_KEY( MODKEY,    XKB_KEY_Left,       cycle_tag,          {.i=-1} )
@@ -618,13 +622,24 @@ static void client_hide( const Arg* arg ) {
 }
 
 static void client_max( const Arg* arg ) {
-    (void)arg;
     awl_state_t* B = AWL_VTABLE_SYM.state;
     awl_config_t* C = &S;
     if (!B || !C) return;
 
     Client* sel = focustop(B->selmon);
-    if (sel) sel->maximized = !sel->maximized;
+    if (sel) {
+        switch (arg->i) {
+            case -1: sel->maximized = 0; break;
+            case  1: sel->maximized = 1; break;
+            case  0:
+            default: sel->maximized = !sel->maximized; break;
+        }
+        if (sel->isfloating) {
+            if (sel->maximized) sel->prev = sel->geom;
+            else                sel->geom = sel->prev;
+        }
+        if (sel->isfloating && !sel->maximized) resize(sel, sel->prev, 0);
+    }
     arrange(B->selmon);
     printstatus();
 }
@@ -677,7 +692,8 @@ static void gaplessgrid(Monitor *m) {
     wl_list_for_each(c, &B->clients, link) {
         unsigned int cx, cy;
         if (!c->visible || !VISIBLEON(c, m) || c->isfloating || c->isfullscreen)
-            continue;
+            if (!c->maximized)
+                continue;
 
         if (c->maximized) {
             resize(c, m->w, 0);
@@ -728,13 +744,13 @@ static void bstack(Monitor *m) {
     tx = m-> w.x;
     wl_list_for_each(c, &B->clients, link) {
         if (!c->visible || !VISIBLEON(c, m) || c->isfloating)
-            continue;
+            if (!c->maximized)
+                continue;
         if (c->maximized) {
             resize(c, m->w, 0);
             continue;
         }
         if ((int)i < m->nmaster) {
-            #define MIN(A,B) ((A)<(B)?(A):(B))
             w = (m->w.width - mx) / (MIN((int)n, m->nmaster) - i);
             resize(c, (struct wlr_box) { .x = m->w.x + mx, .y = m->w.y, .width = w, .height = mh }, 0);
             mx += c->geom.width;
@@ -769,7 +785,8 @@ static void fibonacci(Monitor *mon, int s) {
 
     wl_list_for_each(c, &B->clients, link) {
         if (!c->visible || !VISIBLEON(c, mon) || c->isfloating)
-            continue;
+            if (!c->maximized)
+                continue;
         if (c->maximized) {
             resize(c, mon->w, 0);
             continue;
@@ -816,6 +833,68 @@ static void fibonacci(Monitor *mon, int s) {
 
 static void dwindle(Monitor *mon) {
     fibonacci(mon, 1);
+}
+
+static void tile(Monitor *m) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_config_t* C = &S;
+    if (!B || !C) return;
+
+    unsigned int i, n = 0, mw, my, ty;
+    Client *c;
+
+    wl_list_for_each(c, &B->clients, link)
+        if (VISIBLEON(c, m) && !c->isfloating && !c->isfullscreen && c->visible && !c->maximized)
+            n++;
+    if (n == 0)
+        return;
+
+    if (n > (unsigned)m->nmaster)
+        mw = m->nmaster ? m->w.width * m->mfact : 0;
+    else
+        mw = m->w.width;
+    i = my = ty = 0;
+    wl_list_for_each(c, &B->clients, link) {
+        if (!VISIBLEON(c, m) || c->isfloating || c->isfullscreen || !c->visible)
+            if (!c->maximized)
+                continue;
+        if (c->maximized) {
+            resize(c, m->w, 0);
+            continue;
+        }
+        if (i < (unsigned)m->nmaster) {
+            resize(c, (struct wlr_box){.x = m->w.x, .y = m->w.y + my, .width = mw,
+                .height = (m->w.height - my) / (MIN(n, (unsigned int)m->nmaster) - i)}, 0);
+            my += c->geom.height;
+        } else {
+            resize(c, (struct wlr_box){.x = m->w.x + mw, .y = m->w.y + ty,
+                .width = m->w.width - mw, .height = (m->w.height - ty) / (n - i)}, 0);
+            ty += c->geom.height;
+        }
+        i++;
+    }
+}
+
+static void monocle(Monitor *m) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_config_t* C = &S;
+    if (!B || !C) return;
+
+    Client *c;
+    int n = 0;
+
+    wl_list_for_each(c, &B->clients, link) {
+        if (!VISIBLEON(c, m) || c->isfloating || c->isfullscreen || !c->visible)
+            continue;
+        resize(c, m->w, 0);
+        n++;
+    }
+    if (n) {
+        snprintf(m->ltsymbol, sizeof(m->ltsymbol)-1, "[%d]", n);
+        m->ltsymbol[sizeof(m->ltsymbol)-1] = '\0';
+    }
+    if ((c = focustop(m)))
+        wlr_scene_node_raise_to_top(&c->scene->node);
 }
 
 static void spawn_from_plugin( const Arg* arg ) {

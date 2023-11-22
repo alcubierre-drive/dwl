@@ -55,7 +55,6 @@ focusmon
 focusstack
 focustop
 killclient
-monocle
 moveresize
 printstatus
 resize
@@ -63,12 +62,10 @@ setlayout
 setmfact
 tag
 tagmon
-tile
 togglebar
 togglefloating
 togglefullscreen
 toggletag
 toggleview
 view
-zoom
 */

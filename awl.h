@@ -72,8 +72,6 @@ int awl_is_ready( void );
 /* macros */
 #define CLEANMASK(mask)         (mask & ~WLR_MODIFIER_CAPS)
 #define VISIBLEON(C, M)         ((M) && (C)->mon == (M) && ((C)->tags & (M)->tagset[(M)->seltags]))
-#define LENGTH(X)               (sizeof X / sizeof X[0])
-#define END(A)                  ((A) + LENGTH(A))
 #define TAGMASK                 ((1u << TAGCOUNT) - 1)
 #define LISTEN(E, L, H)         wl_signal_add((E), ((L)->notify = (H), (L)))
 
@@ -188,8 +186,8 @@ struct Monitor {
     struct wlr_box m; /* monitor area, layout-relative */
     struct wlr_box w; /* window area, layout-relative */
     struct wl_list layers[4]; /* LayerSurface::link */
+    int n_layers;
     int lt[2];
-    /* Layout *lt[2]; */
     unsigned int seltags;
     unsigned int sellt;
     uint32_t tagset[2];
@@ -231,19 +229,6 @@ typedef struct {
     struct wl_resource *resource;
     Monitor *mon;
 } DwlIpcOutput;
-
-// needed?
-void dwl_ipc_manager_bind(struct wl_client *client, void *data, uint32_t version, uint32_t id);
-void dwl_ipc_manager_destroy(struct wl_resource *resource);
-void dwl_ipc_manager_get_output(struct wl_client *client, struct wl_resource *resource, uint32_t id, struct wl_resource *output);
-void dwl_ipc_manager_release(struct wl_client *client, struct wl_resource *resource);
-void dwl_ipc_output_destroy(struct wl_resource *resource);
-void dwl_ipc_output_printstatus(Monitor *monitor);
-void dwl_ipc_output_printstatus_to(DwlIpcOutput *ipc_output);
-void dwl_ipc_output_set_client_tags(struct wl_client *client, struct wl_resource *resource, uint32_t and_tags, uint32_t xor_tags);
-void dwl_ipc_output_set_layout(struct wl_client *client, struct wl_resource *resource, uint32_t index);
-void dwl_ipc_output_set_tags(struct wl_client *client, struct wl_resource *resource, uint32_t tagmask, uint32_t toggle_tagset);
-void dwl_ipc_output_release(struct wl_client *client, struct wl_resource *resource);
 
 /* function declarations */
 void applybounds(Client *c, struct wlr_box *bbox);
@@ -297,7 +282,6 @@ void locksession(struct wl_listener *listener, void *data);
 void maplayersurfacenotify(struct wl_listener *listener, void *data);
 void mapnotify(struct wl_listener *listener, void *data);
 void maximizenotify(struct wl_listener *listener, void *data);
-void monocle(Monitor *m);
 void motionabsolute(struct wl_listener *listener, void *data);
 void motionnotify(uint32_t time);
 void motionrelative(struct wl_listener *listener, void *data);
@@ -322,11 +306,9 @@ void setmon(Client *c, Monitor *m, uint32_t newtags);
 void setpsel(struct wl_listener *listener, void *data);
 void setsel(struct wl_listener *listener, void *data);
 void setup(void);
-/* void spawn(const Arg *arg); */
 void startdrag(struct wl_listener *listener, void *data);
 void tag(const Arg *arg);
 void tagmon(const Arg *arg);
-void tile(Monitor *m);
 void togglefloating(const Arg *arg);
 void togglefullscreen(const Arg *arg);
 void toggletag(const Arg *arg);
@@ -343,36 +325,6 @@ void virtualkeyboard(struct wl_listener *listener, void *data);
 Monitor *xytomon(double x, double y);
 void xytonode(double x, double y, struct wlr_surface **psurface,
         Client **pc, LayerSurface **pl, double *nx, double *ny);
-void zoom(const Arg *arg);
-
-pid_t vfork( void );
-
-/* global event handlers */
-extern struct wl_listener cursor_axis;
-extern struct wl_listener cursor_button;
-extern struct wl_listener cursor_frame;
-extern struct wl_listener cursor_motion;
-extern struct wl_listener cursor_motion_absolute;
-extern struct wl_listener drag_icon_destroy;
-extern struct wl_listener idle_inhibitor_create;
-extern struct wl_listener idle_inhibitor_destroy;
-extern struct wl_listener layout_change;
-extern struct wl_listener new_input;
-extern struct wl_listener new_virtual_keyboard;
-extern struct wl_listener new_output;
-extern struct wl_listener new_xdg_surface;
-extern struct wl_listener new_xdg_decoration;
-extern struct wl_listener new_layer_shell_surface;
-extern struct wl_listener output_mgr_apply;
-extern struct wl_listener output_mgr_test;
-extern struct wl_listener request_activate;
-extern struct wl_listener request_cursor;
-extern struct wl_listener request_set_psel;
-extern struct wl_listener request_set_sel;
-extern struct wl_listener request_start_drag;
-extern struct wl_listener start_drag;
-extern struct wl_listener session_lock_create_lock;
-extern struct wl_listener session_lock_mgr_destroy;
 
 void activatex11(struct wl_listener *listener, void *data);
 void configurex11(struct wl_listener *listener, void *data);
@@ -380,7 +332,8 @@ void createnotifyx11(struct wl_listener *listener, void *data);
 xcb_atom_t getatom(xcb_connection_t *xc, const char *name);
 void sethints(struct wl_listener *listener, void *data);
 void xwaylandready(struct wl_listener *listener, void *data);
-extern struct wl_listener new_xwayland_surface;
-extern struct wl_listener xwayland_ready;
-extern struct wlr_xwayland *xwayland;
+
+/* extern struct wl_listener new_xwayland_surface; */
+/* extern struct wl_listener xwayland_ready; */
+/* extern struct wlr_xwayland *xwayland; */
 extern xcb_atom_t netatom[NetLast];
