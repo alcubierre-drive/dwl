@@ -7,7 +7,6 @@
 #define AWL_PLUGIN_NAME "libawlplugin.so"
 
 typedef struct awl_vtable_t awl_vtable_t;
-typedef struct awl_func_t awl_func_t;
 
 typedef struct awl_extension_t awl_extension_t;
 
@@ -19,14 +18,9 @@ struct awl_vtable_t {
     awl_state_t* state;
 };
 
-struct awl_func_t {
-    int (*f)(awl_state_t*, awl_config_t*);
-};
-
 awl_extension_t* awl_extension_init( const char* lib );
 void awl_extension_free( awl_extension_t* handle );
 void awl_extension_refresh( awl_extension_t* handle );
 
 awl_vtable_t* awl_extension_vtable( awl_extension_t* handle );
-awl_func_t awl_extension_func( awl_extension_t* handle, const char* name );
 

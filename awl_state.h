@@ -48,6 +48,10 @@ struct awl_config_t {
 
     pthread_t BarThread;
     pthread_t BarRefreshThread;
+
+    // functions needed in awl.c, but inherently belonging to awl_plugin/init.c
+    void (*setlayout)( const Arg* );
+
     awl_plugin_data_t* P;
 };
 
@@ -97,6 +101,19 @@ struct awl_state_t {
     struct wlr_box sgeom;
     struct wl_list mons;
     Monitor *selmon;
+
+    void (*arrange)(Monitor *m);
+    void (*focusclient)(Client *c, int lift);
+    Client* (*focustop)(Monitor *m);
+    void (*printstatus)(void);
+    void (*resize)(Client *c, struct wlr_box geo, int interact);
+    Monitor* (*dirtomon)(enum wlr_direction dir);
+    void (*setfloating)(Client *c, int floating);
+    void (*xytonode)(double x, double y, struct wlr_surface **psurface, Client **pc, LayerSurface **pl, double *nx, double *ny);
+    void (*dwl_ipc_output_set_layout)(struct wl_client *client, struct wl_resource *resource, uint32_t index);
+    void (*setmon)(Client *c, Monitor *m, uint32_t newtags);
+    void (*setfullscreen)(Client *c, int fullscreen);
+    void (*ipc_send_toggle_vis)( struct wl_resource* resource );
 
     void *persistent_plugin_data;
     size_t persistent_plugin_data_nbytes;

@@ -1,6 +1,7 @@
 #include "awl_state.h"
 #include "awl_util.h"
 #include "awl_log.h"
+#include "awl_functions.h"
 
 awl_state_t* awl_state_init( void ) {
     awl_log_printf( "init core awl state" );
@@ -14,6 +15,20 @@ awl_state_t* awl_state_init( void ) {
     B->layermap[B->n_layermap++] = LyrBottom;
     B->layermap[B->n_layermap++] = LyrTop;
     B->layermap[B->n_layermap++] = LyrOverlay;
+
+    // functions
+    B->arrange = arrange;
+    B->focusclient = focusclient;
+    B->focustop = focustop;
+    B->printstatus = printstatus;
+    B->resize = resize;
+    B->dirtomon = dirtomon;
+    B->setfloating = setfloating;
+    B->xytonode = xytonode;
+    B->setmon = setmon;
+    B->setfullscreen = setfullscreen;
+    B->ipc_send_toggle_vis = ipc_send_toggle_vis;
+
     B->persistent_plugin_data = ecalloc(1024,1);
     B->persistent_plugin_data_nbytes = 1024;
     return B;

@@ -30,13 +30,16 @@ typedef struct awl_plugin_data_t {
 
     awl_calendar_t* cal;
 
-    void (*cycle_tag)(const Arg* arg);
-    void (*cycle_layout)(const Arg* arg);
-    void (*movestack)( const Arg *arg );
-    void (*client_hide)( const Arg* arg );
-    void (*client_max)( const Arg* arg );
-    void (*tagmon_f)( const Arg* arg );
-    void (*bordertoggle)( const Arg* arg );
+    void (*cycle_tag)( const Arg* );
+    void (*cycle_layout)( const Arg* );
+    void (*movestack)( const Arg* );
+    void (*client_hide)( const Arg* );
+    void (*client_max)( const Arg* );
+    void (*tagmon_f)( const Arg* );
+    void (*bordertoggle)( const Arg* );
+    void (*focusstack)( const Arg* );
+    void (*toggleview)( const Arg* );
+    void (*view)( const Arg* );
 } awl_plugin_data_t;
 
 awl_plugin_data_t* awl_plugin_data( void );

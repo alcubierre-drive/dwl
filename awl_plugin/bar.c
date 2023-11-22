@@ -1469,18 +1469,22 @@ static void tagwidget_scroll( Bar* bar, uint32_t pointer_x, int amount ) {
 }
 
 static void tagwidget_click( Bar* bar, uint32_t pointer_x, int button ) {
+    awl_plugin_data_t* P = awl_plugin_data();
+    if (!P) return;
+
     uint32_t x = 0;
     int i = 0;
     do {
         x += TEXT_WIDTH(tags[i], bar->width, bar->textpadding) / buffer_scale;
     } while (pointer_x >= x && ++i < n_tags);
     if (i < n_tags) {
-        if (button == BTN_LEFT)
-            view( &( (const Arg){.ui=1<<i} ) );
-        else if (button == BTN_MIDDLE)
-            view( &( (const Arg){.ui=~0} ) );
-        else if (button == BTN_RIGHT)
-            toggleview( &( (const Arg){.ui=1<<i} ) );
+        if (button == BTN_LEFT) {
+            if (P->view) (*P->view)( &( (const Arg){.ui=1<<i} ) );
+        } else if (button == BTN_MIDDLE) {
+            if (P->view) (*P->view)( &( (const Arg){.ui=~0} ) );
+        } else if (button == BTN_RIGHT) {
+            if (P->toggleview) (*P->toggleview)( &( (const Arg){.ui=1<<i} ) );
+        }
     }
 }
 
@@ -1788,10 +1792,15 @@ static uint32_t taskbarwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foregr
 }
 
 static void taskbarwidget_scroll( Bar* bar, uint32_t pointer_x, int amount ) {
+    awl_plugin_data_t* P = awl_plugin_data();
+    if (!P) return;
+
     (void)bar;
     (void)pointer_x;
-    focusstack( &( (const Arg){.i=amount} ) );
-    bar->redraw = true;
+    if (P->focusstack) {
+        (*P->focusstack)( &( (const Arg){.i=amount} ) );
+        bar->redraw = true;
+    }
 }
 
 static void taskbarwidget_click( Bar* bar, uint32_t pointer_x, int button ) {
@@ -1825,12 +1834,12 @@ taskbarwidget_click_return:
     HASH_CLEAR(hh, bar->cpy_window_list);
     if (c) {
         bar->redraw = 1;
-        arrange(B->selmon);
+        B->arrange(B->selmon);
         if (button)
-            focusclient(c->visible ? c : focustop(B->selmon), 0);
+            B->focusclient(c->visible ? c : B->focustop(B->selmon), 0);
         else if (c->visible)
-            focusclient(c, 0);
-        printstatus();
+            B->focusclient(c, 0);
+        B->printstatus();
     }
     return;
 }

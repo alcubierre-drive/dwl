@@ -67,15 +67,3 @@ awl_vtable_t* awl_extension_vtable( awl_extension_t* handle ) {
     return handle->vt;
 }
 
-awl_func_t awl_extension_func( awl_extension_t* handle, const char* name ) {
-    union {
-        awl_func_t r;
-        uintptr_t u;
-    } uresult;
-    assert(sizeof(awl_func_t) == sizeof(void*));
-    if (sizeof(uintptr_t) == sizeof(void*))
-        uresult.u = (uintptr_t)dlsym( handle->addr, name );
-    else
-        memset(&uresult, 0, sizeof(uresult));
-    return uresult.r;
-}

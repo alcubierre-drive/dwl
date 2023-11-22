@@ -4,6 +4,7 @@
 #include "init.h"
 #include "../awl_log.h"
 #include "../awl_util.h"
+#include "../awl_client.h"
 #include "bar.h"
 #include "date.h"
 #include "stats.h"
@@ -48,6 +49,21 @@ static void tagmon_f( const Arg* arg );
 static void bordertoggle( const Arg* arg );
 static void cycle_tag( const Arg* arg );
 static void cycle_layout( const Arg* arg );
+static void focusstack(const Arg *arg);
+static void killclient(const Arg *arg);
+static void incnmaster(const Arg *arg);
+static void focusmon(const Arg *arg);
+static void moveresize(const Arg *arg);
+static void setlayout(const Arg *arg);
+static void setmfact(const Arg *arg);
+static void tag(const Arg *arg);
+static void tagmon(const Arg *arg);
+static void togglebar(const Arg *arg);
+static void togglefloating(const Arg *arg);
+static void togglefullscreen(const Arg *arg);
+static void toggletag(const Arg *arg);
+static void toggleview(const Arg *arg);
+static void view(const Arg *arg);
 
 static void gaplessgrid(Monitor *m);
 static void bstack(Monitor *m);
@@ -242,6 +258,7 @@ static void awl_plugin_init(void) {
     S.sloppyfocus = 1;
     S.bypass_surface_visibility = 0;
     S.borderpx = 2;
+    S.setlayout = setlayout;
 
     awl_log_printf( "color setup" );
     COLOR_SET( S.bordercolor, molokai_light_gray );
@@ -449,6 +466,9 @@ static void awl_plugin_init(void) {
     P->client_max = client_max;
     P->tagmon_f = tagmon_f;
     P->bordertoggle = bordertoggle;
+    P->focusstack = focusstack;
+    P->toggleview = toggleview;
+    P->view = view;
 
     P->cal = calendar_popup();
 
@@ -533,9 +553,9 @@ static void cycle_tag( const Arg* arg ) {
     selmon->seltags ^= 1; /* toggle sel tagset */
     if (arg->ui & TAGMASK)
         selmon->tagset[selmon->seltags] = (1 << ((arg->i + TAGCOUNT + c_count)%TAGCOUNT)) & TAGMASK;
-    focusclient(focustop(selmon), 1);
-    arrange(selmon);
-    printstatus();
+    B->focusclient(B->focustop(selmon), 1);
+    B->arrange(selmon);
+    B->printstatus();
 }
 
 static void cycle_layout( const Arg* arg ) {
@@ -549,7 +569,7 @@ static void cycle_layout( const Arg* arg ) {
 
     Arg A = {.i = S.cur_layout};
     setlayout( &A );
-    focusclient(focustop(B->selmon), 1);
+    B->focusclient(B->focustop(B->selmon), 1);
 }
 
 static void movestack( const Arg *arg ) {
@@ -558,7 +578,7 @@ static void movestack( const Arg *arg ) {
     awl_config_t* C = &S;
     if (!B || !C) return;
 
-    Client *c, *sel = focustop(B->selmon);
+    Client *c, *sel = B->focustop(B->selmon);
 
     if (!sel) {
         return;
@@ -594,8 +614,8 @@ static void movestack( const Arg *arg ) {
 
     wl_list_remove(&sel->link);
     wl_list_insert(&c->link, &sel->link);
-    arrange(B->selmon);
-    printstatus();
+    B->arrange(B->selmon);
+    B->printstatus();
 }
 
 static void client_hide( const Arg* arg ) {
@@ -605,7 +625,7 @@ static void client_hide( const Arg* arg ) {
 
     int hide = arg->ui;
     if (hide) {
-        Client* sel = focustop(B->selmon);
+        Client* sel = B->focustop(B->selmon);
         if (sel) sel->visible = 0;
     } else {
         Client* c;
@@ -616,9 +636,9 @@ static void client_hide( const Arg* arg ) {
             }
         }
     }
-    arrange(B->selmon);
-    focusclient(focustop(B->selmon), 0);
-    printstatus();
+    B->arrange(B->selmon);
+    B->focusclient(B->focustop(B->selmon), 0);
+    B->printstatus();
 }
 
 static void client_max( const Arg* arg ) {
@@ -626,7 +646,7 @@ static void client_max( const Arg* arg ) {
     awl_config_t* C = &S;
     if (!B || !C) return;
 
-    Client* sel = focustop(B->selmon);
+    Client* sel = B->focustop(B->selmon);
     if (sel) {
         switch (arg->i) {
             case -1: sel->maximized = 0; break;
@@ -638,10 +658,10 @@ static void client_max( const Arg* arg ) {
             if (sel->maximized) sel->prev = sel->geom;
             else                sel->geom = sel->prev;
         }
-        if (sel->isfloating && !sel->maximized) resize(sel, sel->prev, 0);
+        if (sel->isfloating && !sel->maximized) B->resize(sel, sel->prev, 0);
     }
-    arrange(B->selmon);
-    printstatus();
+    B->arrange(B->selmon);
+    B->printstatus();
 }
 
 static void tagmon_f( const Arg* arg ) {
@@ -656,10 +676,10 @@ static void bordertoggle( const Arg* arg ) {
     if (!B || !C) return;
     Monitor* selmon = B->selmon;
     if (!selmon) return;
-    Client* c = focustop(B->selmon);
+    Client* c = B->focustop(B->selmon);
     if (!c) return;
     c->bw = c->bw ? 0 : C->borderpx;
-    arrange(selmon);
+    B->arrange(selmon);
 }
 
 static void gaplessgrid(Monitor *m) {
@@ -696,7 +716,7 @@ static void gaplessgrid(Monitor *m) {
                 continue;
 
         if (c->maximized) {
-            resize(c, m->w, 0);
+            B->resize(c, m->w, 0);
             continue;
         }
 
@@ -705,7 +725,7 @@ static void gaplessgrid(Monitor *m) {
         ch = rows ? m->w.height / rows : (unsigned int)m->w.height;
         cx = m->w.x + cn * cw;
         cy = m->w.y + rn * ch;
-        resize(c, (struct wlr_box) { .x =  cx, .y = cy, .width = cw, .height = ch }, 0);
+        B->resize(c, (struct wlr_box) { .x =  cx, .y = cy, .width = cw, .height = ch }, 0);
         rn++;
         if (rn >= rows) {
             rn = 0;
@@ -747,16 +767,16 @@ static void bstack(Monitor *m) {
             if (!c->maximized)
                 continue;
         if (c->maximized) {
-            resize(c, m->w, 0);
+            B->resize(c, m->w, 0);
             continue;
         }
         if ((int)i < m->nmaster) {
             w = (m->w.width - mx) / (MIN((int)n, m->nmaster) - i);
-            resize(c, (struct wlr_box) { .x = m->w.x + mx, .y = m->w.y, .width = w, .height = mh }, 0);
+            B->resize(c, (struct wlr_box) { .x = m->w.x + mx, .y = m->w.y, .width = w, .height = mh }, 0);
             mx += c->geom.width;
         } else {
             h = m->w.height - mh;
-            resize(c, (struct wlr_box) { .x = tx, .y = ty, .width = tw, .height = h }, 0);
+            B->resize(c, (struct wlr_box) { .x = tx, .y = ty, .width = tw, .height = h }, 0);
             if (tw != m->w.width)
                 tx += c->geom.width;
         }
@@ -788,7 +808,7 @@ static void fibonacci(Monitor *mon, int s) {
             if (!c->maximized)
                 continue;
         if (c->maximized) {
-            resize(c, mon->w, 0);
+            B->resize(c, mon->w, 0);
             continue;
         }
         if ((i % 2 && nh / 2 > 2 * c->bw) || (!(i % 2) && nw / 2 > 2 * c->bw)) {
@@ -827,7 +847,7 @@ static void fibonacci(Monitor *mon, int s) {
                 nw = mon->w.width - nw;
             i++;
         }
-        resize(c, (struct wlr_box){.x = nx, .y = ny, .width = nw, .height = nh}, 0);
+        B->resize(c, (struct wlr_box){.x = nx, .y = ny, .width = nw, .height = nh}, 0);
     }
 }
 
@@ -859,15 +879,15 @@ static void tile(Monitor *m) {
             if (!c->maximized)
                 continue;
         if (c->maximized) {
-            resize(c, m->w, 0);
+            B->resize(c, m->w, 0);
             continue;
         }
         if (i < (unsigned)m->nmaster) {
-            resize(c, (struct wlr_box){.x = m->w.x, .y = m->w.y + my, .width = mw,
+            B->resize(c, (struct wlr_box){.x = m->w.x, .y = m->w.y + my, .width = mw,
                 .height = (m->w.height - my) / (MIN(n, (unsigned int)m->nmaster) - i)}, 0);
             my += c->geom.height;
         } else {
-            resize(c, (struct wlr_box){.x = m->w.x + mw, .y = m->w.y + ty,
+            B->resize(c, (struct wlr_box){.x = m->w.x + mw, .y = m->w.y + ty,
                 .width = m->w.width - mw, .height = (m->w.height - ty) / (n - i)}, 0);
             ty += c->geom.height;
         }
@@ -886,19 +906,259 @@ static void monocle(Monitor *m) {
     wl_list_for_each(c, &B->clients, link) {
         if (!VISIBLEON(c, m) || c->isfloating || c->isfullscreen || !c->visible)
             continue;
-        resize(c, m->w, 0);
+        B->resize(c, m->w, 0);
         n++;
     }
     if (n) {
         snprintf(m->ltsymbol, sizeof(m->ltsymbol)-1, "[%d]", n);
         m->ltsymbol[sizeof(m->ltsymbol)-1] = '\0';
     }
-    if ((c = focustop(m)))
+    if ((c = B->focustop(m)))
         wlr_scene_node_raise_to_top(&c->scene->node);
 }
 
 static void spawn_from_plugin( const Arg* arg ) {
     spawn_pid_str( arg->v );
+}
+
+static void incnmaster(const Arg *arg) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_config_t* C = &S;
+    if (!B || !C) return;
+
+    if (!arg || !B->selmon)
+        return;
+    B->selmon->nmaster = MAX(B->selmon->nmaster + arg->i, 0);
+    B->arrange(B->selmon);
+}
+
+static void focusmon(const Arg *arg) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_config_t* C = &S;
+    if (!B || !C) return;
+
+    int i = 0, nmons = wl_list_length(&B->mons);
+    if (nmons)
+        do /* don't switch to disabled mons */
+            B->selmon = B->dirtomon(arg->i);
+        while (!B->selmon->wlr_output->enabled && i++ < nmons);
+    B->focusclient(B->focustop(B->selmon), 1);
+}
+
+static void focusstack(const Arg *arg) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_config_t* C = &S;
+    if (!B || !C) return;
+
+    /* Focus the next or previous client (in tiling order) on selmon */
+    Client *c, *sel = B->focustop(B->selmon);
+    if (!sel || sel->isfullscreen)
+        return;
+    if (arg->i > 0) {
+        wl_list_for_each(c, &sel->link, link) {
+            if (&c->link == &B->clients)
+                continue; /* wrap past the sentinel node */
+            if (VISIBLEON(c, B->selmon) && c->visible)
+                break; /* found it */
+        }
+    } else {
+        wl_list_for_each_reverse(c, &sel->link, link) {
+            if (&c->link == &B->clients)
+                continue; /* wrap past the sentinel node */
+            if (VISIBLEON(c, B->selmon) && c->visible)
+                break; /* found it */
+        }
+    }
+    /* If only one client is visible on selmon, then c == sel */
+    B->focusclient(c, 1);
+}
+
+static void killclient(const Arg *arg) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_config_t* C = &S;
+    if (!B || !C) return;
+
+    (void)arg;
+
+    Client *sel = B->focustop(B->selmon);
+    if (sel)
+        client_send_close(sel);
+}
+
+static void moveresize(const Arg *arg) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_config_t* C = &S;
+    if (!B || !C) return;
+
+    if (B->cursor_mode != CurNormal && B->cursor_mode != CurPressed)
+        return;
+    B->xytonode(B->cursor->x, B->cursor->y, NULL, &B->grabc, NULL, NULL, NULL);
+    if (!B->grabc || client_is_unmanaged(B->grabc) || B->grabc->isfullscreen)
+        return;
+
+    /* Float the window and tell motionnotify to grab it */
+    B->setfloating(B->grabc, 1);
+    switch (B->cursor_mode = arg->ui) {
+    case CurMove:
+        B->grabcx = B->cursor->x - B->grabc->geom.x;
+        B->grabcy = B->cursor->y - B->grabc->geom.y;
+        strcpy(B->cursor_image, "fleur");
+        wlr_xcursor_manager_set_cursor_image(B->cursor_mgr, B->cursor_image, B->cursor);
+        break;
+    case CurResize:
+        /* Doesn't work for X11 output - the next absolute motion event
+         * returns the cursor to where it started */
+        wlr_cursor_warp_closest(B->cursor, NULL,
+                B->grabc->geom.x + B->grabc->geom.width,
+                B->grabc->geom.y + B->grabc->geom.height);
+        strcpy(B->cursor_image,"bottom_right_corner");
+        wlr_xcursor_manager_set_cursor_image(B->cursor_mgr, B->cursor_image, B->cursor);
+        break;
+    }
+}
+
+static void setlayout(const Arg *arg) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_config_t* C = &S;
+    if (!B || !C) return;
+
+    if (!B->selmon || !arg)
+        return;
+    if (arg->i < C->n_layouts && arg->i >= 0) {
+        B->selmon->sellt ^= 1;
+        B->selmon->lt[B->selmon->sellt] = arg->i;
+    }
+    strncpy(B->selmon->ltsymbol, C->layouts[B->selmon->lt[B->selmon->sellt]].symbol,
+            sizeof(B->selmon->ltsymbol)-1);
+    B->selmon->ltsymbol[sizeof(B->selmon->ltsymbol)-1] = '\0';
+    B->arrange(B->selmon);
+    B->printstatus();
+}
+
+/* arg > 1.0 will set mfact absolutely */
+static void setmfact(const Arg *arg) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_config_t* C = &S;
+    if (!B || !C) return;
+
+    float f;
+
+    if (!arg || !B->selmon || !C->layouts[B->selmon->lt[B->selmon->sellt]].arrange)
+        return;
+    f = arg->f < 1.0 ? arg->f + B->selmon->mfact : arg->f - 1.0;
+    if (f < 0.1 || f > 0.9)
+        return;
+    B->selmon->mfact = f;
+    B->arrange(B->selmon);
+}
+
+static void tag(const Arg *arg) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_config_t* C = &S;
+    if (!B || !C) return;
+
+    Client *sel = B->focustop(B->selmon);
+    if (!sel || (arg->ui & TAGMASK) == 0)
+        return;
+
+    sel->tags = arg->ui & TAGMASK;
+    B->focusclient(B->focustop(B->selmon), 1);
+    B->arrange(B->selmon);
+    B->printstatus();
+}
+
+static void tagmon(const Arg *arg) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_config_t* C = &S;
+    if (!B || !C) return;
+
+    Client *sel = B->focustop(B->selmon);
+    if (sel)
+        B->setmon(sel, B->dirtomon(arg->i), 0);
+}
+
+static void togglebar(const Arg *arg) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_config_t* C = &S;
+    if (!B || !C) return;
+
+    (void)arg;
+    DwlIpcOutput *ipc_output;
+    wl_list_for_each(ipc_output, &B->selmon->dwl_ipc_outputs, link)
+        B->ipc_send_toggle_vis(ipc_output->resource);
+}
+
+static void togglefloating(const Arg *arg) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_config_t* C = &S;
+    if (!B || !C) return;
+
+    (void)arg;
+    Client *sel = B->focustop(B->selmon);
+    /* return if fullscreen */
+    if (sel && !sel->isfullscreen)
+        B->setfloating(sel, !sel->isfloating);
+}
+
+static void togglefullscreen(const Arg *arg) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_config_t* C = &S;
+    if (!B || !C) return;
+
+    (void)arg;
+    Client *sel = B->focustop(B->selmon);
+    if (sel)
+        B->setfullscreen(sel, !sel->isfullscreen);
+}
+
+static void toggletag(const Arg *arg) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_config_t* C = &S;
+    if (!B || !C) return;
+
+    uint32_t newtags;
+    Client *sel = B->focustop(B->selmon);
+    if (!sel)
+        return;
+    newtags = sel->tags ^ (arg->ui & TAGMASK);
+    if (!newtags)
+        return;
+
+    sel->tags = newtags;
+    B->focusclient(B->focustop(B->selmon), 1);
+    B->arrange(B->selmon);
+    B->printstatus();
+}
+
+static void toggleview(const Arg *arg) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_config_t* C = &S;
+    if (!B || !C) return;
+
+    uint32_t newtagset = B->selmon ? B->selmon->tagset[B->selmon->seltags] ^ (arg->ui & TAGMASK) : 0;
+
+    if (!newtagset)
+        return;
+
+    B->selmon->tagset[B->selmon->seltags] = newtagset;
+    B->focusclient(B->focustop(B->selmon), 1);
+    B->arrange(B->selmon);
+    B->printstatus();
+}
+
+static void view(const Arg *arg) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    awl_config_t* C = &S;
+    if (!B || !C) return;
+
+    if (!B->selmon || (arg->ui & TAGMASK) == B->selmon->tagset[B->selmon->seltags])
+        return;
+    B->selmon->seltags ^= 1; /* toggle sel tagset */
+    if (arg->ui & TAGMASK)
+        B->selmon->tagset[B->selmon->seltags] = arg->ui & TAGMASK;
+    B->focusclient(B->focustop(B->selmon), 1);
+    B->arrange(B->selmon);
+    B->printstatus();
 }
 
 awl_vtable_t AWL_VTABLE_SYM = {

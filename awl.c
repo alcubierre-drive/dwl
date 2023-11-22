@@ -2,6 +2,7 @@
 #include <sys/mman.h>
 
 #include "awl.h"
+#include "awl_functions.h"
 #include "awl_util.h"
 #include "awl_client.h"
 #include "awl_title.h"
@@ -69,7 +70,6 @@ static void destroylocksurface(struct wl_listener *listener, void *data);
 static void destroynotify(struct wl_listener *listener, void *data);
 static void destroysessionlock(struct wl_listener *listener, void *data);
 static void destroysessionmgr(struct wl_listener *listener, void *data);
-static Monitor *dirtomon(enum wlr_direction dir);
 static void fullscreennotify(struct wl_listener *listener, void *data);
 static void handlesig(int signo);
 static void inputdevice(struct wl_listener *listener, void *data);
@@ -93,9 +93,6 @@ static void rendermon(struct wl_listener *listener, void *data);
 static void requeststartdrag(struct wl_listener *listener, void *data);
 static void run(char *startup_cmd);
 static void setcursor(struct wl_listener *listener, void *data);
-static void setfloating(Client *c, int floating);
-static void setfullscreen(Client *c, int fullscreen);
-static void setmon(Client *c, Monitor *m, uint32_t newtags);
 static void setpsel(struct wl_listener *listener, void *data);
 static void setsel(struct wl_listener *listener, void *data);
 static void setup(void);
@@ -108,7 +105,6 @@ static void updatetitle(struct wl_listener *listener, void *data);
 static void urgent(struct wl_listener *listener, void *data);
 static void virtualkeyboard(struct wl_listener *listener, void *data);
 static Monitor *xytomon(double x, double y);
-static void xytonode(double x, double y, struct wlr_surface **psurface, Client **pc, LayerSurface **pl, double *nx, double *ny);
 static void activatex11(struct wl_listener *listener, void *data);
 static void configurex11(struct wl_listener *listener, void *data);
 static void createnotifyx11(struct wl_listener *listener, void *data);
@@ -919,7 +915,7 @@ static void destroysessionmgr(struct wl_listener *listener, void *data) {
     wl_list_remove(&session_lock_mgr_destroy.link);
 }
 
-static Monitor *dirtomon(enum wlr_direction dir) {
+Monitor *dirtomon(enum wlr_direction dir) {
     struct wlr_output *next;
     if (!wlr_output_layout_get(B->output_layout, B->selmon->wlr_output))
         return B->selmon;
@@ -1094,7 +1090,7 @@ static void dwl_ipc_output_set_layout(struct wl_client *client, struct wl_resour
         return;
 
     Arg A = {.i = index};
-    setlayout(&A);
+    if (C && C->setlayout) (*C->setlayout)(&A);
     printstatus();
 }
 
@@ -1200,39 +1196,6 @@ void focusclient(Client *c, int lift) {
     client_activate_surface(client_surface(c), 1);
 }
 
-void focusmon(const Arg *arg) {
-    int i = 0, nmons = wl_list_length(&B->mons);
-    if (nmons)
-        do /* don't switch to disabled mons */
-            B->selmon = dirtomon(arg->i);
-        while (!B->selmon->wlr_output->enabled && i++ < nmons);
-    focusclient(focustop(B->selmon), 1);
-}
-
-void focusstack(const Arg *arg) {
-    /* Focus the next or previous client (in tiling order) on selmon */
-    Client *c, *sel = focustop(B->selmon);
-    if (!sel || sel->isfullscreen)
-        return;
-    if (arg->i > 0) {
-        wl_list_for_each(c, &sel->link, link) {
-            if (&c->link == &B->clients)
-                continue; /* wrap past the sentinel node */
-            if (VISIBLEON(c, B->selmon) && c->visible)
-                break; /* found it */
-        }
-    } else {
-        wl_list_for_each_reverse(c, &sel->link, link) {
-            if (&c->link == &B->clients)
-                continue; /* wrap past the sentinel node */
-            if (VISIBLEON(c, B->selmon) && c->visible)
-                break; /* found it */
-        }
-    }
-    /* If only one client is visible on selmon, then c == sel */
-    focusclient(c, 1);
-}
-
 /* We probably should change the name of this, it sounds like
  * will focus the topmost client of this mon, when actually will
  * only return that client */
@@ -1270,13 +1233,6 @@ static void handlesig(int signo) {
     }
 }
 
-void incnmaster(const Arg *arg) {
-    if (!arg || !B->selmon)
-        return;
-    B->selmon->nmaster = maximum(B->selmon->nmaster + arg->i, 0);
-    arrange(B->selmon);
-}
-
 static void inputdevice(struct wl_listener *listener, void *data) {
     (void)listener;
     /* This event is raised by the backend when a new input device becomes
@@ -1304,6 +1260,10 @@ static void inputdevice(struct wl_listener *listener, void *data) {
     if (!wl_list_empty(&B->keyboards))
         caps |= WL_SEAT_CAPABILITY_KEYBOARD;
     wlr_seat_set_capabilities(B->seat, caps);
+}
+
+void ipc_send_toggle_vis( struct wl_resource* resource ) {
+    zdwl_ipc_output_v2_send_toggle_visibility(resource);
 }
 
 static int keybinding(uint32_t mods, xkb_keysym_t sym) {
@@ -1412,13 +1372,6 @@ static int keyrepeat(void *data) {
         keybinding(kb->mods, kb->keysyms[i]);
 
     return 0;
-}
-
-void killclient(const Arg *arg) {
-    (void)arg;
-    Client *sel = focustop(B->selmon);
-    if (sel)
-        client_send_close(sel);
 }
 
 static void locksession(struct wl_listener *listener, void *data) {
@@ -1633,34 +1586,6 @@ static void motionrelative(struct wl_listener *listener, void *data) {
      * the cursor around without any input. */
     wlr_cursor_move(B->cursor, &event->pointer->base, event->delta_x, event->delta_y);
     motionnotify(event->time_msec);
-}
-
-void moveresize(const Arg *arg) {
-    if (B->cursor_mode != CurNormal && B->cursor_mode != CurPressed)
-        return;
-    xytonode(B->cursor->x, B->cursor->y, NULL, &B->grabc, NULL, NULL, NULL);
-    if (!B->grabc || client_is_unmanaged(B->grabc) || B->grabc->isfullscreen)
-        return;
-
-    /* Float the window and tell motionnotify to grab it */
-    setfloating(B->grabc, 1);
-    switch (B->cursor_mode = arg->ui) {
-    case CurMove:
-        B->grabcx = B->cursor->x - B->grabc->geom.x;
-        B->grabcy = B->cursor->y - B->grabc->geom.y;
-        strcpy(B->cursor_image, "fleur");
-        wlr_xcursor_manager_set_cursor_image(B->cursor_mgr, B->cursor_image, B->cursor);
-        break;
-    case CurResize:
-        /* Doesn't work for X11 output - the next absolute motion event
-         * returns the cursor to where it started */
-        wlr_cursor_warp_closest(B->cursor, NULL,
-                B->grabc->geom.x + B->grabc->geom.width,
-                B->grabc->geom.y + B->grabc->geom.height);
-        strcpy(B->cursor_image,"bottom_right_corner");
-        wlr_xcursor_manager_set_cursor_image(B->cursor_mgr, B->cursor_image, B->cursor);
-        break;
-    }
 }
 
 static void outputmgrapply(struct wl_listener *listener, void *data) {
@@ -1896,7 +1821,7 @@ static void setcursor(struct wl_listener *listener, void *data) {
                 event->hotspot_x, event->hotspot_y);
 }
 
-static void setfloating(Client *c, int floating) {
+void setfloating(Client *c, int floating) {
     c->isfloating = floating;
     if (!c->mon)
         return;
@@ -1906,7 +1831,7 @@ static void setfloating(Client *c, int floating) {
     printstatus();
 }
 
-static void setfullscreen(Client *c, int fullscreen) {
+void setfullscreen(Client *c, int fullscreen) {
     c->isfullscreen = fullscreen;
     if (!c->mon)
         return;
@@ -1927,34 +1852,7 @@ static void setfullscreen(Client *c, int fullscreen) {
     printstatus();
 }
 
-void setlayout(const Arg *arg) {
-    if (!B->selmon || !arg)
-        return;
-    if (arg->i < C->n_layouts && arg->i >= 0) {
-        B->selmon->sellt ^= 1;
-        B->selmon->lt[B->selmon->sellt] = arg->i;
-    }
-    strncpy(B->selmon->ltsymbol, C->layouts[B->selmon->lt[B->selmon->sellt]].symbol,
-            sizeof(B->selmon->ltsymbol)-1);
-    B->selmon->ltsymbol[sizeof(B->selmon->ltsymbol)-1] = '\0';
-    arrange(B->selmon);
-    printstatus();
-}
-
-/* arg > 1.0 will set mfact absolutely */
-void setmfact(const Arg *arg) {
-    float f;
-
-    if (!arg || !B->selmon || !C->layouts[B->selmon->lt[B->selmon->sellt]].arrange)
-        return;
-    f = arg->f < 1.0 ? arg->f + B->selmon->mfact : arg->f - 1.0;
-    if (f < 0.1 || f > 0.9)
-        return;
-    B->selmon->mfact = f;
-    arrange(B->selmon);
-}
-
-static void setmon(Client *c, Monitor *m, uint32_t newtags) {
+void setmon(Client *c, Monitor *m, uint32_t newtags) {
     Monitor *oldmon = c->mon;
 
     if (oldmon == m)
@@ -2188,72 +2086,6 @@ static void startdrag(struct wl_listener *listener, void *data) {
     wl_signal_add(&drag->icon->events.destroy, &drag_icon_destroy);
 }
 
-void tag(const Arg *arg) {
-    Client *sel = focustop(B->selmon);
-    if (!sel || (arg->ui & TAGMASK) == 0)
-        return;
-
-    sel->tags = arg->ui & TAGMASK;
-    focusclient(focustop(B->selmon), 1);
-    arrange(B->selmon);
-    printstatus();
-}
-
-void tagmon(const Arg *arg) {
-    Client *sel = focustop(B->selmon);
-    if (sel)
-        setmon(sel, dirtomon(arg->i), 0);
-}
-
-void togglebar(const Arg *arg) {
-    (void)arg;
-    DwlIpcOutput *ipc_output;
-    wl_list_for_each(ipc_output, &B->selmon->dwl_ipc_outputs, link)
-        zdwl_ipc_output_v2_send_toggle_visibility(ipc_output->resource);
-}
-
-void togglefloating(const Arg *arg) {
-    (void)arg;
-    Client *sel = focustop(B->selmon);
-    /* return if fullscreen */
-    if (sel && !sel->isfullscreen)
-        setfloating(sel, !sel->isfloating);
-}
-
-void togglefullscreen(const Arg *arg) {
-    (void)arg;
-    Client *sel = focustop(B->selmon);
-    if (sel)
-        setfullscreen(sel, !sel->isfullscreen);
-}
-
-void toggletag(const Arg *arg) {
-    uint32_t newtags;
-    Client *sel = focustop(B->selmon);
-    if (!sel)
-        return;
-    newtags = sel->tags ^ (arg->ui & TAGMASK);
-    if (!newtags)
-        return;
-
-    sel->tags = newtags;
-    focusclient(focustop(B->selmon), 1);
-    arrange(B->selmon);
-    printstatus();
-}
-
-void toggleview(const Arg *arg) {
-    uint32_t newtagset = B->selmon ? B->selmon->tagset[B->selmon->seltags] ^ (arg->ui & TAGMASK) : 0;
-
-    if (!newtagset)
-        return;
-
-    B->selmon->tagset[B->selmon->seltags] = newtagset;
-    focusclient(focustop(B->selmon), 1);
-    arrange(B->selmon);
-    printstatus();
-}
-
 static void unlocksession(struct wl_listener *listener, void *data) {
     (void)data;
     SessionLock *lock = wl_container_of(listener, lock, unlock);
@@ -2411,17 +2243,6 @@ static void urgent(struct wl_listener *listener, void *data) {
     printstatus();
 }
 
-void view(const Arg *arg) {
-    if (!B->selmon || (arg->ui & TAGMASK) == B->selmon->tagset[B->selmon->seltags])
-        return;
-    B->selmon->seltags ^= 1; /* toggle sel tagset */
-    if (arg->ui & TAGMASK)
-        B->selmon->tagset[B->selmon->seltags] = arg->ui & TAGMASK;
-    focusclient(focustop(B->selmon), 1);
-    arrange(B->selmon);
-    printstatus();
-}
-
 static void virtualkeyboard(struct wl_listener *listener, void *data) {
     (void)listener;
     struct wlr_virtual_keyboard_v1 *keyboard = data;
@@ -2433,7 +2254,7 @@ static Monitor* xytomon(double x, double y) {
     return o ? o->data : NULL;
 }
 
-static void xytonode(double x, double y, struct wlr_surface **psurface, Client **pc,
+void xytonode(double x, double y, struct wlr_surface **psurface, Client **pc,
         LayerSurface **pl, double *nx, double *ny) {
     struct wlr_scene_node *node, *pnode;
     struct wlr_surface *surface = NULL;

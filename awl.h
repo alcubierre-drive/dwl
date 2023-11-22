@@ -230,25 +230,4 @@ typedef struct {
     Monitor *mon;
 } DwlIpcOutput;
 
-void arrange(Monitor *m);
-void focusclient(Client *c, int lift);
-void focusmon(const Arg *arg);
-void focusstack(const Arg *arg);
-Client *focustop(Monitor *m);
-void killclient(const Arg *arg);
-void moveresize(const Arg *arg);
-void printstatus(void);
-void resize(Client *c, struct wlr_box geo, int interact);
-void setlayout(const Arg *arg);
-void setmfact(const Arg *arg);
-void tag(const Arg *arg);
-void tagmon(const Arg *arg);
-void togglebar(const Arg *arg);
-void togglefloating(const Arg *arg);
-void togglefullscreen(const Arg *arg);
-void toggletag(const Arg *arg);
-void toggleview(const Arg *arg);
-void view(const Arg *arg);
-void incnmaster(const Arg *arg);
-
 extern xcb_atom_t netatom[NetLast];
