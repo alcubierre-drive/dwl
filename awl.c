@@ -257,6 +257,9 @@ static void applyrules(Client *c) {
     if (!(title = client_get_title(c)))
         title = B->broken;
 
+    // TODO
+    c->isfullscreen = client_wants_fullscreen(c);
+
     for (r = C->rules; r < C->rules + C->n_rules; r++) {
         if ((!r->title || strstr(title, r->title))
                 && (!r->id || strstr(appid, r->id))) {

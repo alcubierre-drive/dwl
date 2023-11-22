@@ -41,13 +41,15 @@ static AWL_Window* w = NULL;
 struct wp_cache {
     pixman_image_t* img;
     time_t time;
+    uint64_t memsz;
 
     UT_hash_handle hh;
     u128t id;
 };
 static struct wp_cache* wp_cache = NULL;
 static pthread_mutex_t wp_cache_mtx = PTHREAD_MUTEX_INITIALIZER;
-static int wp_cache_count_max = 50;
+static int wp_cache_count_max = 50; // disable both count and bytes with <0
+static int64_t wp_cache_bytes_max = 1024ul * 1024ul * 512ul; // huge cache (512MiB)
 static int wp_cache_thread_update = 0;
 static pthread_t wp_cache_thread = {0};
 
@@ -105,6 +107,9 @@ static void wallpaper_draw( AWL_SingleWindow* win, pixman_image_t* final ) {
         found->id = md5;
         found->img = bg;
         found->time = time(NULL);
+        found->memsz = (uint64_t)PIXMAN_FORMAT_BPP(pixman_image_get_format(bg)) *
+                                 pixman_image_get_width(bg) * pixman_image_get_height(bg) +
+                       sizeof(struct wp_cache);
 
         HASH_ADD(hh, wp_cache, id, sizeof(u128t), found);
     }
@@ -225,16 +230,27 @@ void* wp_cache_cleaner(void* arg) {
         P_awl_log_printf( "wallpaper cache cleaner…" );
         pthread_mutex_lock( &wp_cache_mtx );
 
-        int nwp_cached = HASH_COUNT(wp_cache);
-        if (wp_cache_count_max >= nwp_cached)
+        struct wp_cache *wp, *tmp;
+
+        int nwp_cached = 0;
+        int64_t bytes = 0;
+        HASH_ITER(hh, wp_cache, wp, tmp) {
+            nwp_cached++;
+            bytes += wp->memsz;
+        }
+
+        if ((wp_cache_count_max < 0 || wp_cache_count_max >= nwp_cached) &&
+            (wp_cache_bytes_max < 0 || wp_cache_bytes_max >= bytes))
             goto wp_cache_continue;
 
         P_awl_log_printf( "cleaning wallpaper cache" );
         int ncleaned = 0, ntot = 0;
+        int64_t nbytes = 0;
         HASH_SORT( wp_cache, wp_cache_cleaner_cmp );
-        struct wp_cache *wp, *tmp;
         HASH_ITER(hh, wp_cache, wp, tmp) {
-            if (++ntot > wp_cache_count_max) {
+            nbytes += wp->memsz;
+            ntot++;
+            if (ntot > wp_cache_count_max || nbytes > wp_cache_bytes_max) {
                 HASH_DEL(wp_cache, wp);
                 pixman_image_unref(wp->img);
                 free(wp);
