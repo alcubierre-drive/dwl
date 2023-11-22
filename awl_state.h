@@ -119,6 +119,7 @@ struct awl_state_t {
 
     int (*awl_is_ready)( void );
     void (*awl_change_modkey)( uint32_t );
+    void (*log)( const char*, int, const char*, int, const char*, ... );
 
     void *persistent_plugin_data;
     size_t persistent_plugin_data_nbytes;

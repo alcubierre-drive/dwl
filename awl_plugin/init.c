@@ -3,7 +3,6 @@
 
 #include "init.h"
 #include "../awl_log.h"
-#include "../awl_util.h"
 #include "../awl_client.h"
 #include "bar.h"
 #include "date.h"
@@ -39,7 +38,7 @@ awl_plugin_data_t* awl_plugin_data( void ) {
 #define COLOR_SETF( C, F0, F1, F2, F3 ) \
     { C[0] = F0; C[1] = F1; C[2] = F2; C[3] = F3; }
 
-#define ARRAY_INIT( type, ary, capacity ) S. ary = (type*)ecalloc( capacity, sizeof(type) );
+#define ARRAY_INIT( type, ary, capacity ) S. ary = (type*)calloc( capacity, sizeof(type) );
 #define ARRAY_APPEND( type, ary, ... ) S. ary[S.n_##ary ++] = (type){__VA_ARGS__};
 
 static void movestack( const Arg *arg );
@@ -187,7 +186,7 @@ pid_t spawn_pid( char** arg ) {
         if (ppid == 0) {
             close(pid_fd);
             execvp(arg[0], arg);
-            die("execvp %s failed:", arg[0]);
+            P_awl_err_printf("execvp %s failed: %s", arg[0], strerror(errno));
         } else {
             lseek(pid_fd, 0, SEEK_SET);
             write(pid_fd, &ppid, sizeof(pid_t));
@@ -217,16 +216,16 @@ typedef struct awl_persistent_plugin_data_t {
 
 static void awl_plugin_init(void) {
 
-    awl_log_printf("persistent data…");
+    P_awl_log_printf("persistent data…");
     awl_persistent_plugin_data_t* data = AWL_VTABLE_SYM.state->persistent_plugin_data;
     if (sizeof(awl_persistent_plugin_data_t) > AWL_VTABLE_SYM.state->persistent_plugin_data_nbytes) {
-        awl_err_printf("too little space for plugin data");
+        P_awl_err_printf("too little space for plugin data");
         data = NULL;
     }
     if (data) {
         #define AUTOSTART( thing, cmd ) { \
             if (kill(data->pid_##thing, 0) == -1 || !data->pid_##thing) { \
-                awl_log_printf( "autostarting " #thing ); \
+                P_awl_log_printf( "autostarting " #thing ); \
                 data->pid_##thing = spawn_pid_str( cmd ); \
             } \
         }
@@ -240,7 +239,7 @@ static void awl_plugin_init(void) {
         AUTOSTART( locker, "systemd-lock-handler swaylock" );
     }
 
-    awl_log_printf("setting up environment");
+    P_awl_log_printf("setting up environment");
     setenv("MOZ_ENABLE_WAYLAND", "1", 1);
     setenv("QT_STYLE_OVERRIDE","kvantum",1);
     setenv("DESKTOP_SESSION","kde",1);
@@ -254,13 +253,13 @@ static void awl_plugin_init(void) {
     strcat( buf, "/Desktop" );
     setenv("GRIM_DEFAULT_DIR", buf, 1);
 
-    awl_log_printf( "general setup" );
+    P_awl_log_printf( "general setup" );
     S.sloppyfocus = 1;
     S.bypass_surface_visibility = 0;
     S.borderpx = 2;
     S.setlayout = setlayout;
 
-    awl_log_printf( "color setup" );
+    P_awl_log_printf( "color setup" );
     COLOR_SET( S.bordercolor, molokai_light_gray );
     COLOR_SET( S.focuscolor, molokai_blue );
     COLOR_SET( S.urgentcolor, molokai_orange );
@@ -279,7 +278,7 @@ static void awl_plugin_init(void) {
     ARRAY_APPEND(Rule, rules, "blueman-manager", NULL, 0, 1, -1 );
     ARRAY_APPEND(Rule, rules, "zoom", NULL, 0, 1, -1 );
     ARRAY_APPEND(Rule, rules, "evolution-alarm-notify", NULL, 1<<8, 1, -1 );
-    awl_log_printf( "created %i rules", S.n_rules );
+    P_awl_log_printf( "created %i rules", S.n_rules );
 
     ARRAY_INIT(Layout, layouts, 16);
     ARRAY_APPEND(Layout, layouts, "[◻]", gaplessgrid );
@@ -288,14 +287,14 @@ static void awl_plugin_init(void) {
     ARRAY_APPEND(Layout, layouts, "[T]", tile );
     ARRAY_APPEND(Layout, layouts, "[@]", dwindle );
     S.cur_layout = 0;
-    awl_log_printf( "created %i layouts", S.n_layouts );
+    P_awl_log_printf( "created %i layouts", S.n_layouts );
 
     /* name, mfact, nmaster, scale, layout, rotate/reflect, x, y */
     ARRAY_INIT(MonitorRule, monrules, 16);
     ARRAY_APPEND(MonitorRule, monrules, NULL, 0.5, 1, 1.0, 0, WL_OUTPUT_TRANSFORM_NORMAL, -1, -1);
-    awl_log_printf( "created %i monitor rules", S.n_monrules );
+    P_awl_log_printf( "created %i monitor rules", S.n_monrules );
 
-    awl_log_printf( "keyboard/mouse config" );
+    P_awl_log_printf( "keyboard/mouse config" );
     S.xkb_rules = (struct xkb_rule_names) {
         .options = NULL,
         .model = "pc105",
@@ -421,15 +420,15 @@ static void awl_plugin_init(void) {
     ADD_TAG( XKB_KEY_7, XKB_KEY_slash,      6)
     ADD_TAG( XKB_KEY_8, XKB_KEY_parenleft,  7)
     ADD_TAG( XKB_KEY_9, XKB_KEY_parenright, 8)
-    awl_log_printf( "created %i keybindings", S.n_keys );
+    P_awl_log_printf( "created %i keybindings", S.n_keys );
 
     ARRAY_INIT(Button, buttons, 16);
     ARRAY_APPEND(Button, buttons, MODKEY, BTN_LEFT,   moveresize,     {.ui = CurMove});
     ARRAY_APPEND(Button, buttons, MODKEY, BTN_MIDDLE, togglefloating, {0});
     ARRAY_APPEND(Button, buttons, MODKEY, BTN_RIGHT,  moveresize,     {.ui = CurResize});
-    awl_log_printf( "created %i mousebindings", S.n_buttons );
+    P_awl_log_printf( "created %i mousebindings", S.n_buttons );
 
-    awl_plugin_data_t* P = ecalloc(1, sizeof(awl_plugin_data_t));
+    awl_plugin_data_t* P = calloc(1, sizeof(awl_plugin_data_t));
     P->refresh_sec = 0.2;
 
     P->ncpu = P->nmem = P->nswp = 32;
@@ -478,7 +477,7 @@ static void awl_plugin_init(void) {
 
     int s = pthread_create( &S.BarThread, NULL, awl_bar_run, NULL );
     if (s != 0)
-        awl_err_printf( "pthread create: %s", strerror(s) );
+        P_awl_err_printf( "pthread create: %s", strerror(s) );
     pthread_create( &S.BarRefreshThread, NULL, awl_bar_refresh, &P->refresh_sec );
 
     // wallpaper somewhat separate. this is ok. it checks for awl_is_ready in
@@ -490,7 +489,7 @@ static void awl_plugin_init(void) {
 }
 
 static void awl_plugin_free(void) {
-    awl_log_printf( "free plugin resources" );
+    P_awl_log_printf( "free plugin resources" );
     free(S.rules);
     free(S.layouts);
     free(S.monrules);
@@ -512,31 +511,31 @@ static void awl_plugin_free(void) {
 
     // cancel bar refreshing
     pthread_cancel( S.BarRefreshThread );
-    awl_log_printf( "cancel bar refresh thread" );
+    P_awl_log_printf( "cancel bar refresh thread" );
 
     // and cancel the bar thread itself
     // this is kinda clumsy, now that we have the minimal window that's all
     // self-contained. The bar could also be a minimal window. It's not doing
     // anything else, honestly.
     awl_state_t* B = AWL_VTABLE_SYM.state;
-    awl_log_printf( "cleanup vtable state: %p", B );
+    P_awl_log_printf( "cleanup vtable state: %p", B );
     if (B) {
         awlb_run_display = false;
         int s = pthread_cancel( S.BarThread );
-        awl_log_printf( "cancelled bar thread" );
+        P_awl_log_printf( "cancelled bar thread" );
         if (s != 0)
-            awl_err_printf( "pthread cancel: %s", strerror(s) );
-        awl_log_printf( "joining thread %p", S.BarThread );
+            P_awl_err_printf( "pthread cancel: %s", strerror(s) );
+        P_awl_log_printf( "joining thread %p", S.BarThread );
         s = pthread_join( S.BarThread, NULL );
-        awl_log_printf( "joined bar thread" );
+        P_awl_log_printf( "joined bar thread" );
         if (s != 0)
-            awl_err_printf( "pthread join: %s", strerror(s) );
+            P_awl_err_printf( "pthread join: %s", strerror(s) );
     }
 
     // free the plugin data somewhat last
     free(S.P);
     memset(&S, 0, sizeof(awl_config_t));
-    awl_log_printf( "successfully freed plugin resources" );
+    P_awl_log_printf( "successfully freed plugin resources" );
 }
 
 static void cycle_tag( const Arg* arg ) {

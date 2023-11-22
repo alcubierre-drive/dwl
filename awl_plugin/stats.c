@@ -1,7 +1,7 @@
 #include "stats.h"
 #include "bar.h"
+#include "init.h"
 #include "../awl_log.h"
-#include "../awl_util.h"
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,7 +32,7 @@ static void getmem( float* mem, float* swp );
 void start_stats_thread( float* val_cpu, int nval_cpu,
                          float* val_mem, int nval_mem,
                          float* val_swp, int nval_swp, int update_sec ) {
-    awl_log_printf( "starting system monitor" );
+    P_awl_log_printf( "starting system monitor" );
     th_arg = malloc(sizeof(th_stats_arg_t));
     th_arg->i = 0;
     th_arg->cpu = val_cpu;
@@ -77,7 +77,7 @@ static void rotate_back( float* array, int size ) {
 
 static float cpu_idle( void ) {
     if (!sizes_table)
-        sizes_table = (uint64_t*)ecalloc(20, sizeof(uint64_t));
+        sizes_table = (uint64_t*)calloc(20, sizeof(uint64_t));
 
     // copy old values
     memcpy( sizes_table+10, sizes_table, sizeof(uint64_t)*10 );

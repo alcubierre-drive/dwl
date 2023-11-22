@@ -2,6 +2,7 @@
 #include "minimal_window.h"
 #include "wbg_png.h"
 #include "../awl.h"
+#include "init.h"
 #include "../awl_log.h"
 #include "readdir.h"
 #include "bar.h"
@@ -32,14 +33,14 @@ static pthread_t wp_idx_thread = {0};
 static AWL_Window* w = NULL;
 
 static void wallpaper_draw( AWL_SingleWindow* win, pixman_image_t* bg ) {
-    awl_log_printf("in wallpaper draw function");
+    P_awl_log_printf("in wallpaper draw function");
 
     if (!wallpaper_number) return;
     char* wpfname = wallpaper_glob.gl_pathv[wallpaper_index];
 
     FILE* f = fopen(wpfname, "r");
     if (!f) {
-        awl_err_printf("could not open file %s", wpfname);
+        P_awl_err_printf("could not open file %s", wpfname);
         return;
     }
     pixman_image_t* png_image = awl_png_load(f, wpfname);

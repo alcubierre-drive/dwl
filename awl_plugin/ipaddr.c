@@ -11,6 +11,7 @@
 #include <pthread.h>
 
 #include "ipaddr.h"
+#include "init.h"
 #include "../awl_log.h"
 
 static int ip_thread_running = 0;
@@ -44,7 +45,7 @@ static void* ip_thread_run( void* arg ) {
         struct ifaddrs *ifaddr;
 
         if (getifaddrs(&ifaddr) == -1) {
-            awl_err_printf("getifaddrs failed");
+            P_awl_err_printf("getifaddrs failed");
             continue;
         }
 
@@ -56,7 +57,7 @@ static void* ip_thread_run( void* arg ) {
                 int s = getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in), host,
                         NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
                 if (s) {
-                    awl_err_printf("getnameinfo() failed: %s\n", gai_strerror(s));
+                    P_awl_err_printf("getnameinfo() failed: %s\n", gai_strerror(s));
                     goto loopend;
                 }
                 if (first) {

@@ -28,7 +28,6 @@
 #include "../awl_arg.h"
 #include "../awl_title.h"
 #include "../awl_log.h"
-#include "../awl_util.h"
 
 #include "init.h"
 #include "pulsetest.h"
@@ -934,12 +933,12 @@ static const struct wl_seat_listener seat_listener = {
 static void show_bar(Bar *bar) {
     bar->wl_surface = wl_compositor_create_surface(compositor);
     if (!bar->wl_surface)
-        awl_err_printf( "Could not create wl_surface" );
+        P_awl_err_printf( "Could not create wl_surface" );
 
     bar->layer_surface = zwlr_layer_shell_v1_get_layer_surface(layer_shell, bar->wl_surface, bar->wl_output,
                                    ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM, "awl_bar");
     if (!bar->layer_surface)
-        awl_err_printf( "Could not create layer_surface" );
+        P_awl_err_printf( "Could not create layer_surface" );
     zwlr_layer_surface_v1_add_listener(bar->layer_surface, &layer_surface_listener, bar);
 
     zwlr_layer_surface_v1_set_size(bar->layer_surface, 0, bar->height / buffer_scale);
@@ -1094,7 +1093,7 @@ static const struct zdwl_ipc_output_v2_listener dwl_wm_output_listener = {
 static void setup_bar(Bar *bar) {
     awl_plugin_data_t* P = awl_plugin_data();
     if (!P)
-        awl_err_printf("cannot init bar without plugin data");
+        P_awl_err_printf("cannot init bar without plugin data");
 
     bar->height = height * buffer_scale;
     bar->textpadding = textpadding;
@@ -1187,12 +1186,12 @@ static void setup_bar(Bar *bar) {
 
     bar->xdg_output = zxdg_output_manager_v1_get_xdg_output(output_manager, bar->wl_output);
     if (!bar->xdg_output)
-        awl_err_printf( "Could not create xdg_output" );
+        P_awl_err_printf( "Could not create xdg_output" );
     zxdg_output_v1_add_listener(bar->xdg_output, &output_listener, bar);
 
     bar->dwl_wm_output = zdwl_ipc_manager_v2_get_output(dwl_wm, bar->wl_output);
     if (!bar->dwl_wm_output)
-        awl_err_printf( "Could not create dwl_wm_output" );
+        P_awl_err_printf( "Could not create dwl_wm_output" );
     zdwl_ipc_output_v2_add_listener(bar->dwl_wm_output, &dwl_wm_output_listener, bar);
 
     if (!bar->hidden)
@@ -1215,14 +1214,14 @@ static void handle_global(void *data, struct wl_registry *registry,
         dwl_wm = wl_registry_bind(registry, name, &zdwl_ipc_manager_v2_interface, 2);
         zdwl_ipc_manager_v2_add_listener(dwl_wm, &dwl_wm_listener, NULL);
     } else if (!strcmp(interface, wl_output_interface.name)) {
-        Bar *bar = ecalloc(1, sizeof(Bar));
+        Bar *bar = calloc(1, sizeof(Bar));
         bar->registry_name = name;
         bar->wl_output = wl_registry_bind(registry, name, &wl_output_interface, 1);
         if (awlb_run_display)
             setup_bar(bar);
         wl_list_insert(&bar_list, &bar->link);
     } else if (!strcmp(interface, wl_seat_interface.name)) {
-        Seat *seat = ecalloc(1, sizeof(Seat));
+        Seat *seat = calloc(1, sizeof(Seat));
         seat->registry_name = name;
         seat->wl_seat = wl_registry_bind(registry, name, &wl_seat_interface, 7);
         wl_seat_add_listener(seat->wl_seat, &seat_listener, seat);
@@ -1260,7 +1259,7 @@ static void handle_global_remove(void *data, struct wl_registry *registry, uint3
     Bar *bar;
     Seat *seat;
 
-    awl_log_printf("in global remove");
+    P_awl_log_printf("in global remove");
     wl_list_for_each(bar, &bar_list, link) {
         if (bar->registry_name == name) {
             wl_list_remove(&bar->link);
@@ -1283,7 +1282,7 @@ static const struct wl_registry_listener registry_listener = {
 };
 
 static void event_loop(void) {
-    awl_log_printf( "bar event loop" );
+    P_awl_log_printf( "bar event loop" );
     int wl_fd = wl_display_get_fd(display);
 
     while (awlb_run_display) {
@@ -1298,7 +1297,7 @@ static void event_loop(void) {
             if (errno == EINTR)
                 continue;
             else
-                awl_err_printf( "select" );
+                P_awl_err_printf( "select" );
         }
         if (FD_ISSET(wl_fd, &rfds))
             if (wl_display_dispatch(display) == -1)
@@ -1321,7 +1320,7 @@ static void event_loop(void) {
 }
 
 static void cleanup_fun(void* arg) {
-    awl_log_printf( "entering bar cleanup" );
+    P_awl_log_printf( "entering bar cleanup" );
     (void)arg;
     if (redraw_fd != -1) close( redraw_fd );
     free( widget_boxes );
@@ -1343,23 +1342,23 @@ static void cleanup_fun(void* arg) {
     wl_shm_destroy(shm);
     wl_compositor_destroy(compositor);
     wl_display_disconnect(display);
-    awl_log_printf( "done with bar cleanup" );
+    P_awl_log_printf( "done with bar cleanup" );
 }
 
 void* awl_bar_run( void* arg ) {
     awl_state_t* B = NULL;
     while ((B = awl_plugin_state()) == NULL) {
-        awl_err_printf( "could not find state (deadlock?)" );
+        P_awl_err_printf( "could not find state (deadlock?)" );
         usleep(100);
     }
     while (!B->awl_is_ready()) usleep(100);
-    awl_log_printf( "starting bar thread" );
+    P_awl_log_printf( "starting bar thread" );
     (void)arg;
 
     /* Set up display and protocols */
     display = wl_display_connect(NULL);
     if (!display)
-        awl_err_printf( "Failed to create display" );
+        P_awl_err_printf( "Failed to create display" );
 
     wl_list_init(&bar_list);
     wl_list_init(&seat_list);
@@ -1368,7 +1367,7 @@ void* awl_bar_run( void* arg ) {
     wl_registry_add_listener(registry, &registry_listener, NULL);
     wl_display_roundtrip(display);
     if (!compositor || !shm || !layer_shell || !output_manager || !dwl_wm)
-        awl_err_printf( "Compositor does not support all needed protocols" );
+        P_awl_err_printf( "Compositor does not support all needed protocols" );
 
     /* Load selected font */
     fcft_init(FCFT_LOG_COLORIZE_AUTO, 0, FCFT_LOG_CLASS_ERROR);
@@ -1378,7 +1377,7 @@ void* awl_bar_run( void* arg ) {
     char buf[16];
     sprintf(buf, "dpi=%u", dpi);
     if (!(font = fcft_from_name(1, (const char *[]){fontstr}, buf)))
-        awl_err_printf( "Could not load font %s", fontstr );
+        P_awl_err_printf( "Could not load font %s", fontstr );
     textpadding = font->height / 2;
     height = font->height / buffer_scale + vertical_padding * 2;
 
@@ -1410,7 +1409,7 @@ static void awl_bar_refresh_fun( void ) {
 
 void* awl_bar_refresh( void* arg ) {
     float* prsec = (float*)arg;
-    awl_log_printf( "started bar refresh thread (%.2fs)", *prsec );
+    P_awl_log_printf( "started bar refresh thread (%.2fs)", *prsec );
     while (1) {
         usleep( (useconds_t)(*prsec * 1.e6) );
         awl_bar_refresh_fun();

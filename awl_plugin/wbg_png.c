@@ -10,6 +10,7 @@
 #include <png.h>
 #include <pixman.h>
 
+#include "init.h"
 #include "../awl_log.h"
 
 static inline int stride_for_format_and_width(pixman_format_code_t format, int width) {
@@ -30,7 +31,7 @@ pixman_image_t * awl_png_load(FILE *fp, const char *path) {
     uint8_t *image_data = NULL;
 
     if (fseek(fp, 0, SEEK_SET) < 0) {
-        awl_err_printf("%s: failed to seek to beginning of file (%s)", path, strerror(errno));
+        P_awl_err_printf("%s: failed to seek to beginning of file (%s)", path, strerror(errno));
         return NULL;
     }
 
@@ -45,7 +46,7 @@ pixman_image_t * awl_png_load(FILE *fp, const char *path) {
              PNG_LIBPNG_VER_STRING, NULL, NULL, NULL)) == NULL ||
         (info_ptr = png_create_info_struct(png_ptr)) == NULL)
     {
-        awl_err_printf("%s: failed to initialize libpng", path);
+        P_awl_err_printf("%s: failed to initialize libpng", path);
         goto err;
     }
 
@@ -60,7 +61,7 @@ pixman_image_t * awl_png_load(FILE *fp, const char *path) {
     png_byte bit_depth = png_get_bit_depth(png_ptr, info_ptr);
     int channels = png_get_channels(png_ptr, info_ptr);
 
-    awl_vrb_printf("%s: %dx%d@%hhubpp, %d channels", path, width, height, bit_depth, channels);
+    P_awl_vrb_printf("%s: %dx%d@%hhubpp, %d channels", path, width, height, bit_depth, channels);
 
     png_set_packing(png_ptr);
     png_set_interlace_handling(png_ptr);
@@ -76,7 +77,7 @@ pixman_image_t * awl_png_load(FILE *fp, const char *path) {
     switch (color_type) {
     case PNG_COLOR_TYPE_GRAY:
     case PNG_COLOR_TYPE_GRAY_ALPHA:
-        awl_vrb_printf("%d-bit gray%s", bit_depth,
+        P_awl_vrb_printf("%d-bit gray%s", bit_depth,
                 color_type == PNG_COLOR_TYPE_GRAY_ALPHA ? "+alpha" : "");
 
         if (bit_depth < 8)
@@ -87,7 +88,7 @@ pixman_image_t * awl_png_load(FILE *fp, const char *path) {
         break;
 
     case PNG_COLOR_TYPE_PALETTE:
-        awl_vrb_printf("%d-bit colormap%s", bit_depth,
+        P_awl_vrb_printf("%d-bit colormap%s", bit_depth,
                 png_get_valid(png_ptr, info_ptr, PNG_INFO_tRNS) ? "+tRNS" : "");
 
         png_set_palette_to_rgb(png_ptr);
@@ -99,12 +100,12 @@ pixman_image_t * awl_png_load(FILE *fp, const char *path) {
         break;
 
     case PNG_COLOR_TYPE_RGB:
-        awl_vrb_printf("RGB");
+        P_awl_vrb_printf("RGB");
         format = PIXMAN_r8g8b8;
         break;
 
     case PNG_COLOR_TYPE_RGBA:
-        awl_vrb_printf("RGBA");
+        P_awl_vrb_printf("RGBA");
         format = PIXMAN_x8r8g8b8;
         break;
     }
@@ -115,7 +116,7 @@ pixman_image_t * awl_png_load(FILE *fp, const char *path) {
     int stride = stride_for_format_and_width(format, width);
     image_data = malloc(height * stride);
 
-    awl_vrb_printf("stride=%d, row-bytes=%zu", stride, row_bytes);
+    P_awl_vrb_printf("stride=%d, row-bytes=%zu", stride, row_bytes);
     assert(stride >= (int)row_bytes);
 
     row_pointers = malloc(height * sizeof(png_bytep));

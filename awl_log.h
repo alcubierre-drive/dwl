@@ -11,3 +11,12 @@ void awl_log_printer_( const char* logname, int loglevel, const char* fname, int
 #define awl_log_printf( ... ) awl_log_printer_( "log", 2, __FILE__, __LINE__, __VA_ARGS__ );
 #define awl_vrb_printf( ... ) awl_log_printer_( "verbose", 3, __FILE__, __LINE__, __VA_ARGS__ );
 
+#define P_awl_err_printf( ... ) { if (AWL_VTABLE_SYM.state && AWL_VTABLE_SYM.state->log) \
+    AWL_VTABLE_SYM.state->log( "error", 0, __FILE__, __LINE__, __VA_ARGS__ ); }
+#define P_awl_wrn_printf( ... ) { if (AWL_VTABLE_SYM.state && AWL_VTABLE_SYM.state->log) \
+    AWL_VTABLE_SYM.state->log( "warn", 1, __FILE__, __LINE__, __VA_ARGS__ ); }
+#define P_awl_log_printf( ... ) { if (AWL_VTABLE_SYM.state && AWL_VTABLE_SYM.state->log) \
+    AWL_VTABLE_SYM.state->log( "log", 2, __FILE__, __LINE__, __VA_ARGS__ ); }
+#define P_awl_vrb_printf( ... ) { if (AWL_VTABLE_SYM.state && AWL_VTABLE_SYM.state->log) \
+    AWL_VTABLE_SYM.state->log( "verbose", 3, __FILE__, __LINE__, __VA_ARGS__ ); }
+

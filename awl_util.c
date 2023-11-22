@@ -22,16 +22,13 @@ void die(const char *fmt, ...) {
         strcat(error_str, strerror(errno));
     }
 
-    if (awl_log_has_init())
-        awl_err_printf( "%s", error_str );
+    awl_err_printf( "%s", error_str );
     fprintf( stderr, "%s\n", error_str );
     exit(1);
 }
 
-void * ecalloc(size_t nmemb, size_t size) {
-    void *p;
-
-    if (!(p = calloc(nmemb, size)))
-        die("calloc:");
+void* ecalloc(size_t nmemb, size_t size) {
+    void* p = calloc(nmemb, size);
+    if (!p) die("calloc:");
     return p;
 }

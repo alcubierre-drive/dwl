@@ -31,6 +31,7 @@ awl_state_t* awl_state_init( void ) {
 
     B->awl_is_ready = awl_is_ready;
     B->awl_change_modkey = awl_change_modkey;
+    B->log = awl_log_printer_;
 
     B->persistent_plugin_data = ecalloc(1024,1);
     B->persistent_plugin_data_nbytes = 1024;

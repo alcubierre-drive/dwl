@@ -1,12 +1,12 @@
 #include "date.h"
 #include "bar.h"
 #include "../awl_log.h"
-#include "../awl_util.h"
 #include <time.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <stdlib.h>
 
+#include "init.h"
 #include "minimal_window.h"
 #include "date_month.h"
 
@@ -30,7 +30,7 @@ static void* date_thread_fun( void* arg ) {
 }
 
 char* start_date_thread( int update_sec ) {
-    awl_log_printf( "starting time thread" );
+    P_awl_log_printf( "starting time thread" );
     date_thread_update_sec = update_sec;
     date_thread_run = 1;
     date_thread = malloc(sizeof(pthread_t));
@@ -110,8 +110,8 @@ static void calendar_draw( AWL_SingleWindow* win, pixman_image_t* img ) {
 }
 
 awl_calendar_t* calendar_popup( void ) {
-    awl_log_printf("init calendar popup window");
-    awl_calendar_t* r = ecalloc(1, sizeof(awl_calendar_t));
+    P_awl_log_printf("init calendar popup window");
+    awl_calendar_t* r = calloc(1, sizeof(awl_calendar_t));
     r->m = month_state_init();
     MST = &r->m;
     awl_minimal_window_props_t wp = awl_minimal_window_props_defaults;
