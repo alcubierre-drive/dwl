@@ -9,6 +9,8 @@
 #include <glob.h>
 #include <pthread.h>
 
+#define MIN(A,B) ((A)<(B)?(A):(B))
+
 static int fast_random( int max ) {
     unsigned result = 0;
     FILE* f = fopen("/dev/urandom","r");
@@ -70,7 +72,7 @@ static void wallpaper_draw( AWL_SingleWindow* win, pixman_image_t* bg ) {
     pixman_image_unref(png_image);
 
     if (wallpaper_show_dirent) {
-        pixman_image_t *fg = pixman_image_create_bits(PIXMAN_a8r8g8b8, win->width, win->height, NULL, win->width*4);
+        pixman_image_t *fg = pixman_image_create_bits(PIXMAN_a8r8g8b8, win->width, MIN(win->height, 140), NULL, win->width*4);
         awl_dirent_update( &wallpaper_dirent );
         uint32_t x = 0, dx = 20, y = 50, dy = 70;
         char str[512];
@@ -144,10 +146,20 @@ static void* wp_idx_thread_fun( void* arg ) {
 
 static void wallpaper_click( AWL_SingleWindow* win, int button ) {
     (void)win;
-    if (button == BTN_MIDDLE) {
-        wallpaper_show_dirent = !wallpaper_show_dirent;
-    } else {
-        wallpaper_index = next( wallpaper_number );
+    switch (button) {
+        case BTN_MIDDLE:
+            wallpaper_show_dirent = !wallpaper_show_dirent;
+            break;
+        case BTN_LEFT:
+            wallpaper_random = 0;
+            wallpaper_index = next( wallpaper_number );
+            break;
+        case BTN_RIGHT:
+            wallpaper_random = 1;
+            wallpaper_index = next( wallpaper_number );
+            break;
+        default:
+            break;
     }
     awl_minimal_window_refresh(w);
     /* char cmd[128]; */
