@@ -48,7 +48,7 @@ struct wp_cache {
 };
 static struct wp_cache* wp_cache = NULL;
 static pthread_mutex_t wp_cache_mtx = PTHREAD_MUTEX_INITIALIZER;
-static int wp_cache_count_max = 50; // disable both count and bytes with <0
+static int wp_cache_count_max = 120; // disable both count and bytes with <0
 static int64_t wp_cache_bytes_max = 1024ul * 1024ul * 512ul; // huge cache (512MiB)
 static int wp_cache_thread_update = 0;
 static pthread_t wp_cache_thread = {0};
