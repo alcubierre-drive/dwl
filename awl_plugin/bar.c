@@ -1837,12 +1837,12 @@ static void taskbarwidget_scroll( Bar* bar, uint32_t pointer_x, int amount ) {
 
 static void taskbarwidget_click( Bar* bar, uint32_t pointer_x, int button ) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
-    awl_config_t* C = AWL_VTABLE_SYM.config;
-    if (!B || !C) return;
+    if (!B) return;
 
     uint32_t xspace = bar->center_widget_space;
     uint32_t x = 0;
     Client* c = NULL;
+    int focused = 0;
     window_array_to_list( bar, 1 );
     if (bar->cpy_n_window_list > 0) {
         uint32_t space_per_window = xspace / bar->cpy_n_window_list;
@@ -1851,12 +1851,7 @@ static void taskbarwidget_click( Bar* bar, uint32_t pointer_x, int button ) {
         for (awl_title_t* T = bar->cpy_window_list; T != NULL; T = T->hh.next) {
             if (pointer_x >= x/buffer_scale && pointer_x <= (x+space_per_window)/buffer_scale) {
                 c = T->c;
-                if (button) {
-                    if (c->visible && T->focused)
-                        c->visible = !c->visible;
-                    else if (!c->visible)
-                        c->visible = !c->visible;
-                }
+                focused = T->focused;
                 goto taskbarwidget_click_return;
             }
             x += space_per_window;
@@ -1864,13 +1859,21 @@ static void taskbarwidget_click( Bar* bar, uint32_t pointer_x, int button ) {
     }
 taskbarwidget_click_return:
     HASH_CLEAR(hh, bar->cpy_window_list);
-    if (c) {
+    if (c && button) {
         bar->redraw = 1;
+
+        if (!c->visible) {
+            c->visible = !c->visible;
+            B->focusclient(c, 1);
+        } else {
+            if (focused) {
+                c->visible = 0;
+                B->focusclient( B->focustop( B->selmon ), 1 );
+            } else {
+                B->focusclient( c, 1 );
+            }
+        }
         B->arrange(B->selmon);
-        if (button)
-            B->focusclient(c->visible ? c : B->focustop(B->selmon), 0);
-        else if (c->visible)
-            B->focusclient(c, 0);
         B->printstatus();
     }
     return;

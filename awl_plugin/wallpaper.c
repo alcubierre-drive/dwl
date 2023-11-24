@@ -53,6 +53,9 @@ static int64_t wp_cache_bytes_max = 1024ul * 1024ul * 512ul; // huge cache (512M
 static int wp_cache_thread_update = 0;
 static pthread_t wp_cache_thread = {0};
 
+static pthread_t wp_update_display_thread = {0};
+static void* wp_update_display( void* );
+
 static void wallpaper_draw( AWL_SingleWindow* win, pixman_image_t* final ) {
     P_awl_log_printf("in wallpaper draw function");
 
@@ -298,6 +301,7 @@ void wallpaper_init( const char* fname, int update_seconds ) {
     pthread_create( &wp_cache_thread, NULL, &wp_cache_cleaner, NULL );
 
     w = awl_minimal_window_setup( &p );
+    pthread_create( &wp_update_display_thread, NULL, &wp_update_display, NULL );
 }
 
 void wallpaper_destroy( void ) {
@@ -311,6 +315,10 @@ void wallpaper_destroy( void ) {
     pthread_join( wp_cache_thread, NULL );
     pthread_mutex_unlock( &wp_cache_mtx );
 
+    struct wl_display *display;
+    pthread_join( wp_update_display_thread, (void**)&display );
+    wl_display_disconnect(display);
+
     struct wp_cache *wp, *tmp;
     HASH_ITER(hh, wp_cache, wp, tmp) {
         HASH_DEL(wp_cache, wp);
@@ -320,4 +328,30 @@ void wallpaper_destroy( void ) {
 
     pthread_cancel( wp_idx_thread );
     pthread_join( wp_idx_thread, NULL );
+
 }
+
+static void handle_global(void *data, struct wl_registry *registry,
+          uint32_t name, const char *interface, uint32_t version) {
+    (void)data; (void)registry; (void)name; (void)version;
+    if (!strcmp(interface, wl_output_interface.name)) awl_minimal_window_refresh( w );
+}
+static void handle_global_remove(void *data, struct wl_registry *registry, uint32_t name) {
+    (void)data; (void)registry; (void)name;
+}
+static void* wp_update_display( void* arg ) {
+    (void)arg;
+    awl_minimal_window_wait_ready( w );
+    // add the wallpaper listener for new outputs
+    struct wl_display *display = wl_display_connect(NULL);
+    if (!display) P_awl_err_printf( "Failed to create display" );
+    struct wl_registry *registry = wl_display_get_registry(display);
+    const struct wl_registry_listener registry_listener = {
+        .global = handle_global,
+        .global_remove = handle_global_remove
+    };
+    wl_registry_add_listener(registry, &registry_listener, NULL);
+    wl_display_roundtrip(display);
+    return display;
+}
+
