@@ -49,9 +49,10 @@ struct wp_cache {
 static struct wp_cache* wp_cache = NULL;
 static pthread_mutex_t wp_cache_mtx = PTHREAD_MUTEX_INITIALIZER;
 static int wp_cache_count_max = 120; // disable both count and bytes with <0
-static int64_t wp_cache_bytes_max = 1024ul * 1024ul * 512ul; // huge cache (512MiB)
+static int64_t wp_cache_bytes_max = 1024ul * 1024ul * 1024ul; // huge cache (512MiB)
 static int wp_cache_thread_update = 0;
 static pthread_t wp_cache_thread = {0};
+static void wp_cache_cleaner_once(void);
 
 static pthread_t wp_update_display_thread = {0};
 static void* wp_update_display( void* );
@@ -70,6 +71,8 @@ static void wallpaper_draw( AWL_SingleWindow* win, pixman_image_t* final ) {
     u128t md5 = awl_md5sum_int( wpfname_res, strlen(wpfname) );
     free( wpfname_res );
     item.id = md5;
+
+    wp_cache_cleaner_once();
 
     pthread_mutex_lock( &wp_cache_mtx );
 
@@ -110,8 +113,8 @@ static void wallpaper_draw( AWL_SingleWindow* win, pixman_image_t* final ) {
         found->id = md5;
         found->img = bg;
         found->time = time(NULL);
-        found->memsz = (uint64_t)PIXMAN_FORMAT_BPP(pixman_image_get_format(bg)) *
-                                 pixman_image_get_width(bg) * pixman_image_get_height(bg) +
+        found->memsz = ((uint64_t)PIXMAN_FORMAT_BPP(pixman_image_get_format(bg)) *
+                                  pixman_image_get_width(bg) * pixman_image_get_height(bg))/8 +
                        sizeof(struct wp_cache);
 
         HASH_ADD(hh, wp_cache, id, sizeof(u128t), found);
@@ -227,43 +230,51 @@ int wp_cache_cleaner_cmp( const struct wp_cache* A, const struct wp_cache* B ) {
     }
 }
 
+static void wp_cache_cleaner_once(void) {
+    pthread_mutex_lock( &wp_cache_mtx );
+
+    struct wp_cache *wp, *tmp;
+
+    int nwp_cached = 0;
+    int64_t bytes = 0;
+    HASH_ITER(hh, wp_cache, wp, tmp) {
+        nwp_cached++;
+        bytes += wp->memsz;
+    }
+
+    if ((wp_cache_count_max < 0 || wp_cache_count_max >= nwp_cached) &&
+        (wp_cache_bytes_max < 0 || wp_cache_bytes_max >= bytes))
+        goto wp_cache_continue;
+
+    P_awl_log_printf( "cleaning wallpaper cache" );
+    int ncleaned_mem = 0, ncleaned_max = 0, ncleaned = 0, ntot = 0;
+    int64_t nbytes = 0;
+    HASH_SORT( wp_cache, wp_cache_cleaner_cmp );
+    HASH_ITER(hh, wp_cache, wp, tmp) {
+        nbytes += wp->memsz;
+        ntot++;
+        int condition_max = ntot > wp_cache_count_max;
+        int condition_mem = nbytes > wp_cache_bytes_max;
+        ncleaned_max += condition_max;
+        ncleaned_mem += condition_mem;
+        if (condition_max || condition_mem) {
+            HASH_DEL(wp_cache, wp);
+            pixman_image_unref(wp->img);
+            free(wp);
+            ncleaned++;
+        }
+    }
+    P_awl_log_printf( "cleaned %i/%i images from cache (%i:mem, %i:num)", ncleaned, ntot, ncleaned_mem, ncleaned_max );
+
+wp_cache_continue:
+    pthread_mutex_unlock( &wp_cache_mtx );
+}
+
 void* wp_cache_cleaner(void* arg) {
     (void)arg;
     while (1) {
         P_awl_log_printf( "wallpaper cache cleaner…" );
-        pthread_mutex_lock( &wp_cache_mtx );
-
-        struct wp_cache *wp, *tmp;
-
-        int nwp_cached = 0;
-        int64_t bytes = 0;
-        HASH_ITER(hh, wp_cache, wp, tmp) {
-            nwp_cached++;
-            bytes += wp->memsz;
-        }
-
-        if ((wp_cache_count_max < 0 || wp_cache_count_max >= nwp_cached) &&
-            (wp_cache_bytes_max < 0 || wp_cache_bytes_max >= bytes))
-            goto wp_cache_continue;
-
-        P_awl_log_printf( "cleaning wallpaper cache" );
-        int ncleaned = 0, ntot = 0;
-        int64_t nbytes = 0;
-        HASH_SORT( wp_cache, wp_cache_cleaner_cmp );
-        HASH_ITER(hh, wp_cache, wp, tmp) {
-            nbytes += wp->memsz;
-            ntot++;
-            if (ntot > wp_cache_count_max || nbytes > wp_cache_bytes_max) {
-                HASH_DEL(wp_cache, wp);
-                pixman_image_unref(wp->img);
-                free(wp);
-                ncleaned++;
-            }
-        }
-        P_awl_log_printf( "cleaned %i images from cache of size %i", ncleaned, ntot );
-
-wp_cache_continue:
-        pthread_mutex_unlock( &wp_cache_mtx );
+        wp_cache_cleaner_once();
         sleep(MAX(wp_cache_thread_update,1));
     }
     return NULL;

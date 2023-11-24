@@ -10,6 +10,7 @@
 #include <time.h>
 #include <stdarg.h>
 #include <ctype.h>
+#include <unistd.h>
 
 static FILE* awllg = NULL;
 static int awllg_lvl = -1;
@@ -36,6 +37,14 @@ void awl_log_init( int level ) {
     }
     strcat( logfile, "/" );
     strcat( logfile, logfile_basename );
+
+    if (access(logfile, F_OK|W_OK|R_OK)) {
+        char olglogfile[PATH_MAX] = {0};
+        strcpy(olglogfile, logfile);
+        strcat(olglogfile, ".old");
+        rename(logfile, olglogfile);
+    }
+
     awllg = fopen(logfile, "w");
     if (!awllg) die("could not open file %s", logfile);
     awllg_lvl = level;

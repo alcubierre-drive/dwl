@@ -625,12 +625,12 @@ static void client_hide( const Arg* arg ) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
     if (!B) return;
 
+    Client *c = NULL;
     int hide = arg->ui;
     if (hide) {
-        Client* sel = B->focustop(B->selmon);
-        if (sel) sel->visible = 0;
+        c = B->focustop(B->selmon);
+        if (c) c->visible = 0;
     } else {
-        Client* c;
         wl_list_for_each(c, &B->clients, link) {
             if (c && !c->visible && VISIBLEON(c, B->selmon)) {
                 c->visible = 1;
@@ -639,7 +639,10 @@ static void client_hide( const Arg* arg ) {
         }
     }
     B->arrange(B->selmon);
-    B->focusclient(B->focustop(B->selmon), 0);
+    if (c) {
+        c = c->visible ? c : B->focustop(B->selmon);
+        B->focusclient(c, 1);
+    }
     B->printstatus();
 }
 
