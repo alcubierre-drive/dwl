@@ -1,16 +1,22 @@
 #include "wallpaper.h"
+
 #include "minimal_window.h"
+
 #include "wbg_png.h"
-#include "../awl.h"
-#include "init.h"
-#include "../awl_log.h"
 #include "readdir.h"
+#include "md5.h"
+
+#include "init.h"
 #include "bar.h"
+
+#include "../awl.h"
+#include "../awl_log.h"
+#include "../awl_dbus.h"
+
 #include <glob.h>
 #include <pthread.h>
 #include <uthash.h>
 #include <time.h>
-#include "md5.h"
 
 #define MIN(A,B) ((A)<(B)?(A):(B))
 #define MAX(A,B) ((A)>(B)?(A):(B))
@@ -184,21 +190,7 @@ static int next( int num ) {
     else return (wallpaper_index+1)%wallpaper_number;
 }
 
-static void* wp_idx_thread_fun( void* arg ) {
-    (void)arg;
-    while (1) {
-        sleep(MAX(wp_idx_thread_update,1));
-        wallpaper_index = next( wallpaper_number );
-        awl_minimal_window_refresh(w);
-        /* char cmd[128]; */
-        /* sprintf( cmd, "notify-send 'wallpaper %i/%i'", idx, wallpaper_number ); */
-        /* system(cmd); */
-    }
-    return NULL;
-}
-
-static void wallpaper_click( AWL_SingleWindow* win, int button ) {
-    (void)win;
+static void wallpaper_action( int button ) {
     switch (button) {
         case BTN_MIDDLE:
             wallpaper_show_dirent = !wallpaper_show_dirent;
@@ -212,8 +204,27 @@ static void wallpaper_click( AWL_SingleWindow* win, int button ) {
             wallpaper_index = next( wallpaper_number );
             break;
         default:
+            wallpaper_index = next( wallpaper_number );
             break;
     }
+}
+
+static void* wp_idx_thread_fun( void* arg ) {
+    (void)arg;
+    while (1) {
+        sleep(MAX(wp_idx_thread_update,1));
+        wallpaper_action( BTN_LEFT | BTN_MIDDLE | BTN_RIGHT );
+        awl_minimal_window_refresh(w);
+        /* char cmd[128]; */
+        /* sprintf( cmd, "notify-send 'wallpaper %i/%i'", idx, wallpaper_number ); */
+        /* system(cmd); */
+    }
+    return NULL;
+}
+
+static void wallpaper_click( AWL_SingleWindow* win, int button ) {
+    (void)win;
+    wallpaper_action( button );
     awl_minimal_window_refresh(w);
     /* char cmd[128]; */
     /* sprintf( cmd, "notify-send 'wallpaper %i/%i'", idx, wallpaper_number ); */
@@ -280,6 +291,14 @@ void* wp_cache_cleaner(void* arg) {
     return NULL;
 }
 
+static void wallpaper_dbus_hook( const char* signal, void* userdata ) {
+    (void)userdata;
+    if (!strcmp( signal, "left" )) wallpaper_action( BTN_LEFT );
+    else if (!strcmp( signal, "right" )) wallpaper_action( BTN_RIGHT );
+    else if (!strcmp( signal, "middle" )) wallpaper_action( BTN_MIDDLE );
+    else wallpaper_action( BTN_LEFT|BTN_RIGHT|BTN_MIDDLE );
+    awl_minimal_window_refresh(w);
+}
 void wallpaper_init( const char* fname, int update_seconds ) {
     if (glob( fname, 0, NULL, &wallpaper_glob ))
         wallpaper_number = 0;
@@ -313,9 +332,15 @@ void wallpaper_init( const char* fname, int update_seconds ) {
 
     w = awl_minimal_window_setup( &p );
     pthread_create( &wp_update_display_thread, NULL, &wp_update_display, NULL );
+
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    if (B && B->dbus) B->dbus_add_callback( B->dbus, "wallpaper", &wallpaper_dbus_hook, NULL );
 }
 
 void wallpaper_destroy( void ) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    if (B && B->dbus) B->dbus_remove_callback( B->dbus, "wallpaper" );
+
     awl_minimal_window_destroy( w );
     if (wallpaper_number)
         globfree( &wallpaper_glob );
@@ -339,7 +364,6 @@ void wallpaper_destroy( void ) {
 
     pthread_cancel( wp_idx_thread );
     pthread_join( wp_idx_thread, NULL );
-
 }
 
 static void handle_global(void *data, struct wl_registry *registry,

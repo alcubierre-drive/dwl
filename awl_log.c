@@ -38,7 +38,7 @@ void awl_log_init( int level ) {
     strcat( logfile, "/" );
     strcat( logfile, logfile_basename );
 
-    if (access(logfile, F_OK|W_OK|R_OK)) {
+    if (access(logfile, F_OK|W_OK|R_OK) == 0) {
         char olglogfile[PATH_MAX] = {0};
         strcpy(olglogfile, logfile);
         strcat(olglogfile, ".old");

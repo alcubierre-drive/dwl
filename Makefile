@@ -3,7 +3,7 @@ LD := gcc
 STRIP := strip
 
 PKGS = wlroots wayland-server xkbcommon libinput xcb xcb-icccm fcft pixman-1 \
-       wayland-client wayland-cursor libpulse
+       wayland-client wayland-cursor libpulse dbus-1
 
 CFLAGS += $(shell pkg-config --cflags $(PKGS)) \
 	-I. -DWLR_USE_UNSTABLE -DVERSION=\"0.1\" -D_POSIX_C_SOURCE=200809L \

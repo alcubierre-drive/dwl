@@ -2,6 +2,7 @@
 #include "awl_util.h"
 #include "awl_log.h"
 #include "awl_functions.h"
+#include "awl_dbus.h"
 
 awl_state_t* awl_state_init( void ) {
     awl_log_printf( "init core awl state" );
@@ -34,6 +35,11 @@ awl_state_t* awl_state_init( void ) {
     B->awl_change_modkey = awl_change_modkey;
     B->log = awl_log_printer_;
 
+    B->dbus = awl_dbus_init();
+    B->dbus_notify = &awl_dbus_notify;
+    B->dbus_add_callback = &awl_dbus_add_callback;
+    B->dbus_remove_callback = &awl_dbus_remove_callback;
+
     B->persistent_plugin_data = ecalloc(1024,1);
     B->persistent_plugin_data_nbytes = 1024;
     return B;
@@ -42,6 +48,8 @@ awl_state_t* awl_state_init( void ) {
 void awl_state_free( awl_state_t* B ) {
     awl_log_printf( "free core awl state" );
     free(B->layermap);
+
+    awl_dbus_destroy(B->dbus);
     if (B->persistent_plugin_data)
         free(B->persistent_plugin_data);
     free(B);

@@ -5,6 +5,8 @@
 typedef struct awl_state_t awl_state_t;
 typedef struct awl_config_t awl_config_t;
 typedef struct awl_plugin_data_t awl_plugin_data_t;
+typedef struct awl_dbus_listener_t awl_dbus_listener_t;
+typedef void (*awl_dbus_hook_t)( const char* signal, void* userdata );
 
 typedef struct LayerSurface LayerSurface;
 
@@ -121,6 +123,11 @@ struct awl_state_t {
     int (*awl_is_ready)( void );
     void (*awl_change_modkey)( uint32_t );
     void (*log)( const char*, int, const char*, int, const char*, ... );
+
+    awl_dbus_listener_t* dbus;
+    void (*dbus_notify)( const char* name, const char* signal );
+    void (*dbus_add_callback)( awl_dbus_listener_t* dbus, const char* name, awl_dbus_hook_t hook, void* userdata );
+    void (*dbus_remove_callback)( awl_dbus_listener_t* dbus, const char* name );
 
     void *persistent_plugin_data;
     size_t persistent_plugin_data_nbytes;
