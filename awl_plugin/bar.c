@@ -215,6 +215,18 @@ static int n_tags = 0;
 } while (0);
 
 static struct fcft_font *font;
+static pthread_mutex_t font_mtx = PTHREAD_MUTEX_INITIALIZER;
+
+#define CHECKFONT( expr, fail ) \
+    pthread_mutex_lock( &font_mtx ); \
+    if (!font) { \
+        pthread_mutex_unlock( &font_mtx ); \
+        return fail ; \
+    } else { \
+        expr; \
+        pthread_mutex_unlock( &font_mtx ); \
+    }
+
 static uint32_t height, textpadding;
 
 static void window_array_to_list( Bar* bar, int slot ) {
@@ -303,7 +315,8 @@ uint32_t draw_text_at(char *text, uint32_t x, uint32_t y,
     for (char *p = text; *p; p++) {
         if (utf8decode(&state, &codepoint, *p))
             continue;
-        const struct fcft_glyph *glyph = fcft_rasterize_char_utf32(font, codepoint, FCFT_SUBPIXEL_NONE);
+        const struct fcft_glyph *glyph = NULL;
+        CHECKFONT(glyph = fcft_rasterize_char_utf32(font, codepoint, FCFT_SUBPIXEL_NONE), x);
         if (!glyph)
             continue;
         ymin = MIN(ymin, y-glyph->y);
@@ -320,14 +333,16 @@ uint32_t draw_text_at(char *text, uint32_t x, uint32_t y,
 
         /* Turn off subpixel rendering, which complicates things when
          * mixed with alpha channels */
-        const struct fcft_glyph *glyph = fcft_rasterize_char_utf32(font, codepoint, FCFT_SUBPIXEL_NONE);
+        const struct fcft_glyph *glyph = NULL;
+        CHECKFONT(glyph = fcft_rasterize_char_utf32(font, codepoint, FCFT_SUBPIXEL_NONE), x);
         if (!glyph)
             continue;
 
         /* Adjust x position based on kerning with previous glyph */
         long kern = 0;
-        if (last_cp)
-            fcft_kerning(font, last_cp, codepoint, &kern, NULL);
+        if (last_cp) {
+            CHECKFONT( fcft_kerning(font, last_cp, codepoint, &kern, NULL), x );
+        }
         if ((nx = x + kern + glyph->advance.x) + padding > max_x)
             break;
         last_cp = codepoint;
@@ -428,14 +443,16 @@ uint32_t draw_text(char *text,
 
         /* Turn off subpixel rendering, which complicates things when
          * mixed with alpha channels */
-        const struct fcft_glyph *glyph = fcft_rasterize_char_utf32(font, codepoint, FCFT_SUBPIXEL_NONE);
+        const struct fcft_glyph *glyph = NULL;
+        CHECKFONT( glyph = fcft_rasterize_char_utf32(font, codepoint, FCFT_SUBPIXEL_NONE), x );
         if (!glyph)
             continue;
 
         /* Adjust x position based on kerning with previous glyph */
         long kern = 0;
-        if (last_cp)
-            fcft_kerning(font, last_cp, codepoint, &kern, NULL);
+        if (last_cp) {
+            CHECKFONT( fcft_kerning(font, last_cp, codepoint, &kern, NULL), x );
+        }
         if ((nx = x + kern + glyph->advance.x) + padding > max_x)
             break;
         last_cp = codepoint;
@@ -1347,8 +1364,11 @@ static void cleanup_fun(void* arg) {
     zxdg_output_manager_v1_destroy(output_manager);
     zdwl_ipc_manager_v2_destroy(dwl_wm);
 
+    pthread_mutex_lock( &font_mtx );
     fcft_destroy(font);
+    font = NULL;
     fcft_fini();
+    pthread_mutex_unlock( &font_mtx );
 
     wl_shm_destroy(shm);
     wl_compositor_destroy(compositor);
@@ -1377,6 +1397,7 @@ void* awl_bar_run( void* arg ) {
     if (!compositor || !shm || !layer_shell || !output_manager || !dwl_wm)
         P_awl_err_printf( "Compositor does not support all needed protocols" );
 
+    pthread_mutex_lock( &font_mtx );
     /* Load selected font */
     fcft_init(FCFT_LOG_COLORIZE_AUTO, 0, FCFT_LOG_CLASS_ERROR);
     fcft_set_scaling_filter(FCFT_SCALING_FILTER_LANCZOS3);
@@ -1388,6 +1409,7 @@ void* awl_bar_run( void* arg ) {
         P_awl_err_printf( "Could not load font %s", fontstr );
     textpadding = font->height / 2;
     height = font->height / buffer_scale + vertical_padding * 2;
+    pthread_mutex_unlock( &font_mtx );
 
     /* Setup bars */
     Bar* bar;
