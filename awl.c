@@ -27,6 +27,7 @@ struct LayerSurface {
     unsigned int type; /* LayerShell */
     struct wlr_box geom;
     Monitor *mon;
+
     struct wlr_scene_tree *scene;
     struct wlr_scene_tree *popups;
     struct wlr_scene_layer_surface_v1 *scene_layer;
@@ -257,7 +258,6 @@ static void applyrules(Client *c) {
     if (!(title = client_get_title(c)))
         title = B->broken;
 
-    // TODO
     c->isfullscreen = client_wants_fullscreen(c);
 
     for (r = C->rules; r < C->rules + C->n_rules; r++) {
@@ -355,13 +355,10 @@ static void arrangelayers(Monitor *m) {
 
 static void axisnotify(struct wl_listener *listener, void *data) {
     (void)listener;
-    /* This event is forwarded by the cursor when a pointer emits an axis event,
-     * for example when you move the scroll wheel. */
     struct wlr_pointer_axis_event *event = data;
     IDLE_NOTIFY_ACTIVITY;
-    /* TODO: allow usage of scroll whell for mousebindings, it can be implemented
-     * checking the event's orientation and the delta of the event */
-    /* Notify the client with pointer focus of the axis event. */
+    // TODO: we could allow for compositor axis events as well. currently, only
+    // forwarding
     wlr_seat_pointer_notify_axis(B->seat,
             event->time_msec, event->orientation, event->delta,
             event->delta_discrete, event->source);
@@ -1284,14 +1281,13 @@ static void inputdevice(struct wl_listener *listener, void *data) {
         createpointer(wlr_pointer_from_input_device(device));
         break;
     default:
-        /* TODO handle other input device types */
+        // TODO handle other input device types
         break;
     }
 
     /* We need to let the wlr_seat know what our capabilities are, which is
      * communiciated to the client. In dwl we always have a cursor, even if
      * there are no pointer devices, so we always include that capability. */
-    /* TODO do we actually require a cursor? */
     caps = WL_SEAT_CAPABILITY_POINTER;
     if (!wl_list_empty(&B->keyboards))
         caps |= WL_SEAT_CAPABILITY_KEYBOARD;
@@ -1494,7 +1490,7 @@ static void mapnotify(struct wl_listener *listener, void *data) {
      * we always consider floating, clients that have parent and thus
      * we set the same tags and monitor than its parent, if not
      * try to apply rules for them */
-     /* TODO: https://github.com/djpohly/dwl/pull/334#issuecomment-1330166324 */
+     // TODO: https://github.com/djpohly/dwl/pull/334#issuecomment-1330166324
     if (c->type == XDGShell && (p = client_get_parent(c))) {
         c->isfloating = 1;
         wlr_scene_node_reparent(&c->scene->node, B->layers[LyrClients]);
@@ -1680,7 +1676,6 @@ apply_or_test:
         wlr_output_configuration_v1_send_failed(config);
     wlr_output_configuration_v1_destroy(config);
 
-    /* TODO: use a wrapper function? */
     updatemons(NULL, NULL);
 }
 
@@ -1822,10 +1817,10 @@ static void run(char *startup_cmd) {
      * cursor position, and set default cursor image */
     B->selmon = xytomon(B->cursor->x, B->cursor->y);
 
-    /* TODO hack to get cursor to display in its initial location (100, 100)
-     * instead of (0, 0) and then jumping. still may not be fully
-     * initialized, as the image/coordinates are not transformed for the
-     * monitor when displayed here */
+    // TODO: hack to get cursor to display in its initial location (100, 100)
+    // instead of (0, 0) and then jumping. still may not be fully initialized,
+    // as the image/coordinates are not transformed for the monitor when
+    // displayed here
     wlr_cursor_warp_closest(B->cursor, NULL, B->cursor->x, B->cursor->y);
     wlr_xcursor_manager_set_cursor_image(B->cursor_mgr, B->cursor_image, B->cursor);
 
@@ -2178,9 +2173,6 @@ static void unmapnotify(struct wl_listener *listener, void *data) {
 }
 
 static void updatemons(struct wl_listener *listener, void *data) {
-    // TODO something is not working correctly when removing outputs via
-    // wlr-randr/wdisplays. Clients don't get updated, and the monitor must be
-    // physically removed in order to trigger an actual update.
     (void)listener;
     (void)data;
     /*
