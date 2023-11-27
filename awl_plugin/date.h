@@ -14,6 +14,8 @@ void stop_date_thread( awl_date_t* d );
 
 typedef struct awl_calendar_t awl_calendar_t;
 
+// TODO make this threadsafe (mutex + no static data)
+
 awl_calendar_t* calendar_popup( void );
 void calendar_destroy( awl_calendar_t* cal );
 
