@@ -22,9 +22,6 @@ struct pulse_test_thread_t {
     pthread_t me;
 };
 
-static float AWL_PA_PRIVATE_value = 0;
-static int AWL_PA_PRIVATE_muted = 0;
-
 static void* pulse_thread_fun( void* arg );
 
 static void exit_signal_callback(pa_mainloop_api *m, pa_signal_event *e, int sig, void *userdata);

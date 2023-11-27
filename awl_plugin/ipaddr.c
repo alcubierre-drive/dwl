@@ -14,7 +14,7 @@
 #include "init.h"
 #include "../awl_log.h"
 
-static int is_not_in_exclude_list( const char* name, const char exclude_list[4][16], int nexclude );
+static int is_not_in_exclude_list( const char* name, char exclude_list[4][16], int nexclude );
 
 static void* ip_thread_run( void* arg ) {
     awl_ipaddr_t* ip = (awl_ipaddr_t*)arg;
@@ -96,7 +96,7 @@ void stop_ip_thread( awl_ipaddr_t* ip ) {
     P_awl_log_printf("cancelled ip thread");
 }
 
-static int is_not_in_exclude_list( const char* name, const char exclude_list[4][16], int nexclude ) {
+static int is_not_in_exclude_list( const char* name, char exclude_list[4][16], int nexclude ) {
     int is_in_list = 0;
     for (int i=0; i<nexclude; ++i)
         is_in_list += !strcmp(name, exclude_list[i]);
