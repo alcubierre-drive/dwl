@@ -16,6 +16,7 @@
 
 static int ip_thread_running = 0;
 static int ip_thread_sleep_sec = -1;
+static awl_ipaddr_t* ip_thread_conf = NULL;
 
 static const char exclude_list[][16] = {
     "lo",
@@ -77,8 +78,8 @@ static void* ip_thread_run( void* arg ) {
             strcat(ip->address_string, "invalid");
         }
 loopend:
-        ip->ready = 1;
         freeifaddrs(ifaddr);
+        ip->ready = 1;
         sleep(ip_thread_sleep_sec);
     }
 
@@ -89,10 +90,15 @@ static pthread_t ip_thread;
 void start_ip_thread( awl_ipaddr_t* ip, int update_sec ) {
     ip_thread_running = 1;
     ip_thread_sleep_sec = update_sec;
+    P_awl_log_printf( "create ip_thread" );
+    ip_thread_conf = ip;
     pthread_create( &ip_thread, NULL, ip_thread_run, (void*)ip );
 }
 void stop_ip_thread( void ) {
-    ip_thread_sleep_sec = ip_thread_running = 0;
-    pthread_cancel( ip_thread );
-    pthread_join( ip_thread, NULL );
+    if (ip_thread_conf) {
+        while (!ip_thread_conf->ready) usleep(100);
+        ip_thread_conf = NULL;
+    }
+    if (!pthread_cancel( ip_thread )) pthread_join( ip_thread, NULL );
+    P_awl_log_printf("cancelled ip thread");
 }

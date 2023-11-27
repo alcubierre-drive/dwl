@@ -34,6 +34,7 @@ void PulseAudio_destroy( PulseAudio* p );
 pulse_test_t* start_pulse_thread( void ) {
     if (!PulseAudio_initialize( &PA )) return NULL;
     pulse_thread = malloc(sizeof(pthread_t));
+    P_awl_log_printf( "create pulse_thread" );
     pthread_create( pulse_thread, NULL, pulse_thread_fun, &pulse_result );
     return &pulse_result;
 }

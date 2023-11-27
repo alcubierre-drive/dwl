@@ -347,8 +347,7 @@ void wallpaper_destroy( void ) {
     awl_dirent_destroy( wallpaper_dirent );
 
     pthread_mutex_lock( &wp_cache_mtx );
-    pthread_cancel( wp_cache_thread );
-    pthread_join( wp_cache_thread, NULL );
+    if (!pthread_cancel( wp_cache_thread )) pthread_join( wp_cache_thread, NULL );
     pthread_mutex_unlock( &wp_cache_mtx );
 
     struct wl_display *display;
@@ -362,8 +361,7 @@ void wallpaper_destroy( void ) {
         free(wp);
     }
 
-    pthread_cancel( wp_idx_thread );
-    pthread_join( wp_idx_thread, NULL );
+    if (!pthread_cancel( wp_idx_thread )) pthread_join( wp_idx_thread, NULL );
 }
 
 static void handle_global(void *data, struct wl_registry *registry,

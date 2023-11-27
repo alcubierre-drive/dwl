@@ -62,10 +62,8 @@ void start_temp_thread( awl_temperature_t* temp, int update_sec ) {
 }
 
 void stop_temp_thread( void ) {
-    if (T.running) {
-        pthread_cancel( T.me );
-        pthread_join( T.me, NULL );
-    }
+    if (T.running)
+        if (!pthread_cancel( T.me )) pthread_join( T.me, NULL );
 }
 
 static uint32_t colormap[128] = {

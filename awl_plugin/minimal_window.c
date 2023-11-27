@@ -365,6 +365,7 @@ AWL_Window* awl_minimal_window_setup( const awl_minimal_window_props_t* props ) 
     w->click = props->click;
     w->scroll = props->scroll;
     pthread_mutex_init( &w->showmtx, NULL );
+    P_awl_log_printf( "create window event thread" );
     pthread_create( &w->event_thread, NULL, awl_minimal_window_event_loop_thread, w );
     return w;
 }
@@ -459,18 +460,21 @@ static void* awl_minimal_window_event_loop_thread( void* arg ) {
             }
         }
     }
+    pthread_exit(NULL);
     return NULL;
 }
 
 void awl_minimal_window_destroy( AWL_Window* w ) {
+    P_awl_log_printf( "in minimal window destroy" );
     awl_minimal_window_wait_ready(w);
     if (w->running) {
         w->running = 0;
         awl_minimal_window_refresh(w);
+        pthread_mutex_lock( &w->showmtx );
         pthread_join( w->event_thread, NULL );
+        pthread_mutex_unlock( &w->showmtx );
     }
     w->has_init = 0;
-    eventfd_write(w->redraw_fd, 1);
     if (w->redraw_fd != -1) close( w->redraw_fd );
 
     pthread_mutex_trylock( &w->showmtx );

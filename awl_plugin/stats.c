@@ -44,12 +44,13 @@ void start_stats_thread( float* val_cpu, int nval_cpu,
     th_arg->update_sec = update_sec;
     th_stats = malloc(sizeof(pthread_t));
     th_run = 1;
+    P_awl_log_printf( "create th_stats thread" );
     pthread_create( th_stats, NULL, th_stats_run, th_arg );
 }
 
 void stop_stats_thread( void ) {
     th_run = 0;
-    pthread_cancel( *th_stats );
+    if (!pthread_cancel( *th_stats )) pthread_join( *th_stats, NULL );
     free( th_stats );
     free( th_arg );
     free( sizes_table );

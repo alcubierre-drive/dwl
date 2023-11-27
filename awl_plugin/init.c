@@ -235,6 +235,7 @@ static void awl_plugin_init(void) {
         }
         /* AUTOSTART( tray, "./tray/awl_tray" ); */
         /* AUTOSTART( nextcloud, "nextcloud --background" ); */
+
         AUTOSTART( nm_applet, "nm-applet" );
         AUTOSTART( blueman, "blueman-applet" );
         AUTOSTART( printer, "system-config-printer-applet" );
@@ -484,6 +485,7 @@ static void awl_plugin_init(void) {
     int s = pthread_create( &S.BarThread, NULL, awl_bar_run, NULL );
     if (s != 0)
         P_awl_err_printf( "pthread create: %s", strerror(s) );
+    P_awl_log_printf( "creating bar refresh" );
     pthread_create( &S.BarRefreshThread, NULL, awl_bar_refresh, &P->refresh_sec );
 
     // wallpaper somewhat separate. this is ok. it checks for awl_is_ready in
@@ -496,27 +498,46 @@ static void awl_plugin_init(void) {
 
 static void awl_plugin_free(void) {
     P_awl_log_printf( "free plugin resources" );
+    S.n_rules = 0;
+    S.n_layouts = 0;
+    S.n_monrules = 0;
+    S.n_keys = 0;
+    S.n_buttons = 0;
     free(S.rules);
     free(S.layouts);
     free(S.monrules);
     free(S.keys);
     free(S.buttons);
 
+    P_awl_log_printf("stop stats thread");
     stop_stats_thread();
+
+    P_awl_log_printf("stop date thread");
     S.P->date = NULL;
     stop_date_thread();
+
+    P_awl_log_printf("stop pulse thread");
     S.P->pulse = NULL;
     stop_pulse_thread();
+
+    P_awl_log_printf("stop ip_thread");
     stop_ip_thread();
+
+    P_awl_log_printf("stop bat_thread");
     stop_bat_thread();
+
+    P_awl_log_printf("stop temp_thread");
     stop_temp_thread();
+
+    P_awl_log_printf("destroy cal");
     if (S.P->cal) calendar_destroy( S.P->cal );
 
     // again wallpaper somewhat separate
+    P_awl_log_printf( "entering wallpaper destroy" );
     wallpaper_destroy();
 
     // cancel bar refreshing
-    pthread_cancel( S.BarRefreshThread );
+    if (!pthread_cancel( S.BarRefreshThread )) pthread_join( S.BarRefreshThread, NULL );
     P_awl_log_printf( "cancel bar refresh thread" );
 
     // and cancel the bar thread itself

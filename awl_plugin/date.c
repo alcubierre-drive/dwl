@@ -34,6 +34,7 @@ char* start_date_thread( int update_sec ) {
     date_thread_update_sec = update_sec;
     date_thread_run = 1;
     date_thread = malloc(sizeof(pthread_t));
+    P_awl_log_printf( "creating date_thread" );
     pthread_create( date_thread, NULL, &date_thread_fun, &date_thread_update_sec );
     return date_string;
 }
@@ -41,7 +42,7 @@ char* start_date_thread( int update_sec ) {
 void stop_date_thread( void ) {
     date_thread_run = 0;
     date_thread_update_sec = 0;
-    pthread_cancel(*date_thread);
+    if (!pthread_cancel(*date_thread)) pthread_join( *date_thread, NULL );
     free(date_thread);
     date_thread = NULL;
 }
@@ -149,6 +150,7 @@ void calendar_next( awl_calendar_t* cal, int n ) {
 }
 
 void calendar_destroy( awl_calendar_t* cal ) {
+    P_awl_log_printf( "in cal destroy" );
     if (!cal) return;
     MST = NULL;
     awl_minimal_window_destroy( cal->w );
