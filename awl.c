@@ -2178,6 +2178,9 @@ static void unmapnotify(struct wl_listener *listener, void *data) {
 }
 
 static void updatemons(struct wl_listener *listener, void *data) {
+    // TODO something is not working correctly when removing outputs via
+    // wlr-randr/wdisplays. Clients don't get updated, and the monitor must be
+    // physically removed in order to trigger an actual update.
     (void)listener;
     (void)data;
     /*
@@ -2484,6 +2487,15 @@ static void plugin_free(void) {
     awl_extension_free(E);
 }
 
+static void updatemons_dbus_hook( const char* str, void* data ) {
+    (void)str;
+    (void)data;
+    awl_log_printf( "in updatemons_dbus_hook" );
+    while (!awl_is_ready()) usleep(1000);
+    awl_log_printf( "exec updatemons" );
+    updatemons(NULL, NULL);
+}
+
 int main(int argc, char *argv[]) {
     char *startup_cmd = NULL;
     int c;
@@ -2507,6 +2519,10 @@ int main(int argc, char *argv[]) {
     awl_log_init( awl_loglevel );
     atexit( awl_log_destroy );
     B = awl_state_init();
+    if (B->dbus && B->dbus_add_callback) {
+        awl_log_printf( "add monitor update dbus hook" );
+        B->dbus_add_callback( B->dbus, "updatemons", updatemons_dbus_hook, NULL );
+    }
 
     /* Wayland requires XDG_RUNTIME_DIR for creating its communications socket */
     if (!getenv("XDG_RUNTIME_DIR"))
