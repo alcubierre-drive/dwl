@@ -236,14 +236,12 @@ static void awl_plugin_init(void) {
         /* AUTOSTART( tray, "./tray/awl_tray" ); */
         /* AUTOSTART( nextcloud, "nextcloud --background" ); */
 
-        /*
         AUTOSTART( nm_applet, "nm-applet" );
         AUTOSTART( blueman, "blueman-applet" );
         AUTOSTART( printer, "system-config-printer-applet" );
         AUTOSTART( telegram, "telegram-desktop" );
         AUTOSTART( evolution, "evolution" );
         AUTOSTART( locker, "systemd-lock-handler swaylock" );
-        */
     }
 
     P_awl_log_printf("setting up environment");
