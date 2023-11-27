@@ -355,11 +355,14 @@ void wallpaper_destroy( void ) {
     wl_display_disconnect(display);
 
     struct wp_cache *wp, *tmp;
+    int num_cleared = 0;
     HASH_ITER(hh, wp_cache, wp, tmp) {
         HASH_DEL(wp_cache, wp);
         pixman_image_unref(wp->img);
         free(wp);
+        num_cleared++;
     }
+    P_awl_log_printf( "wallpaper_destroy(): cleared %i cache entries", num_cleared );
 
     if (!pthread_cancel( wp_idx_thread )) pthread_join( wp_idx_thread, NULL );
 }

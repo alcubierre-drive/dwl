@@ -2,6 +2,8 @@
 
 #include <stdint.h>
 
+typedef struct temp_thread_t temp_thread_t;
+
 typedef struct awl_temperature_t {
     // output
     float temps[16];
@@ -14,9 +16,11 @@ typedef struct awl_temperature_t {
     char f_files[16][256];
     char f_labels[16][16];
     uint8_t f_ntemps;
+
+    temp_thread_t* handle;
 } awl_temperature_t;
 
 void start_temp_thread( awl_temperature_t* t, int update_sec );
-void stop_temp_thread( void );
+void stop_temp_thread( awl_temperature_t* t );
 
 uint32_t temp_color( float T, float min, float max );

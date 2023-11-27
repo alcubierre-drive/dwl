@@ -7,19 +7,14 @@
 #include "init.h"
 #include "../awl_log.h"
 
-static pthread_t bat_thread;
-static int bat_run = 0;
-static int bat_update_sec = -1;
-static int bat_ready = 0;
-
 static const char bat_prefix[] = "/sys/class/power_supply/BAT0/";
 
 static void* bat( void* arg ) {
     if (!arg) return NULL;
     awl_battery_t* b = arg;
 
-    while (bat_run) {
-        bat_ready = 0;
+    while (1) {
+        pthread_mutex_lock( &b->mtx );
         char bat_file[128];
 
         FILE* f = NULL;
@@ -55,20 +50,25 @@ static void* bat( void* arg ) {
         if (set) charging = -1;
         b->charging = charging;
         b->charge = charge;
-        bat_ready = 1;
-        sleep( bat_update_sec );
+        pthread_mutex_unlock( &b->mtx );
+        sleep( b->update_sec );
     }
     return NULL;
 }
 
-void start_bat_thread( awl_battery_t* b, int update_sec ) {
-    bat_run = 1;
-    bat_update_sec = update_sec;
+awl_battery_t* start_bat_thread( int update_sec ) {
+    awl_battery_t* b = calloc(1, sizeof(awl_battery_t));
+    b->update_sec = update_sec;
+    pthread_mutex_init( &b->mtx, NULL );
     P_awl_log_printf( "creating bat_thread" );
-    pthread_create( &bat_thread, NULL, bat, b );
+    pthread_create( &b->me, NULL, bat, b );
+    return b;
 }
 
-void stop_bat_thread( void ) {
-    while (!bat_ready) usleep(100);
-    if (!pthread_cancel( bat_thread )) pthread_join( bat_thread, NULL );
+void stop_bat_thread( awl_battery_t* b ) {
+    pthread_mutex_lock(&b->mtx);
+    if (!pthread_cancel(b->me)) pthread_join( b->me, NULL );
+    pthread_mutex_unlock(&b->mtx);
+    pthread_mutex_destroy(&b->mtx);
+    free(b);
 }

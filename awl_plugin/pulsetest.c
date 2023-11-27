@@ -13,11 +13,18 @@ typedef struct PulseAudio {
     pa_mainloop_api* _mainloop_api;
     pa_context* _context;
     pa_signal_event* _signal;
+
+    pulse_test_t* t;
 } PulseAudio;
 
-static PulseAudio PA = {0};
-static pulse_test_t pulse_result = {0};
-static pthread_t* pulse_thread = NULL;
+struct pulse_test_thread_t {
+    PulseAudio PA;
+    pthread_t me;
+};
+
+static float AWL_PA_PRIVATE_value = 0;
+static int AWL_PA_PRIVATE_muted = 0;
+
 static void* pulse_thread_fun( void* arg );
 
 static void exit_signal_callback(pa_mainloop_api *m, pa_signal_event *e, int sig, void *userdata);
@@ -32,28 +39,35 @@ void PulseAudio_quit( PulseAudio* p, int ret );
 void PulseAudio_destroy( PulseAudio* p );
 
 pulse_test_t* start_pulse_thread( void ) {
-    if (!PulseAudio_initialize( &PA )) return NULL;
-    pulse_thread = malloc(sizeof(pthread_t));
+    pulse_test_t* p = calloc(1, sizeof(pulse_test_t));
+    p->h = calloc(1, sizeof(pulse_test_thread_t));
+    p->h->PA.t = p;
+
+    if (!PulseAudio_initialize( &p->h->PA )) {
+        free( p->h );
+        free( p );
+        return NULL;
+    }
     P_awl_log_printf( "create pulse_thread" );
-    pthread_create( pulse_thread, NULL, pulse_thread_fun, &pulse_result );
-    return &pulse_result;
+    pthread_create( &p->h->me, NULL, pulse_thread_fun, p );
+    return p;
 }
 
-void stop_pulse_thread( void ) {
-    if (pulse_thread) {
-        PulseAudio_quit( &PA, 0 );
-        pthread_join( *pulse_thread, NULL );
-        PulseAudio_destroy( &PA );
-        free(pulse_thread);
-        pulse_thread = NULL;
+void stop_pulse_thread( pulse_test_t* p ) {
+    if (p && p->h) {
+        PulseAudio_quit( &p->h->PA, 0 );
+        pthread_join( p->h->me, NULL );
+        PulseAudio_destroy( &p->h->PA );
+        free( p->h );
+        free( p );
     }
 }
 
 // main()
 static void* pulse_thread_fun( void* arg ) {
-    int ret = PulseAudio_run( &PA );
-    pulse_test_t* t = (pulse_test_t*)arg;
-    if (!t) t->ret = ret;
+    pulse_test_t* p = (pulse_test_t*)arg;
+    int ret = PulseAudio_run( &p->h->PA );
+    if (p) p->ret = ret;
     return NULL;
 }
 
@@ -111,13 +125,11 @@ static void subscribe_callback(pa_context *c, pa_subscription_event_type_t type,
 static void sink_info_callback(pa_context *c, const pa_sink_info *i, int eol, void *userdata) {
     (void)c;
     (void)eol;
-    (void)userdata;
-    if (i) {
-        // XXX user code here
-        float volume = (float)pa_cvolume_avg(&(i->volume)) / (float)PA_VOLUME_NORM;
-        pulse_result.value = volume;
-        pulse_result.muted = i->mute;
-        /* awl_bar_refresh(); */
+
+    pulse_test_t* t = ((PulseAudio*)userdata)->t;
+    if (i && t) {
+        t->value = (float)pa_cvolume_avg(&(i->volume)) / (float)PA_VOLUME_NORM;
+        t->muted = i->mute;
     }
 }
 
@@ -153,7 +165,7 @@ int PulseAudio_initialize( PulseAudio* p ) {
         P_awl_err_printf( "pulse pa_context_connect() failed: %s", pa_strerror(pa_context_errno(p->_context)));
         return 0;
     }
-    pa_context_set_state_callback(p->_context, context_state_callback, p->_mainloop_api);
+    pa_context_set_state_callback(p->_context, context_state_callback, p);
 
     return 1;
 }

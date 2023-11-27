@@ -99,6 +99,7 @@ struct AWL_Window {
     double continuous_event_norm; // 10.0;
 
     pthread_t event_thread;
+    pthread_attr_t* event_thread_attr;
 };
 
 static int allocate_shm_file(size_t size) {
@@ -365,8 +366,11 @@ AWL_Window* awl_minimal_window_setup( const awl_minimal_window_props_t* props ) 
     w->click = props->click;
     w->scroll = props->scroll;
     pthread_mutex_init( &w->showmtx, NULL );
-    P_awl_log_printf( "create window event thread" );
-    pthread_create( &w->event_thread, NULL, awl_minimal_window_event_loop_thread, w );
+    P_awl_log_printf( "create window event thread (%p)", w );
+    w->event_thread_attr = calloc(1,sizeof(pthread_attr_t));
+    pthread_attr_init( w->event_thread_attr );
+    pthread_attr_setstacksize( w->event_thread_attr, 1024ul*1024ul*64ul );
+    pthread_create( &w->event_thread, w->event_thread_attr, awl_minimal_window_event_loop_thread, w );
     return w;
 }
 
@@ -465,15 +469,26 @@ static void* awl_minimal_window_event_loop_thread( void* arg ) {
 }
 
 void awl_minimal_window_destroy( AWL_Window* w ) {
-    P_awl_log_printf( "in minimal window destroy" );
+    P_awl_log_printf( "in minimal window destroy (%p)", w );
     awl_minimal_window_wait_ready(w);
+
+    pthread_mutex_lock( &w->showmtx );
+    w->draw = NULL;
+    pthread_mutex_unlock( &w->showmtx );
+
     if (w->running) {
         w->running = 0;
-        awl_minimal_window_refresh(w);
         pthread_mutex_lock( &w->showmtx );
-        pthread_join( w->event_thread, NULL );
+        AWL_SingleWindow *win;
+        DL_FOREACH(w->window_list, win) {
+            win->redraw = 0;
+        }
+        eventfd_write( w->redraw_fd, 1 );
         pthread_mutex_unlock( &w->showmtx );
+        pthread_join( w->event_thread, NULL );
     }
+    if (w->event_thread_attr) pthread_attr_destroy( w->event_thread_attr );
+    free( w->event_thread_attr );
     w->has_init = 0;
     if (w->redraw_fd != -1) close( w->redraw_fd );
 

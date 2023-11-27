@@ -6,7 +6,7 @@
 #include <unistd.h>
 #include "../awl_log.h"
 
-struct temp_thread {
+struct temp_thread_t {
     int running;
     int sleep_sec;
     pthread_t me;
@@ -15,7 +15,7 @@ struct temp_thread {
 };
 
 static void temp_thread_cleanup( void* arg ) {
-    struct temp_thread* T = arg;
+    temp_thread_t* T = arg;
     if (T) {
         T->running = 0;
         T->sleep_sec = 0;
@@ -24,7 +24,7 @@ static void temp_thread_cleanup( void* arg ) {
 }
 
 static void* temp_thread_run( void* arg ) {
-    struct temp_thread* T = arg;
+    temp_thread_t* T = arg;
     if (!T) return NULL;
     pthread_cleanup_push( &temp_thread_cleanup, T );
 
@@ -52,18 +52,18 @@ static void* temp_thread_run( void* arg ) {
     return NULL;
 }
 
-static struct temp_thread T = {0};
-
 void start_temp_thread( awl_temperature_t* temp, int update_sec ) {
-    T.running = 1;
-    T.sleep_sec = update_sec;
-    T.t = temp;
-    pthread_create( &T.me, NULL, temp_thread_run, &T );
+    temp->handle = calloc(1,sizeof(temp_thread_t));
+    temp->handle->running = 1;
+    temp->handle->sleep_sec = update_sec;
+    temp->handle->t = temp;
+    pthread_create( &temp->handle->me, NULL, temp_thread_run, temp->handle );
 }
 
-void stop_temp_thread( void ) {
-    if (T.running)
-        if (!pthread_cancel( T.me )) pthread_join( T.me, NULL );
+void stop_temp_thread( awl_temperature_t* temp ) {
+    if (temp->handle->running)
+        if (!pthread_cancel( temp->handle->me )) pthread_join( temp->handle->me, NULL );
+    free(temp->handle);
 }
 
 static uint32_t colormap[128] = {

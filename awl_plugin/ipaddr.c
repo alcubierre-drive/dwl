@@ -14,28 +14,14 @@
 #include "init.h"
 #include "../awl_log.h"
 
-static int ip_thread_running = 0;
-static int ip_thread_sleep_sec = -1;
-static awl_ipaddr_t* ip_thread_conf = NULL;
-
-static const char exclude_list[][16] = {
-    "lo",
-    "virbr0",
-};
-
-static int is_not_in_exclude_list( const char* name ) {
-    int nexclude = sizeof(exclude_list) / sizeof(exclude_list[0]);
-    int is_in_list = 0;
-    for (int i=0; i<nexclude; ++i)
-        is_in_list += !strcmp(name, exclude_list[i]);
-    return !is_in_list;
-}
+static int is_not_in_exclude_list( const char* name, const char exclude_list[4][16], int nexclude );
 
 static void* ip_thread_run( void* arg ) {
     awl_ipaddr_t* ip = (awl_ipaddr_t*)arg;
     if (!ip) return NULL;
-    while (ip_thread_running) {
+    while (ip->running) {
 
+        pthread_mutex_lock( &ip->mtx );
         ip->is_online = 1;
         ip->ready = 0;
 
@@ -53,7 +39,7 @@ static void* ip_thread_run( void* arg ) {
         for (struct ifaddrs *ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
             if (ifa->ifa_addr == NULL) continue;
             int family = ifa->ifa_addr->sa_family;
-            if (family == AF_INET && is_not_in_exclude_list(ifa->ifa_name)) {
+            if (family == AF_INET && is_not_in_exclude_list(ifa->ifa_name, ip->exclude_list, ip->n_exclude_list)) {
                 char host[NI_MAXHOST];
                 int s = getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in), host,
                         NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
@@ -80,25 +66,40 @@ static void* ip_thread_run( void* arg ) {
 loopend:
         freeifaddrs(ifaddr);
         ip->ready = 1;
-        sleep(ip_thread_sleep_sec);
+
+        pthread_mutex_unlock( &ip->mtx );
+        sleep(ip->sleep_sec);
     }
 
     return NULL;
 }
 
-static pthread_t ip_thread;
-void start_ip_thread( awl_ipaddr_t* ip, int update_sec ) {
-    ip_thread_running = 1;
-    ip_thread_sleep_sec = update_sec;
+awl_ipaddr_t* start_ip_thread( int update_sec ) {
+    awl_ipaddr_t* ip = calloc(1, sizeof(awl_ipaddr_t));
+    ip->running = 1;
+    ip->sleep_sec = update_sec;
+    strcpy( ip->exclude_list[ip->n_exclude_list++], "lo" );
+    strcpy( ip->exclude_list[ip->n_exclude_list++], "virbr0" );
+
     P_awl_log_printf( "create ip_thread" );
-    ip_thread_conf = ip;
-    pthread_create( &ip_thread, NULL, ip_thread_run, (void*)ip );
+    pthread_mutex_init( &ip->mtx, NULL );
+    pthread_create( &ip->me, NULL, ip_thread_run, ip );
+    return ip;
 }
-void stop_ip_thread( void ) {
-    if (ip_thread_conf) {
-        while (!ip_thread_conf->ready) usleep(100);
-        ip_thread_conf = NULL;
-    }
-    if (!pthread_cancel( ip_thread )) pthread_join( ip_thread, NULL );
+
+void stop_ip_thread( awl_ipaddr_t* ip ) {
+    pthread_mutex_lock( &ip->mtx );
+    if (!pthread_cancel( ip->me )) pthread_join( ip->me, NULL );
+    pthread_mutex_unlock( &ip->mtx );
+    pthread_mutex_destroy( &ip->mtx );
+    free(ip);
     P_awl_log_printf("cancelled ip thread");
 }
+
+static int is_not_in_exclude_list( const char* name, const char exclude_list[4][16], int nexclude ) {
+    int is_in_list = 0;
+    for (int i=0; i<nexclude; ++i)
+        is_in_list += !strcmp(name, exclude_list[i]);
+    return !is_in_list;
+}
+

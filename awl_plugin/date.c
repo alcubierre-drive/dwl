@@ -10,41 +10,39 @@
 #include "minimal_window.h"
 #include "date_month.h"
 
-static char date_string[128] = {0};
-static int date_thread_run = 0;
-static int date_thread_update_sec = 0;
-static pthread_t* date_thread = NULL;
-
 static void* date_thread_fun( void* arg ) {
-    int update_sec = *(int*)arg;
-    while (date_thread_run) {
+    awl_date_t* d = (awl_date_t*)arg;
+    while (1) {
+
+        pthread_mutex_lock( &d->mtx );
         time_t t;
         time(&t);
         struct tm* lt = localtime(&t);
-        strftime( date_string, 127, "%R", lt );
+        strftime( d->s, 127, "%R", lt );
         /* strftime( date_string, 127, "%T", lt ); */
         /* awl_bar_refresh(); */
-        sleep(update_sec);
+        pthread_mutex_unlock( &d->mtx );
+
+        sleep(d->update_sec);
     }
     return NULL;
 }
 
-char* start_date_thread( int update_sec ) {
-    P_awl_log_printf( "starting time thread" );
-    date_thread_update_sec = update_sec;
-    date_thread_run = 1;
-    date_thread = malloc(sizeof(pthread_t));
+awl_date_t* start_date_thread( int update_sec ) {
+    awl_date_t* d = calloc(1, sizeof(awl_date_t));
+    d->update_sec = update_sec;
     P_awl_log_printf( "creating date_thread" );
-    pthread_create( date_thread, NULL, &date_thread_fun, &date_thread_update_sec );
-    return date_string;
+    pthread_mutex_init( &d->mtx, NULL );
+    pthread_create( &d->me, NULL, &date_thread_fun, d );
+    return d;
 }
 
-void stop_date_thread( void ) {
-    date_thread_run = 0;
-    date_thread_update_sec = 0;
-    if (!pthread_cancel(*date_thread)) pthread_join( *date_thread, NULL );
-    free(date_thread);
-    date_thread = NULL;
+void stop_date_thread( awl_date_t* d ) {
+    pthread_mutex_lock( &d->mtx );
+    if (!pthread_cancel(d->me)) pthread_join( d->me, NULL );
+    pthread_mutex_unlock( &d->mtx );
+    pthread_mutex_destroy( &d->mtx );
+    free(d);
 }
 
 

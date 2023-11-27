@@ -1174,7 +1174,7 @@ static void setup_bar(Bar *bar) {
     };
     bar->widgets_right[bar->n_widgets_right++] = (widget_t){
         .draw = statuswidget_draw,
-        .width = P->ncpu + P->nmem + P->nswp,
+        .width = P->stats->ncpu + P->stats->nmem + P->stats->nswp,
         .callback_click = statuswidget_click,
     };
     bar->widgets_right[bar->n_widgets_right++] = (widget_t){
@@ -1560,7 +1560,7 @@ static uint32_t clockwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foregrou
 
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
     if (P->date)
-        draw_text(P->date, x, y, foreground, background, &barcolors.fg_status, &barcolors.bg_status,
+        draw_text(P->date->s, x, y, foreground, background, &barcolors.fg_status, &barcolors.bg_status,
                   bar->width, bar->height, bar->textpadding );
     return TEXT_WIDTH( "XX:XX", -1, bar->textpadding );
 }
@@ -1627,12 +1627,12 @@ static uint32_t ipwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground,
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
     pixman_color_t _molokai_red = color_8bit_to_16bit(molokai_red),
                    _molokai_green = color_8bit_to_16bit(molokai_green);
-    while (!P->ip.ready) usleep(10);
-    if (*P->ip.address_string) {
-        draw_text( P->ip.address_string, x, y, foreground, background,
-                   P->ip.is_online ? &_molokai_green : &_molokai_red,
+    while (!P->ip->ready) usleep(10);
+    if (*P->ip->address_string) {
+        draw_text( P->ip->address_string, x, y, foreground, background,
+                   P->ip->is_online ? &_molokai_green : &_molokai_red,
                    &barcolors.bg_status, bar->width, bar->height, bar->textpadding );
-        return TEXT_WIDTH( P->ip.address_string, -1, bar->textpadding );
+        return TEXT_WIDTH( P->ip->address_string, -1, bar->textpadding );
     }
     return TEXT_WIDTH( "ipaddr", -1, bar->textpadding );
 }
@@ -1643,16 +1643,16 @@ static uint32_t tempwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foregroun
 
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
     uint32_t width = 0;
-    while (!P->temp.ready) usleep(10);
-    for (int i=0; i<P->temp.ntemps; ++i) {
+    while (!P->temp->ready) usleep(100);
+    for (int i=0; i<P->temp->ntemps; ++i) {
         char text[128] = {0};
         // only put the label if the string is set
-        if (*P->temp.f_labels[P->temp.idx[i]])
-            snprintf( text, 127, "%s:%.0f°C", P->temp.f_labels[P->temp.idx[i]], P->temp.temps[i] );
+        if (*P->temp->f_labels[P->temp->idx[i]])
+            snprintf( text, 127, "%s:%.0f°C", P->temp->f_labels[P->temp->idx[i]], P->temp->temps[i] );
         else
-            snprintf( text, 127, "%.0f°C", P->temp.temps[i] );
-        pixman_color_t fgcolor = color_8bit_to_16bit( temp_color( P->temp.temps[i],
-                    P->temp.f_t_min[P->temp.idx[i]], P->temp.f_t_max[P->temp.idx[i]] ) );
+            snprintf( text, 127, "%.0f°C", P->temp->temps[i] );
+        pixman_color_t fgcolor = color_8bit_to_16bit( temp_color( P->temp->temps[i],
+                    P->temp->f_t_min[P->temp->idx[i]], P->temp->f_t_max[P->temp->idx[i]] ) );
         draw_text( text, x, y, foreground, background, &fgcolor, &barcolors.bg_status,
                    bar->width, bar->height, bar->textpadding );
         uint32_t w = TEXT_WIDTH(text, -1, bar->textpadding);
@@ -1700,8 +1700,6 @@ static void pulsewidget_click( Bar* bar, uint32_t pointer_x, int button ) {
         case BTN_RIGHT:
             spawn_pid_str("pulse_port_switch -t -N"); break;
         case BTN_MIDDLE:
-            /* // TODO do we want to spawn sth here?
-             * spawn_pid_str(...); break; */
         default:
             break;
     }
@@ -1725,13 +1723,16 @@ static uint32_t statuswidget_draw( Bar* bar, uint32_t x, pixman_image_t* foregro
     awl_plugin_data_t* P = awl_plugin_data();
     if (!P) return 0;
 
-    uint32_t widget_width = P->ncpu + P->nmem + P->nswp;
-    const int ncpu = P->ncpu,
-              nmem = P->nmem,
-              nswp = P->nswp;
-    const float *icpu = P->cpu,
-                *imem = P->mem,
-                *iswp = P->swp;
+    awl_stats_t* st = P->stats;
+    if (!st) return 0;
+
+    uint32_t widget_width = st->ncpu + st->nmem + st->nswp;
+    const int ncpu = st->ncpu,
+              nmem = st->nmem,
+              nswp = st->nswp;
+    const float *icpu = st->cpu,
+                *imem = st->mem,
+                *iswp = st->swp;
     widget_boxes = (pixman_box32_t*)realloc(widget_boxes, sizeof(pixman_box32_t)*2*(ncpu+nmem+nswp));
     pixman_box32_t *b_cpu = widget_boxes;
     pixman_box32_t *b_mem = b_cpu + ncpu;
@@ -1742,7 +1743,7 @@ static uint32_t statuswidget_draw( Bar* bar, uint32_t x, pixman_image_t* foregro
     int xx=x;
     if (icpu) {
         for (int i=0; i<ncpu; ++i) {
-            int ydiv = bar->height - icpu[P->stats_dir ? ncpu-i : i] * bar->height;
+            int ydiv = bar->height - icpu[st->dir ? ncpu-i : i] * bar->height;
             *b_bg_run++ = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=0, .y2=ydiv};
             b_cpu[i] = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=ydiv,.y2=bar->height};
             xx++;
@@ -1750,7 +1751,7 @@ static uint32_t statuswidget_draw( Bar* bar, uint32_t x, pixman_image_t* foregro
     }
     if (imem) {
         for (int i=0; i<nmem; ++i) {
-            int ydiv = bar->height - imem[P->stats_dir ? ncpu-i : i] * bar->height;
+            int ydiv = bar->height - imem[st->dir ? ncpu-i : i] * bar->height;
             *b_bg_run++ = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=0, .y2=ydiv};
             b_mem[i] = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=ydiv,.y2=bar->height};
             xx++;
@@ -1758,7 +1759,7 @@ static uint32_t statuswidget_draw( Bar* bar, uint32_t x, pixman_image_t* foregro
     }
     if (iswp) {
         for (int i=0; i<nswp; ++i) {
-            int ydiv = bar->height - iswp[P->stats_dir ? ncpu-i : i] * bar->height;
+            int ydiv = bar->height - iswp[st->dir ? ncpu-i : i] * bar->height;
             *b_bg_run++ = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=0, .y2=ydiv};
             b_swp[i] = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=ydiv,.y2=bar->height};
             xx++;

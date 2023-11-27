@@ -5,6 +5,8 @@
 #include "../awl_extension.h"
 
 #include "ipaddr.h"
+#include "stats.h"
+
 #include "temp.h"
 #include "bat.h"
 #include "pulsetest.h"
@@ -18,15 +20,12 @@ awl_state_t* awl_plugin_state( void );
 typedef struct awl_plugin_data_t {
     float refresh_sec;
 
-    awl_ipaddr_t ip;
-    awl_temperature_t temp;
-    awl_battery_t bat;
-    char* date;
+    awl_ipaddr_t* ip;
+    awl_stats_t* stats;
+    awl_temperature_t* temp;
+    awl_battery_t* bat;
+    awl_date_t* date;
     pulse_test_t* pulse;
-
-    float cpu[128], mem[128], swp[128];
-    int ncpu, nmem, nswp;
-    int stats_dir;
 
     awl_calendar_t* cal;
 

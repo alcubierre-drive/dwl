@@ -236,12 +236,14 @@ static void awl_plugin_init(void) {
         /* AUTOSTART( tray, "./tray/awl_tray" ); */
         /* AUTOSTART( nextcloud, "nextcloud --background" ); */
 
+        /*
         AUTOSTART( nm_applet, "nm-applet" );
         AUTOSTART( blueman, "blueman-applet" );
         AUTOSTART( printer, "system-config-printer-applet" );
         AUTOSTART( telegram, "telegram-desktop" );
         AUTOSTART( evolution, "evolution" );
         AUTOSTART( locker, "systemd-lock-handler swaylock" );
+        */
     }
 
     P_awl_log_printf("setting up environment");
@@ -438,32 +440,33 @@ static void awl_plugin_init(void) {
     awl_plugin_data_t* P = calloc(1, sizeof(awl_plugin_data_t));
     P->refresh_sec = 0.2;
 
-    P->ncpu = P->nmem = P->nswp = 32;
-    start_stats_thread( P->cpu, P->ncpu, P->mem, P->nmem, P->swp, P->nswp, 1 );
-    P->stats_dir = 0;
-    P->date = start_date_thread( 10 );
     P->pulse = start_pulse_thread();
-    start_ip_thread( &P->ip, 1 );
-    start_bat_thread( &P->bat, 1 );
+    P->date = start_date_thread( 10 );
+    P->ip = start_ip_thread( 1 );
+    P->stats = start_stats_thread( 32, 32, 32, 1 );
+    P->stats->dir = 0;
+    P->bat = start_bat_thread( 1 );
+
+    P->temp = calloc(1,sizeof(awl_temperature_t));
     #ifndef AWL_CPU_THERMAL_ZONE
-    strcpy( P->temp.f_files[P->temp.f_ntemps], "/sys/class/thermal/thermal_zone7/temp" );
+    strcpy( P->temp->f_files[P->temp->f_ntemps], "/sys/class/thermal/thermal_zone7/temp" );
     #else // AWL_CPU_THERMAL_ZONE
-    strcpy( P->temp.f_files[P->temp.f_ntemps], "/sys/class/thermal/" AWL_CPU_THERMAL_ZONE "/temp" );
+    strcpy( P->temp->f_files[P->temp->f_ntemps], "/sys/class/thermal/" AWL_CPU_THERMAL_ZONE "/temp" );
     #endif // AWL_CPU_THERMAL_ZONE
     #ifndef AWL_CPU_THERMAL_ZONE_NAME
-    strcpy( P->temp.f_labels[P->temp.f_ntemps], "CPU" );
+    strcpy( P->temp->f_labels[P->temp->f_ntemps], "CPU" );
     #else
-    strcpy( P->temp.f_labels[P->temp.f_ntemps], AWL_CPU_THERMAL_ZONE_NAME );
+    strcpy( P->temp->f_labels[P->temp->f_ntemps], AWL_CPU_THERMAL_ZONE_NAME );
     #endif
-    P->temp.f_t_max[P->temp.f_ntemps] = 80;
-    P->temp.f_t_min[P->temp.f_ntemps++] = 40;
+    P->temp->f_t_max[P->temp->f_ntemps] = 80;
+    P->temp->f_t_min[P->temp->f_ntemps++] = 40;
     #ifdef AWL_GPU_THERMAL_ZONE
-    strcpy( P->temp.f_files[P->temp.f_ntemps], "/sys/class/thermal/thermal_zone1/temp" );
-    strcpy( P->temp.f_labels[P->temp.f_ntemps], "GPU" );
-    P->temp.f_t_max[P->temp.f_ntemps] = 70;
-    P->temp.f_t_min[P->temp.f_ntemps++] = 40;
+    strcpy( P->temp->f_files[P->temp->f_ntemps], "/sys/class/thermal/thermal_zone1/temp" );
+    strcpy( P->temp->f_labels[P->temp->f_ntemps], "GPU" );
+    P->temp->f_t_max[P->temp->f_ntemps] = 70;
+    P->temp->f_t_min[P->temp->f_ntemps++] = 40;
     #endif // AWL_GPU_THERMAL_ZONE
-    start_temp_thread( &P->temp, 1 );
+    start_temp_thread( P->temp, 1 );
 
     P->cycle_layout = cycle_layout;
     P->cycle_tag = cycle_tag;
@@ -509,25 +512,32 @@ static void awl_plugin_free(void) {
     free(S.keys);
     free(S.buttons);
 
+    // cancel bar refreshing
+    if (!pthread_cancel( S.BarRefreshThread )) pthread_join( S.BarRefreshThread, NULL );
+    P_awl_log_printf( "cancel bar refresh thread" );
+
+    // and cancel the bar thread itself
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    P_awl_log_printf( "cleanup vtable state: %p", B );
+    if (B) {
+        awl_bar_set_running( 0 );
+        if (!pthread_cancel( S.BarThread )) pthread_join( S.BarThread, NULL );
+    }
+
+    // now to all the plugin data threads
     P_awl_log_printf("stop stats thread");
-    stop_stats_thread();
-
+    stop_stats_thread(S.P->stats);
     P_awl_log_printf("stop date thread");
-    S.P->date = NULL;
-    stop_date_thread();
-
-    P_awl_log_printf("stop pulse thread");
-    S.P->pulse = NULL;
-    stop_pulse_thread();
-
+    stop_date_thread(S.P->date);
     P_awl_log_printf("stop ip_thread");
-    stop_ip_thread();
-
+    stop_ip_thread( S.P->ip );
     P_awl_log_printf("stop bat_thread");
-    stop_bat_thread();
-
+    stop_bat_thread( S.P->bat );
     P_awl_log_printf("stop temp_thread");
-    stop_temp_thread();
+    stop_temp_thread( S.P->temp );
+    free( S.P->temp );
+    P_awl_log_printf("stop pulse thread");
+    stop_pulse_thread(S.P->pulse);
 
     P_awl_log_printf("destroy cal");
     if (S.P->cal) calendar_destroy( S.P->cal );
@@ -535,29 +545,6 @@ static void awl_plugin_free(void) {
     // again wallpaper somewhat separate
     P_awl_log_printf( "entering wallpaper destroy" );
     wallpaper_destroy();
-
-    // cancel bar refreshing
-    if (!pthread_cancel( S.BarRefreshThread )) pthread_join( S.BarRefreshThread, NULL );
-    P_awl_log_printf( "cancel bar refresh thread" );
-
-    // and cancel the bar thread itself
-    // this is kinda clumsy, now that we have the minimal window that's all
-    // self-contained. The bar could also be a minimal window. It's not doing
-    // anything else, honestly.
-    awl_state_t* B = AWL_VTABLE_SYM.state;
-    P_awl_log_printf( "cleanup vtable state: %p", B );
-    if (B) {
-        awl_bar_set_running( 0 );
-        int s = pthread_cancel( S.BarThread );
-        P_awl_log_printf( "cancelled bar thread" );
-        if (s != 0)
-            P_awl_err_printf( "pthread cancel: %s", strerror(s) );
-        P_awl_log_printf( "joining thread %p", S.BarThread );
-        s = pthread_join( S.BarThread, NULL );
-        P_awl_log_printf( "joined bar thread" );
-        if (s != 0)
-            P_awl_err_printf( "pthread join: %s", strerror(s) );
-    }
 
     // free the plugin data somewhat last
     free(S.P);

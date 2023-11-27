@@ -8,65 +8,45 @@
 #include <unistd.h>
 #include <string.h>
 
-typedef struct {
-    unsigned int i;
-    float* cpu;
-    int ncpu;
-    float* mem;
-    int nmem;
-    float* swp;
-    int nswp;
-    int update_sec;
-} th_stats_arg_t;
+static void* stats_thread_run( void* arg );
 
-static uint64_t* sizes_table = NULL;
-
-static pthread_t* th_stats = NULL;
-static th_stats_arg_t* th_arg = NULL;
-static void* th_stats_run( void* arg );
-static int th_run = 0;
-static float cpu_idle( void );
+static float cpu_idle( uint64_t* sizes_table );
 static void rotate_back( float* array, int size );
 static void getmem( float* mem, float* swp );
 
-void start_stats_thread( float* val_cpu, int nval_cpu,
-                         float* val_mem, int nval_mem,
-                         float* val_swp, int nval_swp, int update_sec ) {
+awl_stats_t* start_stats_thread( int nval_cpu, int nval_mem, int nval_swp, int update_sec ) {
     P_awl_log_printf( "starting system monitor" );
-    th_arg = malloc(sizeof(th_stats_arg_t));
-    th_arg->i = 0;
-    th_arg->cpu = val_cpu;
-    th_arg->ncpu = nval_cpu;
-    th_arg->mem = val_mem;
-    th_arg->nmem = nval_mem;
-    th_arg->swp = val_swp;
-    th_arg->nswp = nval_swp;
-    th_arg->update_sec = update_sec;
-    th_stats = malloc(sizeof(pthread_t));
-    th_run = 1;
-    P_awl_log_printf( "create th_stats thread" );
-    pthread_create( th_stats, NULL, th_stats_run, th_arg );
+    awl_stats_t* st = calloc(1,sizeof(awl_stats_t));
+    st->ncpu = nval_cpu;
+    st->nmem = nval_mem;
+    st->nswp = nval_swp;
+    st->update_sec = update_sec;
+    st->sizes_table = calloc(20, sizeof(uint64_t));
+    pthread_mutex_init( &st->mtx, NULL );
+    pthread_create( &st->me, NULL, stats_thread_run, st );
+    return st;
 }
 
-void stop_stats_thread( void ) {
-    th_run = 0;
-    if (!pthread_cancel( *th_stats )) pthread_join( *th_stats, NULL );
-    free( th_stats );
-    free( th_arg );
-    free( sizes_table );
-    th_stats = NULL;
-    th_arg = NULL;
+void stop_stats_thread( awl_stats_t* st ) {
+    pthread_mutex_lock( &st->mtx );
+    if (!pthread_cancel( st->me )) pthread_join( st->me, NULL );
+    pthread_mutex_unlock( &st->mtx );
+    pthread_mutex_destroy( &st->mtx );
+    free( st->sizes_table );
+    free( st );
 }
 
-static void* th_stats_run( void* arg ) {
-    th_stats_arg_t* A = (th_stats_arg_t*)arg;
-    while (th_run) {
-        rotate_back( A->cpu, A->ncpu );
-        rotate_back( A->mem, A->nmem );
-        rotate_back( A->swp, A->nswp );
-        getmem( th_arg->mem, th_arg->swp );
-        th_arg->cpu[0] = 1. - cpu_idle();
-        sleep(A->update_sec);
+static void* stats_thread_run( void* arg ) {
+    awl_stats_t* st = (awl_stats_t*)arg;
+    while (1) {
+        pthread_mutex_lock( &st->mtx );
+        rotate_back( st->cpu, st->ncpu );
+        rotate_back( st->mem, st->nmem );
+        rotate_back( st->swp, st->nswp );
+        getmem( st->mem, st->swp );
+        st->cpu[0] = 1. - cpu_idle(st->sizes_table);
+        pthread_mutex_unlock( &st->mtx );
+        sleep(st->update_sec);
     }
     return NULL;
 }
@@ -76,10 +56,7 @@ static void rotate_back( float* array, int size ) {
         array[i] = array[i-1];
 }
 
-static float cpu_idle( void ) {
-    if (!sizes_table)
-        sizes_table = (uint64_t*)calloc(20, sizeof(uint64_t));
-
+static float cpu_idle( uint64_t* sizes_table ) {
     // copy old values
     memcpy( sizes_table+10, sizes_table, sizeof(uint64_t)*10 );
     // open file and read new values
