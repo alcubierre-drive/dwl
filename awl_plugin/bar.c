@@ -1668,15 +1668,15 @@ static uint32_t batwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground
     if (!P) return 0;
 
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
-    if (P->bat.charging < 0) return 0;
+    if (P->bat->charging < 0) return 0;
 
     char text[16] = {0};
-    snprintf( text, 15, "%3.0f%%", P->bat.charge * 100.0 );
+    snprintf( text, 15, "%3.0f%%", P->bat->charge * 100.0 );
 
     pixman_color_t fgcolor = barcolors.fg_status;
-    if (P->bat.charge < 0.3)   fgcolor = color_8bit_to_16bit( molokai_orange );
-    if (P->bat.charge < 0.15)  fgcolor = color_8bit_to_16bit( molokai_red );
-    if (P->bat.charging)       fgcolor = color_8bit_to_16bit( molokai_green );
+    if (P->bat->charge < 0.3)   fgcolor = color_8bit_to_16bit( molokai_orange );
+    if (P->bat->charge < 0.15)  fgcolor = color_8bit_to_16bit( molokai_red );
+    if (P->bat->charging)       fgcolor = color_8bit_to_16bit( molokai_green );
     draw_text( text, x, y, foreground, background, &fgcolor, &barcolors.bg_status,
                bar->width, bar->height, bar->textpadding );
     return TEXT_WIDTH( text, -1, bar->textpadding );
