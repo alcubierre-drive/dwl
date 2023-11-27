@@ -208,9 +208,10 @@ pid_t spawn_pid( char** arg ) {
 
 typedef struct awl_persistent_plugin_data_t {
     pid_t pid_tray;
+    pid_t pid_nextcloud;
+
     pid_t pid_nm_applet;
     pid_t pid_blueman;
-    pid_t pid_nextcloud;
     pid_t pid_printer;
     pid_t pid_telegram;
     pid_t pid_evolution;

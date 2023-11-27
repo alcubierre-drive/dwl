@@ -49,7 +49,7 @@ static void* receiver_thread(void* handle_) {
     if (NULL == conn) return NULL;
 
     // request our name on the bus and check for errors
-    ret = dbus_bus_request_name(conn, AWL_DBUS_ROOT_PATH ".sink", DBUS_NAME_FLAG_REPLACE_EXISTING , &err);
+    ret = dbus_bus_request_name(conn, AWL_DBUS_ROOT_PATH, DBUS_NAME_FLAG_REPLACE_EXISTING, &err);
     if (dbus_error_is_set(&err)) {
         awl_err_printf( "dbus Name Error (%s)", err.message);
         dbus_error_free(&err);
@@ -57,7 +57,7 @@ static void* receiver_thread(void* handle_) {
     if (DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER != ret) return NULL;
 
     // add a rule for which messages we want to see
-    dbus_bus_add_match(conn, "type='signal',interface='" AWL_DBUS_ROOT_PATH ".Type'", &err); // see signals from the given interface
+    dbus_bus_add_match(conn, "type='signal',interface='" AWL_DBUS_ROOT_PATH "'", &err); // see signals from the given interface
     dbus_connection_flush(conn);
     if (dbus_error_is_set(&err)) {
         awl_err_printf( "dbus Match Error (%s)", err.message);
@@ -84,7 +84,7 @@ static void* receiver_thread(void* handle_) {
 
         awl_dbus_callback_t *s, *tmp;
         HASH_ITER(hh, handle->callbacks, s, tmp) {
-            if (dbus_message_is_signal(msg, AWL_DBUS_ROOT_PATH ".Type", s->name)) {
+            if (dbus_message_is_signal(msg, AWL_DBUS_ROOT_PATH, s->name)) {
                 // read the parameters
                 if (!dbus_message_iter_init(msg, &args)) {
                    awl_err_printf("dbus: Message Has No Parameters");
@@ -94,8 +94,9 @@ static void* receiver_thread(void* handle_) {
                    dbus_message_iter_get_basic(&args, &sigvalue);
                 }
 
-                awl_log_printf("dbus: Got Signal with value %s", sigvalue);
-                awl_log_printf("dbus: calling hook");
+                if (sigvalue)
+                    awl_log_printf("dbus: Got Signal with value '%s'", sigvalue);
+                awl_log_printf("dbus: calling hook %p", s->hook);
                 s->hook( sigvalue, s->userdata );
             }
         }
@@ -170,62 +171,53 @@ void awl_dbus_destroy( awl_dbus_listener_t* bus ) {
 }
 
 void awl_dbus_notify( const char* name, const char* sigvalue ) {
-    DBusMessage* msg;
-    DBusMessageIter args;
-    DBusConnection* conn;
+    awl_log_printf("dbus: sending signal '%s' with value '%s'", name, sigvalue);
+
     DBusError err;
-    int ret;
-    dbus_uint32_t serial = 0;
-
-    awl_log_printf("dbus: sending signal with value %s", sigvalue);
-
-    // initialise the error value
     dbus_error_init(&err);
 
     // connect to the DBUS system bus, and check for errors
-    conn = dbus_bus_get(DBUS_BUS_SESSION, &err);
-    if (dbus_error_is_set(&err)) {
-        awl_err_printf( "dbus connection error (%s)", err.message );
-        dbus_error_free(&err);
+    DBusConnection* conn;
+    if (!(conn = dbus_bus_get(DBUS_BUS_SESSION, &err))) {
+        awl_err_printf("dbus: couldn't establish a connection");
+        goto notify_error_out;
     }
-    if (NULL == conn) return;
+    if (dbus_error_is_set(&err)) goto notify_error_out;
 
     // register our name on the bus, and check for errors
-    ret = dbus_bus_request_name(conn, AWL_DBUS_ROOT_PATH ".source", DBUS_NAME_FLAG_REPLACE_EXISTING , &err);
-    if (dbus_error_is_set(&err)) {
-        awl_err_printf( "name error (%s)", err.message );
-        dbus_error_free(&err);
-    }
-    if (DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER != ret) return;
+    int ret = dbus_bus_request_name(conn, AWL_DBUS_ROOT_PATH, DBUS_NAME_FLAG_REPLACE_EXISTING , &err);
+    if (dbus_error_is_set(&err)) goto notify_error_out;
+    if (DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER == ret)
+        awl_log_printf( "dbus: we're primary owner? trying to continue anyways…" );
 
-    // create a signal & check for errors
-    char* object = calloc(1, strlen(AWL_DBUS_ROOT_PATH ".Type") + 20);
-    strcpy( object, "/" );
-    strcat( object, AWL_DBUS_ROOT_PATH ".Object" );
-    for (char* c = object; *c; c++) if (*c == '.') *c = '/';
-    msg = dbus_message_new_signal(object, AWL_DBUS_ROOT_PATH ".Type", name);
-    free(object);
-    if (NULL == msg) {
-        awl_err_printf("dbus: Message Null");
-        return;
+    DBusMessage* msg;
+    if (!(msg = dbus_message_new_signal("/", AWL_DBUS_ROOT_PATH, name))) {
+        awl_err_printf( "dbus: message == NULL" );
+        goto notify_error_out;
     }
 
-    // append arguments onto signal
+    // append arguments
+    DBusMessageIter args;
     dbus_message_iter_init_append(msg, &args);
+    const char nullsignal[] = ""; if (!sigvalue) sigvalue = nullsignal;
     if (!dbus_message_iter_append_basic(&args, DBUS_TYPE_STRING, &sigvalue)) {
-        awl_err_printf("dbus: Out Of Memory!");
-        return;
+        awl_err_printf( "dbus: OOM!" );
+        goto notify_error_out;
     }
-
-    // send the message and flush the connection
+    // send + flush + free
+    dbus_uint32_t serial = 0;
     if (!dbus_connection_send(conn, msg, &serial)) {
-        awl_err_printf("dbus: Out Of Memory!");
-        return;
+        awl_err_printf( "dbus: OOM!" );
+        goto notify_error_out;
     }
     dbus_connection_flush(conn);
-
-    awl_log_printf("Signal Sent");
-
-    // free the message
     dbus_message_unref(msg);
+
+    awl_log_printf( "dbus: sent signal '%s' with value '%s'", name, sigvalue );
+
+notify_error_out:
+    if (dbus_error_is_set(&err)) {
+        awl_err_printf( "dbus error: %s", err.message );
+        dbus_error_free(&err);
+    }
 }
