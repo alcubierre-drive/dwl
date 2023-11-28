@@ -207,6 +207,13 @@ pid_t spawn_pid( char** arg ) {
 }
 
 typedef struct awl_persistent_plugin_data_t {
+    union { struct {
+
+    bool oneshot;
+    bool touched;
+
+    }; uint64_t _padding[16]; };
+
     pid_t pid_tray;
     pid_t pid_nextcloud;
 
@@ -227,8 +234,13 @@ static void awl_plugin_init(void) {
         data = NULL;
     }
     if (data) {
+        if (!data->touched) {
+            data->oneshot = true; // TODO this should not live here
+            data->touched = true;
+        }
         #define AUTOSTART( thing, cmd ) { \
-            if (kill(data->pid_##thing, 0) == -1 || !data->pid_##thing) { \
+            if ( (data->oneshot && !data->pid_##thing) || \
+                (!data->oneshot && (kill(data->pid_##thing, 0) == -1 || !data->pid_##thing)) ) { \
                 P_awl_log_printf( "autostarting " #thing ); \
                 data->pid_##thing = spawn_pid_str( cmd ); \
             } \
