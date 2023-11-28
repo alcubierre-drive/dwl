@@ -9,6 +9,7 @@
 #include "init.h"
 #include "minimal_window.h"
 #include "date_month.h"
+#include "../awl_pthread.h"
 
 static void* date_thread_fun( void* arg ) {
     awl_date_t* d = (awl_date_t*)arg;
@@ -33,7 +34,7 @@ awl_date_t* start_date_thread( int update_sec ) {
     d->update_sec = update_sec;
     P_awl_log_printf( "creating date_thread" );
     pthread_mutex_init( &d->mtx, NULL );
-    pthread_create( &d->me, NULL, &date_thread_fun, d );
+    AWL_PTHREAD_CREATE( &d->me, NULL, &date_thread_fun, d );
     return d;
 }
 

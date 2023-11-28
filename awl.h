@@ -57,6 +57,8 @@
 #include <wlr/xwayland.h>
 #include <xcb/xcb.h>
 #include <xcb/xcb_icccm.h>
+#include <pthread.h>
+#include <semaphore.h>
 
 #include "awl_arg.h"
 

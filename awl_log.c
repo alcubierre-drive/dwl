@@ -11,7 +11,10 @@
 #include <stdarg.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <pthread.h>
+#include <semaphore.h>
 
+static sem_t awllg_sem = {0};
 static FILE* awllg = NULL;
 static int awllg_lvl = -1;
 
@@ -21,6 +24,8 @@ static void create_dir( const char* path );
  * non-essential data files should be stored. If $XDG_CACHE_HOME is either not
  * set or empty, a default equal to $HOME/.cache should be used. */
 void awl_log_init( int level ) {
+    sem_init( &awllg_sem, 0, 1 );
+    sem_wait( &awllg_sem );
     static char logfile_basename[] = "awl.log";
     char logfile[PATH_MAX] = {0};
     char* cachedir = getenv( "XDG_CACHE_HOME" );
@@ -48,12 +53,16 @@ void awl_log_init( int level ) {
     awllg = fopen(logfile, "w");
     if (!awllg) die("could not open file %s", logfile);
     awllg_lvl = level;
+    sem_post( &awllg_sem );
 }
 
 void awl_log_destroy( void ) {
+    sem_wait( &awllg_sem );
     if (awllg) fclose(awllg);
     awllg = NULL;
     awllg_lvl = -1;
+    sem_post( &awllg_sem );
+    sem_destroy( &awllg_sem );
 }
 
 int awl_log_has_init( void ) {
@@ -66,7 +75,8 @@ void awl_log_printer_( const char* logname, int loglevel, const char* fname, int
 
     time_t t;
     time(&t);
-    struct tm* lt = localtime(&t);
+    struct tm slt = {0};
+    struct tm* lt = localtime_r(&t, &slt);
     char prefix[1024] = {0};
     strftime( prefix, 128, "%F %T ", lt );
     char* p = prefix + strlen(prefix);
@@ -75,6 +85,7 @@ void awl_log_printer_( const char* logname, int loglevel, const char* fname, int
     for (char* l=logname_upper; *l; ++l) *l = toupper(*l);
     sprintf(p, "[%s %s:%i] ", logname_upper, fname, line);
 
+    sem_wait( &awllg_sem );
     fprintf(awllg, "%s", prefix);
     va_list ap;
     va_start( ap, fmt );
@@ -83,6 +94,7 @@ void awl_log_printer_( const char* logname, int loglevel, const char* fname, int
     fputc( '\n', awllg );
 
     fflush(awllg);
+    sem_post( &awllg_sem );
 }
 
 static void create_dir( const char* path ) {

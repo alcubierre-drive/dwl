@@ -13,6 +13,7 @@
 #include "ipaddr.h"
 #include "init.h"
 #include "../awl_log.h"
+#include "../awl_pthread.h"
 
 static int is_not_in_exclude_list( const char* name, char exclude_list[4][16], int nexclude );
 
@@ -83,7 +84,7 @@ awl_ipaddr_t* start_ip_thread( int update_sec ) {
 
     P_awl_log_printf( "create ip_thread" );
     pthread_mutex_init( &ip->mtx, NULL );
-    pthread_create( &ip->me, NULL, ip_thread_run, ip );
+    AWL_PTHREAD_CREATE( &ip->me, NULL, ip_thread_run, ip );
     return ip;
 }
 

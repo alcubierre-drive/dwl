@@ -120,6 +120,7 @@ struct awl_state_t {
     void (*setfullscreen)(Client*, int);
     void (*ipc_send_toggle_vis)( struct wl_resource* );
 
+    sem_t* (*awl_is_ready_sem)( void );
     int (*awl_is_ready)( void );
     void (*awl_change_modkey)( uint32_t );
     void (*log)( const char*, int, const char*, int, const char*, ... );

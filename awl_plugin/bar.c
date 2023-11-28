@@ -172,7 +172,7 @@ struct Bar {
     uint32_t center_widget_start;
     int has_center_widget;
 
-    pthread_mutex_t draw_mtx;
+    sem_t draw_sem;
 
     Bar *prev, *next;
 };
@@ -548,7 +548,7 @@ static void taskbarwidget_scroll( Bar* bar, uint32_t pointer_x, int amount );
 static void taskbarwidget_click( Bar* bar, uint32_t pointer_x, int button );
 
 static int draw_frame(Bar *bar) {
-    pthread_mutex_lock(&bar->draw_mtx);
+    sem_wait(&bar->draw_sem);
     int result = 0;
     /* Allocate buffer to be attached to the surface */
     int fd = allocate_shm_file(bar->bufsize);
@@ -620,7 +620,7 @@ static int draw_frame(Bar *bar) {
     wl_surface_commit(bar->wl_surface);
 
 draw_frame_end:
-    pthread_mutex_unlock(&bar->draw_mtx);
+    sem_post(&bar->draw_sem);
     return result;
 }
 
@@ -1129,8 +1129,7 @@ static void setup_bar(Bar *bar) {
     bar->cpy_window_list = NULL;
     bar->cpy_n_window_list = 0;
     bar->layout = default_layout_name;
-    pthread_mutex_init( &bar->draw_mtx, NULL );
-    pthread_mutex_unlock( &bar->draw_mtx );
+    sem_init( &bar->draw_sem, 0, 1 );
 
     bar->n_widgets_left = bar->n_widgets_right = bar->has_center_widget = 0;
 
@@ -1254,8 +1253,8 @@ static void handle_global(void *data, struct wl_registry *registry,
 }
 
 static void teardown_bar(Bar *bar) {
-    pthread_mutex_unlock(&bar->draw_mtx);
-    pthread_mutex_destroy(&bar->draw_mtx);
+    sem_wait(&bar->draw_sem);
+    sem_destroy(&bar->draw_sem);
     if (bar->window_titles)
         free(bar->window_titles);
     zdwl_ipc_output_v2_destroy(bar->dwl_wm_output);
@@ -1382,7 +1381,8 @@ void* awl_bar_run( void* arg ) {
         P_awl_err_printf( "could not find state (deadlock?)" );
         usleep(100);
     }
-    while (!B->awl_is_ready()) usleep(100);
+    sem_wait( B->awl_is_ready_sem() );
+    sem_post( B->awl_is_ready_sem() );
     P_awl_log_printf( "starting bar thread" );
     (void)arg;
 

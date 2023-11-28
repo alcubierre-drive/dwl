@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include "../awl_log.h"
+#include "../awl_pthread.h"
 
 struct temp_thread_t {
     int running;
@@ -57,7 +58,7 @@ void start_temp_thread( awl_temperature_t* temp, int update_sec ) {
     temp->handle->running = 1;
     temp->handle->sleep_sec = update_sec;
     temp->handle->t = temp;
-    pthread_create( &temp->handle->me, NULL, temp_thread_run, temp->handle );
+    AWL_PTHREAD_CREATE( &temp->handle->me, NULL, temp_thread_run, temp->handle );
 }
 
 void stop_temp_thread( awl_temperature_t* temp ) {

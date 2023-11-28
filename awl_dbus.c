@@ -6,7 +6,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
-#include <pthread.h>
+#include "awl_pthread.h"
+#include <semaphore.h>
 #include <stdio.h>
 
 typedef struct {
@@ -23,7 +24,7 @@ struct awl_dbus_listener_t {
     int running;
 
     pthread_t receiver;
-    pthread_mutex_t mtx;
+    sem_t sem;
 };
 
 static void* receiver_thread(void* handle_) {
@@ -80,7 +81,7 @@ static void* receiver_thread(void* handle_) {
 
         if (msg)
             awl_log_printf("found message with path %s", dbus_message_get_path(msg));
-        pthread_mutex_lock(&handle->mtx);
+        sem_wait(&handle->sem);
 
         awl_dbus_callback_t *s, *tmp;
         HASH_ITER(hh, handle->callbacks, s, tmp) {
@@ -100,7 +101,7 @@ static void* receiver_thread(void* handle_) {
                 s->hook( sigvalue, s->userdata );
             }
         }
-        pthread_mutex_unlock(&handle->mtx);
+        sem_post(&handle->sem);
 
         // free the message
         dbus_message_unref(msg);
@@ -112,14 +113,13 @@ awl_dbus_listener_t* awl_dbus_init( void ) {
     awl_dbus_listener_t* h = calloc(1, sizeof(awl_dbus_listener_t));
     h->running = 1;
     h->callbacks = NULL;
-    pthread_mutex_init( &h->mtx, NULL );
-    pthread_create( &h->receiver, NULL, &receiver_thread, h );
+    sem_init( &h->sem, 0, 1 );
+    AWL_PTHREAD_CREATE( &h->receiver, NULL, &receiver_thread, h );
     return h;
 }
 
 void awl_dbus_add_callback( awl_dbus_listener_t* bus, const char* name_, awl_dbus_hook_t hook, void* userdata ) {
-
-    pthread_mutex_lock( &bus->mtx );
+    sem_wait( &bus->sem );
 
     awl_dbus_callback_t* s = NULL;
     HASH_FIND_STR(bus->callbacks, name_, s);
@@ -136,11 +136,11 @@ void awl_dbus_add_callback( awl_dbus_listener_t* bus, const char* name_, awl_dbu
     HASH_ADD_STR( bus->callbacks, name, s );
 
 end_add_callback:
-    pthread_mutex_unlock( &bus->mtx );
+    sem_post( &bus->sem );
 }
 
 void awl_dbus_remove_callback( awl_dbus_listener_t* bus, const char* name_ ) {
-    pthread_mutex_lock( &bus->mtx );
+    sem_wait( &bus->sem );
     awl_dbus_callback_t* s = NULL;
 
     HASH_FIND_STR(bus->callbacks, name_, s);
@@ -150,23 +150,23 @@ void awl_dbus_remove_callback( awl_dbus_listener_t* bus, const char* name_ ) {
     } else {
         awl_log_printf( "could not find callback %s", name_ );
     }
-    pthread_mutex_unlock( &bus->mtx );
+    sem_post( &bus->sem );
 }
 
 void awl_dbus_destroy( awl_dbus_listener_t* bus ) {
     bus->running = 0;
     pthread_join( bus->receiver, NULL );
 
-    pthread_mutex_lock( &bus->mtx );
+    sem_wait( &bus->sem );
     awl_dbus_callback_t *s, *tmp;
     HASH_ITER(hh, bus->callbacks, s, tmp) {
         HASH_DEL(bus->callbacks, s);
         free(s);
     }
     HASH_CLEAR(hh, bus->callbacks);
-    pthread_mutex_unlock( &bus->mtx );
+    sem_post( &bus->sem );
 
-    pthread_mutex_destroy( &bus->mtx );
+    sem_destroy( &bus->sem );
     free(bus);
 }
 

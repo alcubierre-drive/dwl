@@ -7,6 +7,7 @@
 #include "bar.h"
 #include "init.h"
 #include "../awl_log.h"
+#include "../awl_pthread.h"
 
 typedef struct PulseAudio {
     pa_mainloop* _mainloop;
@@ -46,7 +47,7 @@ pulse_test_t* start_pulse_thread( void ) {
         return NULL;
     }
     P_awl_log_printf( "create pulse_thread" );
-    pthread_create( &p->h->me, NULL, pulse_thread_fun, p );
+    AWL_PTHREAD_CREATE( &p->h->me, NULL, pulse_thread_fun, p );
     return p;
 }
 

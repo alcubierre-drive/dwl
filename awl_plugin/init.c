@@ -13,6 +13,8 @@
 #include "vector.h"
 #include <assert.h>
 
+#include "../awl_pthread.h"
+
 #define MIN(A,B) ((A)<(B)?(A):(B))
 #define MAX(A,B) ((A)>(B)?(A):(B))
 #define SHOULD_BE_TILED( c ) (!(c)->isfullscreen && !(c)->isfloating && !(c)->maximized)
@@ -211,6 +213,7 @@ typedef struct awl_persistent_plugin_data_t {
 
     bool oneshot;
     bool touched;
+    bool ignore;
 
     }; uint64_t _padding[16]; };
 
@@ -237,10 +240,12 @@ static void awl_plugin_init(void) {
         if (!data->touched) {
             data->oneshot = true; // TODO this should not live here
             data->touched = true;
+            data->ignore = true; // TODO remove
         }
         #define AUTOSTART( thing, cmd ) { \
-            if ( (data->oneshot && !data->pid_##thing) || \
-                (!data->oneshot && (kill(data->pid_##thing, 0) == -1 || !data->pid_##thing)) ) { \
+            if ( (!data->ignore && data->oneshot && !data->pid_##thing) || \
+                 (!data->ignore && !data->oneshot && \
+                    (kill(data->pid_##thing, 0) == -1 || !data->pid_##thing)) ) { \
                 P_awl_log_printf( "autostarting " #thing ); \
                 data->pid_##thing = spawn_pid_str( cmd ); \
             } \
@@ -495,11 +500,9 @@ static void awl_plugin_init(void) {
     // setup; the bar needs plugin data...
     S.P = P;
 
-    int s = pthread_create( &S.BarThread, NULL, awl_bar_run, NULL );
-    if (s != 0)
-        P_awl_err_printf( "pthread create: %s", strerror(s) );
+    AWL_PTHREAD_CREATE( &S.BarThread, NULL, awl_bar_run, NULL );
     P_awl_log_printf( "creating bar refresh" );
-    pthread_create( &S.BarRefreshThread, NULL, awl_bar_refresh, &P->refresh_sec );
+    AWL_PTHREAD_CREATE( &S.BarRefreshThread, NULL, awl_bar_refresh, &P->refresh_sec );
 
     char wpname[1024]; strcpy( wpname, getenv("HOME") ); strcat( wpname, "/Wallpapers/*.png" );
     P->wp = wallpaper_init( wpname, 1800 );

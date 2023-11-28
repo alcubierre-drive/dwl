@@ -20,4 +20,5 @@ void ipc_send_toggle_vis( struct wl_resource* resource );
 
 void awl_change_modkey( uint32_t modkey );
 int awl_is_ready( void );
+sem_t* awl_is_ready_sem( void );
 

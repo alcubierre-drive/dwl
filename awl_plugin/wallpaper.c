@@ -12,6 +12,7 @@
 #include "../awl.h"
 #include "../awl_log.h"
 #include "../awl_dbus.h"
+#include "../awl_pthread.h"
 
 #include <glob.h>
 #include <pthread.h>
@@ -106,14 +107,14 @@ awl_wallpaper_data_t* wallpaper_init( const char* fname, int update_seconds ) {
     // start with sth random :)
     if (d->random) d->index = next( d );
     d->idx_thread_update_sec = update_seconds;
-    pthread_create( &d->idx_thread, NULL, &wp_idx_thread_fun, d );
+    AWL_PTHREAD_CREATE( &d->idx_thread, NULL, &wp_idx_thread_fun, d );
 
     d->cache_thread_update_sec = update_seconds*(3./0.987);
-    pthread_create( &d->cache_thread, NULL, &wp_cache_cleaner, d );
+    AWL_PTHREAD_CREATE( &d->cache_thread, NULL, &wp_cache_cleaner, d );
 
     d->w = awl_minimal_window_setup( &p );
     awl_minimal_window_set_userdata( d->w, d );
-    pthread_create( &d->update_display_thread, NULL, &wp_update_display, d );
+    AWL_PTHREAD_CREATE( &d->update_display_thread, NULL, &wp_update_display, d );
 
     awl_state_t* B = AWL_VTABLE_SYM.state;
     if (B && B->dbus) B->dbus_add_callback( B->dbus, "wallpaper", &wallpaper_dbus_hook, d );
@@ -129,14 +130,16 @@ void wallpaper_destroy( awl_wallpaper_data_t* d ) {
     if (d->number) globfree( &d->glob );
     awl_dirent_destroy( *d->dirent );
 
+    // gather the threads
     pthread_mutex_lock( &d->cache_mtx );
     if (!pthread_cancel( d->cache_thread )) pthread_join( d->cache_thread, NULL );
     pthread_mutex_unlock( &d->cache_mtx );
-
     struct wl_display *display;
     pthread_join( d->update_display_thread, (void**)&display );
     if (display) wl_display_disconnect(display);
+    if (!pthread_cancel( d->idx_thread )) pthread_join( d->idx_thread, NULL );
 
+    // clear the cache
     wp_cache_t *wp, *tmp;
     int num_cleared = 0;
     HASH_ITER(hh, d->cache, wp, tmp) {
@@ -146,8 +149,6 @@ void wallpaper_destroy( awl_wallpaper_data_t* d ) {
         num_cleared++;
     }
     P_awl_log_printf( "wallpaper_destroy(): cleared %i cache entries", num_cleared );
-
-    if (!pthread_cancel( d->idx_thread )) pthread_join( d->idx_thread, NULL );
 
     pthread_mutex_unlock( &d->cache_mtx ); pthread_mutex_destroy( &d->cache_mtx );
     pthread_mutex_unlock( &d->idx_mtx ); pthread_mutex_destroy( &d->idx_mtx );
@@ -207,6 +208,10 @@ static void wallpaper_draw( AWL_SingleWindow* win, pixman_image_t* final ) {
     pthread_mutex_lock( &d->cache_mtx );
     HASH_FIND(hh, d->cache, &item.id, sizeof(u128t), found);
     if (!found) {
+        found = calloc(1,sizeof(wp_cache_t));
+        found->id = md5;
+        found->time = time(NULL);
+
         FILE* f = fopen(wpfname, "r");
         if (!f) {
             P_awl_err_printf("could not open file %s", wpfname);
@@ -234,18 +239,12 @@ static void wallpaper_draw( AWL_SingleWindow* win, pixman_image_t* final ) {
         pixman_transform_from_pixman_f_transform(&t2, &t);
         pixman_image_set_transform(png_image, &t2);
         pixman_image_set_filter(png_image, PIXMAN_FILTER_BEST, NULL, 0);
-        pixman_image_t* bg = pixman_image_create_bits(PIXMAN_a8r8g8b8, win->width, win->height, NULL, win->width*4);
-        pixman_image_composite32(PIXMAN_OP_OVER, png_image, NULL, bg, 0, 0, 0, 0, 0, 0, win->width, win->height);
+        found->img = pixman_image_create_bits(PIXMAN_a8r8g8b8, win->width, win->height, NULL, win->width*4);
+        pixman_image_composite32(PIXMAN_OP_OVER, png_image, NULL, found->img, 0, 0, 0, 0, 0, 0, win->width, win->height);
         pixman_image_unref(png_image);
-
-        found = calloc(1,sizeof(wp_cache_t));
-        found->id = md5;
-        found->img = bg;
-        found->time = time(NULL);
-        found->memsz = ((uint64_t)PIXMAN_FORMAT_BPP(pixman_image_get_format(bg)) *
-                                  pixman_image_get_width(bg) * pixman_image_get_height(bg))/8 +
+        found->memsz = ((uint64_t)PIXMAN_FORMAT_BPP(pixman_image_get_format(found->img)) *
+                                  pixman_image_get_width(found->img) * pixman_image_get_height(found->img))/8 +
                        sizeof(wp_cache_t);
-
         HASH_ADD(hh, d->cache, id, sizeof(u128t), found);
     }
     // set wallpaper from cache

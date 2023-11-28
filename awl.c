@@ -145,7 +145,10 @@ static void sethints(struct wl_listener *listener, void *data);
 static void xwaylandready(struct wl_listener *listener, void *data);
 
 static int awl_ready = 0;
+static sem_t awl_ready_sem = {0};
+static int awl_ready_sem_maxthread = 32;
 int awl_is_ready( void ) { return awl_ready; }
+sem_t* awl_is_ready_sem( void ) { return &awl_ready_sem; }
 
 static int defer_reload = 0;
 static int log_level = WLR_ERROR;
@@ -457,6 +460,7 @@ static void cleanup(void) {
     wlr_output_layout_destroy(B->output_layout);
     wlr_seat_destroy(B->seat);
     wl_display_destroy(B->dpy);
+    sem_destroy( &awl_ready_sem );
 }
 
 static void cleanupkeyboard(struct wl_listener *listener, void *data) {
@@ -1829,6 +1833,8 @@ static void run(char *startup_cmd) {
      * loop configuration to listen to libinput events, DRM events, generate
      * frame events at the refresh rate, and so on. */
     awl_ready = 1;
+    for (int i=0; i<awl_ready_sem_maxthread; ++i)
+        sem_post( &awl_ready_sem );
     wl_display_run(B->dpy);
 }
 
@@ -2489,6 +2495,8 @@ static void updatemons_dbus_hook( const char* str, void* data ) {
 }
 
 int main(int argc, char *argv[]) {
+    sem_init( &awl_ready_sem, 0, 1 );
+    sem_wait( &awl_ready_sem );
     char *startup_cmd = NULL;
     int c;
     int awl_loglevel = 2;

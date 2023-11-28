@@ -6,6 +6,7 @@
 
 #include "init.h"
 #include "../awl_log.h"
+#include "../awl_pthread.h"
 
 static const char bat_prefix[] = "/sys/class/power_supply/BAT0/";
 
@@ -61,7 +62,7 @@ awl_battery_t* start_bat_thread( int update_sec ) {
     b->update_sec = update_sec;
     pthread_mutex_init( &b->mtx, NULL );
     P_awl_log_printf( "creating bat_thread" );
-    pthread_create( &b->me, NULL, bat, b );
+    AWL_PTHREAD_CREATE( &b->me, NULL, bat, b );
     return b;
 }
 

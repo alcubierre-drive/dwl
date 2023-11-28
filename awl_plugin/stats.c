@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include "../awl_pthread.h"
 
 static void* stats_thread_run( void* arg );
 
@@ -23,7 +24,7 @@ awl_stats_t* start_stats_thread( int nval_cpu, int nval_mem, int nval_swp, int u
     st->update_sec = update_sec;
     st->sizes_table = calloc(20, sizeof(uint64_t));
     pthread_mutex_init( &st->mtx, NULL );
-    pthread_create( &st->me, NULL, stats_thread_run, st );
+    AWL_PTHREAD_CREATE( &st->me, NULL, stats_thread_run, st );
     return st;
 }
 

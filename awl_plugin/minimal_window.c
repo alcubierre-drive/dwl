@@ -13,6 +13,7 @@
 #include "../awl_state.h"
 #include "init.h"
 #include "../awl.h"
+#include "../awl_pthread.h"
 
 #include "xdg-shell-protocol.h"
 
@@ -368,7 +369,7 @@ AWL_Window* awl_minimal_window_setup( const awl_minimal_window_props_t* props ) 
     w->scroll = props->scroll;
     pthread_mutex_init( &w->showmtx, NULL );
     P_awl_log_printf( "create window event thread (%p)", w );
-    pthread_create( &w->event_thread, NULL, awl_minimal_window_event_loop_thread, w );
+    AWL_PTHREAD_CREATE( &w->event_thread, NULL, awl_minimal_window_event_loop_thread, w );
     return w;
 }
 
@@ -378,7 +379,8 @@ static void awl_minimal_window_setup_async( AWL_Window* w ) {
         P_awl_err_printf( "could not find state (deadlock?)" );
         usleep(100);
     }
-    while (!B->awl_is_ready()) usleep(100);
+    sem_wait( B->awl_is_ready_sem() );
+    sem_post( B->awl_is_ready_sem() );
     w->display = wl_display_connect(NULL);
     if (!w->display) P_awl_err_printf("Failed to create display");
     w->registry = wl_display_get_registry(w->display);
