@@ -34,11 +34,19 @@
 #include "init.h"
 #include "pulsetest.h"
 
+struct awl_bar_handle_t {
+    int redraw_fd;
+    float refresh_sec;
+
+    _Atomic int running;
+
+    pthread_t bar;
+    sem_t bar_init_sem;
+    pthread_t refresh;
+};
+
 #define MIN(A,B) ((A)<(B)?(A):(B))
 #define MAX(A,B) ((A)>(B)?(A):(B))
-
-static bool has_init = false;
-static int redraw_fd = -1;
 
 enum pointer_event_mask {
     POINTER_EVENT_ENTER = 1 << 0,
@@ -107,12 +115,6 @@ awlb_color_t barcolors = {
 
 #define TEXT_MAX 2048
 
-static bool awl_bar_is_running = false;
-
-void awl_bar_set_running( int running ) {
-    awl_bar_is_running = running;
-}
-
 typedef struct {
     pixman_color_t color;
     bool bg;
@@ -173,6 +175,7 @@ struct Bar {
     int has_center_widget;
 
     sem_t draw_sem;
+    awl_bar_handle_t* handle;
 
     Bar *prev, *next;
 };
@@ -219,7 +222,7 @@ static sem_t font_sem = {0};
 static int font_sem_nusers = 32;
 
 #define CHECKFONT( expr, fail ) \
-    sem_wait( &font_sem ); \
+    if (sem_trywait( &font_sem ) == -1) return fail; \
     if (!font) { \
         sem_post( &font_sem ); \
         return fail ; \
@@ -648,9 +651,9 @@ static void layer_surface_configure(void *data, struct zwlr_layer_surface_v1 *su
 }
 
 static void layer_surface_closed(void *data, struct zwlr_layer_surface_v1 *surface) {
-    (void)data;
     (void)surface;
-    awl_bar_is_running = false;
+    Bar* bar = (Bar*)data;
+    atomic_store( &bar->handle->running, 0 );
 }
 
 static const struct zwlr_layer_surface_v1_listener layer_surface_listener = {
@@ -1224,8 +1227,8 @@ static void setup_bar(Bar *bar) {
 
 static void handle_global(void *data, struct wl_registry *registry,
           uint32_t name, const char *interface, uint32_t version) {
-    (void)data;
     (void)version;
+    awl_bar_handle_t* handle = (awl_bar_handle_t*)data;
     if (!strcmp(interface, wl_compositor_interface.name)) {
         compositor = wl_registry_bind(registry, name, &wl_compositor_interface, 4);
     } else if (!strcmp(interface, wl_shm_interface.name)) {
@@ -1241,7 +1244,8 @@ static void handle_global(void *data, struct wl_registry *registry,
         Bar *bar = calloc(1, sizeof(Bar));
         bar->registry_name = name;
         bar->wl_output = wl_registry_bind(registry, name, &wl_output_interface, 1);
-        if (awl_bar_is_running)
+        bar->handle = handle;
+        if (atomic_load( &handle->running ))
             setup_bar(bar);
         DL_APPEND(bar_list, bar);
     } else if (!strcmp(interface, wl_seat_interface.name)) {
@@ -1305,19 +1309,19 @@ static const struct wl_registry_listener registry_listener = {
     .global_remove = handle_global_remove
 };
 
-static void event_loop(void) {
+static void event_loop( awl_bar_handle_t* h ) {
     P_awl_log_printf( "bar event loop" );
     int wl_fd = wl_display_get_fd(display);
 
-    while (awl_bar_is_running) {
+    while (atomic_load(&h->running)) {
         fd_set rfds;
         FD_ZERO(&rfds);
         FD_SET(wl_fd, &rfds);
-        FD_SET(redraw_fd, &rfds);
+        FD_SET(h->redraw_fd, &rfds);
 
         wl_display_flush(display);
 
-        if (select(MAX(redraw_fd,wl_fd)+1, &rfds, NULL, NULL, NULL) == -1) {
+        if (select(MAX(h->redraw_fd,wl_fd)+1, &rfds, NULL, NULL, NULL) == -1) {
             if (errno == EINTR)
                 continue;
             else
@@ -1326,9 +1330,9 @@ static void event_loop(void) {
         if (FD_ISSET(wl_fd, &rfds))
             if (wl_display_dispatch(display) == -1)
                 break;
-        if (FD_ISSET(redraw_fd, &rfds)) {
+        if (FD_ISSET(h->redraw_fd, &rfds)) {
             uint64_t val = 0;
-            eventfd_read(redraw_fd, &val);
+            eventfd_read(h->redraw_fd, &val);
         }
 
         Bar *bar;
@@ -1340,14 +1344,28 @@ static void event_loop(void) {
             }
         }
     }
-
 }
 
-static void cleanup_fun(void* arg) {
+void awl_bar_refresh( awl_bar_handle_t* h, int redraw ) {
+    sem_wait( &h->bar_init_sem );
+    sem_post( &h->bar_init_sem );
+    Bar* bar;
+    DL_FOREACH(bar_list, bar) {
+        bar->redraw = redraw;
+    }
+    eventfd_write(h->redraw_fd, 1);
+}
+
+void awl_bar_stop( awl_bar_handle_t* h ) {
     P_awl_log_printf( "entering bar cleanup" );
-    (void)arg;
-    if (redraw_fd != -1) close( redraw_fd );
-    free( widget_boxes );
+    sem_wait( &h->bar_init_sem );
+    atomic_store( &h->running, 0 );
+    eventfd_write( h->redraw_fd, 1 );
+    pthread_join( h->bar, NULL );
+    if (!pthread_cancel( h->refresh )) pthread_join( h->refresh, NULL );
+    if (h->redraw_fd != -1) close( h->redraw_fd );
+
+    free( widget_boxes ); // TODO this data belongs to someone...
 
     Bar *bar, *bar2;
     Seat *seat, *seat2;
@@ -1373,19 +1391,32 @@ static void cleanup_fun(void* arg) {
     wl_shm_destroy(shm);
     wl_compositor_destroy(compositor);
     wl_display_disconnect(display);
+
+    free( h );
     P_awl_log_printf( "done with bar cleanup" );
 }
 
-void* awl_bar_run( void* arg ) {
-    awl_state_t* B = NULL;
-    while ((B = awl_plugin_state()) == NULL) {
-        P_awl_err_printf( "could not find state (deadlock?)" );
-        usleep(100);
-    }
+static void* awl_bar_run_async( void* arg );
+static void* awl_bar_refresher( void* arg );
+
+awl_bar_handle_t* awl_bar_run( float refresh_sec ) {
+    P_awl_log_printf( "starting bar thread" );
+    awl_bar_handle_t* h = calloc(1, sizeof(awl_bar_handle_t));
+    h->refresh_sec = refresh_sec;
+    sem_init( &h->bar_init_sem, 0, 1 );
+    sem_wait( &h->bar_init_sem );
+
+    AWL_PTHREAD_CREATE( &h->bar, NULL, awl_bar_run_async, h );
+    AWL_PTHREAD_CREATE( &h->refresh, NULL, awl_bar_refresher, h );
+    return h;
+}
+
+static void* awl_bar_run_async( void* arg ) {
+    awl_bar_handle_t* h = (awl_bar_handle_t*)(arg);
+    awl_state_t* B = awl_plugin_state();
+    if (!B) return NULL;
     sem_wait( B->awl_is_ready_sem() );
     sem_post( B->awl_is_ready_sem() );
-    P_awl_log_printf( "starting bar thread" );
-    (void)arg;
 
     /* Set up display and protocols */
     display = wl_display_connect(NULL);
@@ -1393,7 +1424,7 @@ void* awl_bar_run( void* arg ) {
         P_awl_err_printf( "Failed to create display" );
 
     struct wl_registry *registry = wl_display_get_registry(display);
-    wl_registry_add_listener(registry, &registry_listener, NULL);
+    wl_registry_add_listener(registry, &registry_listener, h);
     wl_display_roundtrip(display);
     if (!compositor || !shm || !layer_shell || !output_manager || !dwl_wm)
         P_awl_err_printf( "Compositor does not support all needed protocols" );
@@ -1420,33 +1451,25 @@ void* awl_bar_run( void* arg ) {
     }
     wl_display_roundtrip(display);
 
-    redraw_fd = eventfd(0,0);
-
-    pthread_cleanup_push( &cleanup_fun, NULL );
-    awl_bar_is_running = true;
-    has_init = true;
-    event_loop();
-    has_init = false;
-    pthread_cleanup_pop( true );
-
+    h->redraw_fd = eventfd(0,0);
+    sem_post( &h->bar_init_sem );
+    atomic_init( &h->running, 1 );
+    event_loop( h );
     return NULL;
 }
 
-static void awl_bar_refresh_fun( void ) {
-    if (!has_init) return;
-    Bar* bar;
-    DL_FOREACH(bar_list, bar) {
-        bar->redraw = true;
-    }
-    eventfd_write(redraw_fd, 1);
-}
-
-void* awl_bar_refresh( void* arg ) {
-    float* prsec = (float*)arg;
-    P_awl_log_printf( "started bar refresh thread (%.2fs)", *prsec );
-    while (1) {
-        usleep( (useconds_t)(*prsec * 1.e6) );
-        awl_bar_refresh_fun();
+static void* awl_bar_refresher( void* arg ) {
+    awl_bar_handle_t* h = (awl_bar_handle_t*)arg;
+    sem_wait( &h->bar_init_sem );
+    sem_post( &h->bar_init_sem );
+    P_awl_log_printf( "started bar refresh thread (%.2fs)", h->refresh_sec );
+    while (true) {
+        usleep( (useconds_t)(h->refresh_sec * 1.e6) );
+        Bar* bar;
+        DL_FOREACH(bar_list, bar) {
+            bar->redraw = true;
+        }
+        eventfd_write(h->redraw_fd, 1);
     }
     return NULL;
 }
@@ -1606,46 +1629,47 @@ static void clockwidget_click( Bar* bar, uint32_t pointer_x, int button ) {
 static uint32_t pulsewidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
     awl_plugin_data_t* P = awl_plugin_data();
     if (!P) return 0;
-
+    if (!P->pulse) return 0;
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
     char string[8];
     pixman_color_t _molokai_red = color_8bit_to_16bit(molokai_red),
                    _molokai_orange = color_8bit_to_16bit(molokai_orange);
-    if (P->pulse) {
-        sprintf( string, "%3.0f%%", P->pulse->value * 100.0f );
-        draw_text( string, x, y, foreground, background,
-                   P->pulse->muted ? &_molokai_orange :
-                                            lround(P->pulse->value*100.0) > 100 ?
-                                            &_molokai_red : &barcolors.fg_status,
-                   &barcolors.bg_status, bar->width, bar->height, bar->textpadding );
-    }
+    float val = atomic_load( &P->pulse->value );
+    int muted = atomic_load( &P->pulse->muted );
+    sprintf( string, "%3.0f%%", val * 100.0f );
+    draw_text( string, x, y, foreground, background, muted ? &_molokai_orange :
+                        lround(val*100.0) > 100 ? &_molokai_red : &barcolors.fg_status,
+                        &barcolors.bg_status, bar->width, bar->height, bar->textpadding );
     return TEXT_WIDTH( "100%", -1, bar->textpadding );
 }
 
 static uint32_t ipwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
     awl_plugin_data_t* P = awl_plugin_data();
     if (!P) return 0;
+    if (!P->ip) return 0;
+    /* if (sem_trywait( &P->ip->sem ) == -1) return 0; */
 
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
     pixman_color_t _molokai_red = color_8bit_to_16bit(molokai_red),
                    _molokai_green = color_8bit_to_16bit(molokai_green);
-    while (!P->ip->ready) usleep(10);
     if (*P->ip->address_string) {
         draw_text( P->ip->address_string, x, y, foreground, background,
                    P->ip->is_online ? &_molokai_green : &_molokai_red,
                    &barcolors.bg_status, bar->width, bar->height, bar->textpadding );
         return TEXT_WIDTH( P->ip->address_string, -1, bar->textpadding );
     }
+    /* sem_post( &P->ip->sem ); */
     return TEXT_WIDTH( "ipaddr", -1, bar->textpadding );
 }
 
 static uint32_t tempwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
     awl_plugin_data_t* P = awl_plugin_data();
     if (!P) return 0;
+    if (!P->temp) return 0;
+    /* if (sem_trywait( &P->temp->sem ) == -1) return 0; */
 
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
     uint32_t width = 0;
-    while (!P->temp->ready) usleep(100);
     for (int i=0; i<P->temp->ntemps; ++i) {
         char text[128] = {0};
         // only put the label if the string is set
@@ -1661,6 +1685,7 @@ static uint32_t tempwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foregroun
         width += w;
         x += w;
     }
+    /* sem_post( &P->temp->sem ); */
     return width;
 }
 
@@ -1668,6 +1693,8 @@ static uint32_t tempwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foregroun
 static uint32_t batwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
     awl_plugin_data_t* P = awl_plugin_data();
     if (!P) return 0;
+    if (!P->bat) return 0;
+    if (sem_trywait( &P->bat->sem ) == -1) return 0;
 
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
     if (P->bat->charging < 0) return 0;
@@ -1681,6 +1708,7 @@ static uint32_t batwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground
     if (P->bat->charging)       fgcolor = color_8bit_to_16bit( molokai_green );
     draw_text( text, x, y, foreground, background, &fgcolor, &barcolors.bg_status,
                bar->width, bar->height, bar->textpadding );
+    sem_post( &P->bat->sem );
     return TEXT_WIDTH( text, -1, bar->textpadding );
 }
 #endif
@@ -1719,15 +1747,14 @@ static uint32_t systray_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, 
     return 128;
 }
 
-static uint32_t statuswidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
-    (void)foreground;
-
+static uint32_t statuswidget_draw( Bar* bar, uint32_t x, pixman_image_t* fg, pixman_image_t* background ) {
+    (void)fg;
     awl_plugin_data_t* P = awl_plugin_data();
     if (!P) return 0;
+    if (!P->stats) return 0;
+    /* if (sem_trywait( &P->stats->sem ) == -1) return 0; */
 
     awl_stats_t* st = P->stats;
-    if (!st) return 0;
-
     uint32_t widget_width = st->ncpu + st->nmem + st->nswp;
     const int ncpu = st->ncpu,
               nmem = st->nmem,
@@ -1771,6 +1798,7 @@ static uint32_t statuswidget_draw( Bar* bar, uint32_t x, pixman_image_t* foregro
     pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &barcolors.fg_stats_cpu, ncpu, b_cpu);
     pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &barcolors.fg_stats_mem, nmem, b_mem);
     pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &barcolors.fg_stats_swp, nswp, b_swp);
+    /* sem_post( &st->sem ); */
 
     return widget_width;
 }

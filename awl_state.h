@@ -6,6 +6,7 @@ typedef struct awl_state_t awl_state_t;
 typedef struct awl_config_t awl_config_t;
 typedef struct awl_plugin_data_t awl_plugin_data_t;
 typedef struct awl_dbus_listener_t awl_dbus_listener_t;
+typedef struct awl_bar_handle_t awl_bar_handle_t;
 typedef void (*awl_dbus_hook_t)( const char* signal, void* userdata );
 
 typedef struct LayerSurface LayerSurface;
@@ -50,12 +51,9 @@ struct awl_config_t {
     ARRAY( Key, keys )
     ARRAY( Button, buttons )
 
-    pthread_t BarThread;
-    pthread_t BarRefreshThread;
-
     // functions needed in awl.c, but inherently belonging to awl_plugin/init.c
     void (*setlayout)( const Arg* );
-
+    awl_bar_handle_t* bars;
     awl_plugin_data_t* P;
 };
 

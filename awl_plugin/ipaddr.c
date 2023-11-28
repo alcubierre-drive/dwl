@@ -24,7 +24,6 @@ static void* ip_thread_run( void* arg ) {
 
         sem_wait( &ip->sem );
         ip->is_online = 1;
-        ip->ready = 0;
 
         int first = 1;
         char* addr = ip->address_string;
@@ -66,7 +65,6 @@ static void* ip_thread_run( void* arg ) {
         }
 loopend:
         freeifaddrs(ifaddr);
-        ip->ready = 1;
 
         sem_post( &ip->sem );
         sleep(ip->sleep_sec);

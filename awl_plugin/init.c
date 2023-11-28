@@ -499,10 +499,7 @@ static void awl_plugin_init(void) {
     // it is imortant to set the plugin data before actually going into the bar
     // setup; the bar needs plugin data...
     S.P = P;
-
-    AWL_PTHREAD_CREATE( &S.BarThread, NULL, awl_bar_run, NULL );
-    P_awl_log_printf( "creating bar refresh" );
-    AWL_PTHREAD_CREATE( &S.BarRefreshThread, NULL, awl_bar_refresh, &P->refresh_sec );
+    S.bars = awl_bar_run( P->refresh_sec );
 
     char wpname[1024]; strcpy( wpname, getenv("HOME") ); strcat( wpname, "/Wallpapers/*.png" );
     P->wp = wallpaper_init( wpname, 1800 );
@@ -521,17 +518,8 @@ static void awl_plugin_free(void) {
     free(S.keys);
     free(S.buttons);
 
-    // cancel bar refreshing
-    if (!pthread_cancel( S.BarRefreshThread )) pthread_join( S.BarRefreshThread, NULL );
-    P_awl_log_printf( "cancel bar refresh thread" );
-
-    // and cancel the bar thread itself
-    awl_state_t* B = AWL_VTABLE_SYM.state;
-    P_awl_log_printf( "cleanup vtable state: %p", B );
-    if (B) {
-        awl_bar_set_running( 0 );
-        if (!pthread_cancel( S.BarThread )) pthread_join( S.BarThread, NULL );
-    }
+    P_awl_log_printf( "cancel bar thread" );
+    awl_bar_stop( S.bars );
 
     // now to all the plugin data threads
     P_awl_log_printf("stop stats thread");

@@ -76,7 +76,7 @@ void awl_log_printer_( const char* logname, int loglevel, const char* fname, int
     time(&t);
     struct tm slt = {0};
     struct tm* lt = localtime_r(&t, &slt);
-    char prefix[1024] = {0};
+    char* prefix = calloc(1,1024);
     strftime( prefix, 128, "%F %T ", lt );
     char* p = prefix + strlen(prefix);
     char logname_upper[32] = {0};
@@ -91,9 +91,10 @@ void awl_log_printer_( const char* logname, int loglevel, const char* fname, int
     vfprintf( awllg, fmt, ap );
     va_end( ap );
     fputc( '\n', awllg );
-
     fflush(awllg);
     sem_post( &awllg_sem );
+
+    free( prefix );
 }
 
 static void create_dir( const char* path ) {

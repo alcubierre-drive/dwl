@@ -1,4 +1,5 @@
 #include "awl_dbus.h"
+#include "awl_pthread.h"
 #include "awl_log.h"
 
 #include <uthash.h>
@@ -6,7 +7,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
-#include "awl_pthread.h"
 #include <semaphore.h>
 #include <stdio.h>
 

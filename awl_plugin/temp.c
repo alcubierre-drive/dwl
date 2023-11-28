@@ -1,11 +1,11 @@
+#include "../awl_pthread.h"
+#include "../awl_log.h"
 #include "temp.h"
 #include <string.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include "../awl_log.h"
-#include "../awl_pthread.h"
 
 struct temp_thread_t {
     int running;
@@ -18,6 +18,8 @@ struct temp_thread_t {
 static void temp_thread_cleanup( void* arg ) {
     temp_thread_t* T = arg;
     if (T) {
+        sem_wait( &T->t->sem );
+        sem_destroy( &T->t->sem );
         T->running = 0;
         T->sleep_sec = 0;
         if (T->f) fclose(T->f);
@@ -31,7 +33,7 @@ static void* temp_thread_run( void* arg ) {
 
     awl_temperature_t* temp = T->t;
     while (T->running) {
-        temp->ready = 0;
+        sem_wait( &temp->sem );
         temp->ntemps = 0;
         for (int i=0; i<temp->f_ntemps; ++i) {
             if ((T->f = fopen(temp->f_files[i], "r"))) {
@@ -45,7 +47,7 @@ static void* temp_thread_run( void* arg ) {
                 T->f = NULL;
             }
         }
-        temp->ready = 1;
+        sem_post( &temp->sem );
         sleep(T->sleep_sec);
     }
 
@@ -58,6 +60,7 @@ void start_temp_thread( awl_temperature_t* temp, int update_sec ) {
     temp->handle->running = 1;
     temp->handle->sleep_sec = update_sec;
     temp->handle->t = temp;
+    sem_init( &temp->sem, 0, 1 );
     AWL_PTHREAD_CREATE( &temp->handle->me, NULL, temp_thread_run, temp->handle );
 }
 

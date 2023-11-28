@@ -1,4 +1,6 @@
 /* g++ $(shell pkg-config libpulse --cflags --libs) pulsetest.c -o pulsetest */
+#include "../awl_pthread.h"
+#include "../awl_log.h"
 #include <stdio.h>
 #include <assert.h>
 #include <pulse/pulseaudio.h>
@@ -6,8 +8,6 @@
 #include "pulsetest.h"
 #include "bar.h"
 #include "init.h"
-#include "../awl_log.h"
-#include "../awl_pthread.h"
 
 typedef struct PulseAudio {
     pa_mainloop* _mainloop;
@@ -40,6 +40,8 @@ pulse_test_t* start_pulse_thread( void ) {
     pulse_test_t* p = calloc(1, sizeof(pulse_test_t));
     p->h = calloc(1, sizeof(pulse_test_thread_t));
     p->h->PA.t = p;
+    atomic_init( &p->value, 0 );
+    atomic_init( &p->muted, 0 );
 
     if (!PulseAudio_initialize( &p->h->PA )) {
         free( p->h );
@@ -126,8 +128,8 @@ static void sink_info_callback(pa_context *c, const pa_sink_info *i, int eol, vo
 
     pulse_test_t* t = ((PulseAudio*)userdata)->t;
     if (i && t) {
-        t->value = (float)pa_cvolume_avg(&(i->volume)) / (float)PA_VOLUME_NORM;
-        t->muted = i->mute;
+        atomic_store( &t->value, (float)pa_cvolume_avg(&(i->volume)) / (float)PA_VOLUME_NORM );
+        atomic_store( &t->muted, i->mute );
     }
 }
 

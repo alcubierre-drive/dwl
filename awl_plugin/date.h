@@ -1,6 +1,6 @@
 #pragma once
 
-#include <pthread.h>
+#include "../awl_pthread.h"
 #include <semaphore.h>
 
 typedef struct awl_date_t {

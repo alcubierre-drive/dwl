@@ -1,12 +1,11 @@
 #pragma once
 
-#include <pthread.h>
+#include "../awl_pthread.h"
 #include <semaphore.h>
 
 struct awl_ipaddr_t {
-    char address_string[2046];
+    char address_string[2047];
     unsigned char is_online;
-    unsigned char ready;
 
     pthread_t me;
     int sleep_sec, running;

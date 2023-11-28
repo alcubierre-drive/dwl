@@ -1,3 +1,4 @@
+#include "../awl_pthread.h"
 #include "wbg_png.h"
 
 #include <stdlib.h>

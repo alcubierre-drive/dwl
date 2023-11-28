@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <semaphore.h>
 
 typedef struct temp_thread_t temp_thread_t;
 
@@ -18,6 +19,7 @@ typedef struct awl_temperature_t {
     uint8_t f_ntemps;
 
     temp_thread_t* handle;
+    sem_t sem;
 } awl_temperature_t;
 
 void start_temp_thread( awl_temperature_t* t, int update_sec );

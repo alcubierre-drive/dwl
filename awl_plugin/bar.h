@@ -5,9 +5,11 @@
 #include "colors.h"
 
 typedef struct Bar Bar;
-void* awl_bar_run( void* arg );
-void* awl_bar_refresh( void* arg );
-void awl_bar_set_running( int running );
+typedef struct awl_bar_handle_t awl_bar_handle_t;
+
+awl_bar_handle_t* awl_bar_run( float refresh_sec );
+void awl_bar_stop( awl_bar_handle_t* h );
+void awl_bar_refresh( awl_bar_handle_t* h, int redraw );
 
 typedef struct awlb_color_t {
     pixman_color_t bg_tags, bg_tags_occ, bg_tags_act, bg_tags_urg, fg_tags,

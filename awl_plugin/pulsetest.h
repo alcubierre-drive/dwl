@@ -1,10 +1,12 @@
 #pragma once
 
+#include <stdatomic.h>
+
 typedef struct pulse_test_thread_t pulse_test_thread_t;
 
 typedef struct pulse_test_t {
-    float value;
-    int muted;
+    _Atomic float value;
+    _Atomic int muted;
 
     int ret;
 
