@@ -11,6 +11,7 @@
 #include "bat.h"
 #include "pulsetest.h"
 #include "date.h"
+#include "wallpaper.h"
 
 #include <unistd.h>
 
@@ -28,6 +29,7 @@ typedef struct awl_plugin_data_t {
     pulse_test_t* pulse;
 
     awl_calendar_t* cal;
+    awl_wallpaper_data_t* wp;
 
     void (*cycle_tag)( const Arg* );
     void (*cycle_layout)( const Arg* );

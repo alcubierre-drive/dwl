@@ -99,7 +99,6 @@ struct AWL_Window {
     double continuous_event_norm; // 10.0;
 
     pthread_t event_thread;
-    pthread_attr_t* event_thread_attr;
 
     void* userdata;
 };
@@ -369,10 +368,7 @@ AWL_Window* awl_minimal_window_setup( const awl_minimal_window_props_t* props ) 
     w->scroll = props->scroll;
     pthread_mutex_init( &w->showmtx, NULL );
     P_awl_log_printf( "create window event thread (%p)", w );
-    w->event_thread_attr = calloc(1,sizeof(pthread_attr_t));
-    pthread_attr_init( w->event_thread_attr );
-    pthread_attr_setstacksize( w->event_thread_attr, 1024ul*1024ul*64ul );
-    pthread_create( &w->event_thread, w->event_thread_attr, awl_minimal_window_event_loop_thread, w );
+    pthread_create( &w->event_thread, NULL, awl_minimal_window_event_loop_thread, w );
     return w;
 }
 
@@ -489,8 +485,6 @@ void awl_minimal_window_destroy( AWL_Window* w ) {
         pthread_mutex_unlock( &w->showmtx );
         pthread_join( w->event_thread, NULL );
     }
-    if (w->event_thread_attr) pthread_attr_destroy( w->event_thread_attr );
-    free( w->event_thread_attr );
     w->has_init = 0;
     if (w->redraw_fd != -1) close( w->redraw_fd );
 

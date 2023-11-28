@@ -501,12 +501,8 @@ static void awl_plugin_init(void) {
     P_awl_log_printf( "creating bar refresh" );
     pthread_create( &S.BarRefreshThread, NULL, awl_bar_refresh, &P->refresh_sec );
 
-    // wallpaper somewhat separate. this is ok. it checks for awl_is_ready in
-    // its own non-blocking thread
-    char wpname[1024];
-    strcpy( wpname, getenv("HOME") );
-    strcat( wpname, "/Wallpapers/*.png" );
-    wallpaper_init( wpname, 1800 );
+    char wpname[1024]; strcpy( wpname, getenv("HOME") ); strcat( wpname, "/Wallpapers/*.png" );
+    P->wp = wallpaper_init( wpname, 1800 );
 }
 
 static void awl_plugin_free(void) {
@@ -551,10 +547,8 @@ static void awl_plugin_free(void) {
 
     P_awl_log_printf("destroy cal");
     if (S.P->cal) calendar_destroy( S.P->cal );
-
-    // again wallpaper somewhat separate
-    P_awl_log_printf( "entering wallpaper destroy" );
-    wallpaper_destroy();
+    P_awl_log_printf("destroy wallpaper");
+    if (S.P->wp) wallpaper_destroy(S.P->wp);
 
     // free the plugin data somewhat last
     free(S.P);
