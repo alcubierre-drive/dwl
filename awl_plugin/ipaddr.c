@@ -22,7 +22,7 @@ static void* ip_thread_run( void* arg ) {
     if (!ip) return NULL;
     while (ip->running) {
 
-        pthread_mutex_lock( &ip->mtx );
+        sem_wait( &ip->sem );
         ip->is_online = 1;
         ip->ready = 0;
 
@@ -68,7 +68,7 @@ loopend:
         freeifaddrs(ifaddr);
         ip->ready = 1;
 
-        pthread_mutex_unlock( &ip->mtx );
+        sem_post( &ip->sem );
         sleep(ip->sleep_sec);
     }
 
@@ -83,16 +83,15 @@ awl_ipaddr_t* start_ip_thread( int update_sec ) {
     strcpy( ip->exclude_list[ip->n_exclude_list++], "virbr0" );
 
     P_awl_log_printf( "create ip_thread" );
-    pthread_mutex_init( &ip->mtx, NULL );
+    sem_init( &ip->sem, 0, 1 );
     AWL_PTHREAD_CREATE( &ip->me, NULL, ip_thread_run, ip );
     return ip;
 }
 
 void stop_ip_thread( awl_ipaddr_t* ip ) {
-    pthread_mutex_lock( &ip->mtx );
+    sem_wait( &ip->sem );
     if (!pthread_cancel( ip->me )) pthread_join( ip->me, NULL );
-    pthread_mutex_unlock( &ip->mtx );
-    pthread_mutex_destroy( &ip->mtx );
+    sem_destroy( &ip->sem );
     free(ip);
     P_awl_log_printf("cancelled ip thread");
 }

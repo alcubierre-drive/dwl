@@ -23,16 +23,15 @@ awl_stats_t* start_stats_thread( int nval_cpu, int nval_mem, int nval_swp, int u
     st->nswp = nval_swp;
     st->update_sec = update_sec;
     st->sizes_table = calloc(20, sizeof(uint64_t));
-    pthread_mutex_init( &st->mtx, NULL );
+    sem_init( &st->sem, 0, 1 );
     AWL_PTHREAD_CREATE( &st->me, NULL, stats_thread_run, st );
     return st;
 }
 
 void stop_stats_thread( awl_stats_t* st ) {
-    pthread_mutex_lock( &st->mtx );
+    sem_wait( &st->sem );
     if (!pthread_cancel( st->me )) pthread_join( st->me, NULL );
-    pthread_mutex_unlock( &st->mtx );
-    pthread_mutex_destroy( &st->mtx );
+    sem_destroy( &st->sem );
     free( st->sizes_table );
     free( st );
 }
@@ -40,13 +39,13 @@ void stop_stats_thread( awl_stats_t* st ) {
 static void* stats_thread_run( void* arg ) {
     awl_stats_t* st = (awl_stats_t*)arg;
     while (1) {
-        pthread_mutex_lock( &st->mtx );
+        sem_wait( &st->sem );
         rotate_back( st->cpu, st->ncpu );
         rotate_back( st->mem, st->nmem );
         rotate_back( st->swp, st->nswp );
         getmem( st->mem, st->swp );
         st->cpu[0] = 1. - cpu_idle(st->sizes_table);
-        pthread_mutex_unlock( &st->mtx );
+        sem_post( &st->sem );
         sleep(st->update_sec);
     }
     return NULL;

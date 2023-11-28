@@ -1,6 +1,7 @@
 #pragma once
 
 #include <pthread.h>
+#include <semaphore.h>
 #include <stdint.h>
 
 typedef struct awl_stats_t {
@@ -12,7 +13,7 @@ typedef struct awl_stats_t {
     pthread_t me;
     int update_sec;
     uint64_t* sizes_table;
-    pthread_mutex_t mtx;
+    sem_t sem;
 } awl_stats_t;
 
 awl_stats_t* start_stats_thread( int nval_cpu, int nval_mem, int nval_swp, int update_sec );

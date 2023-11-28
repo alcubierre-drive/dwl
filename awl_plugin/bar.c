@@ -215,16 +215,17 @@ static int n_tags = 0;
 } while (0);
 
 static struct fcft_font *font;
-static pthread_mutex_t font_mtx = PTHREAD_MUTEX_INITIALIZER;
+static sem_t font_sem = {0};
+static int font_sem_nusers = 32;
 
 #define CHECKFONT( expr, fail ) \
-    pthread_mutex_lock( &font_mtx ); \
+    sem_wait( &font_sem ); \
     if (!font) { \
-        pthread_mutex_unlock( &font_mtx ); \
+        sem_post( &font_sem ); \
         return fail ; \
     } else { \
         expr; \
-        pthread_mutex_unlock( &font_mtx ); \
+        sem_post( &font_sem ); \
     }
 
 static uint32_t height, textpadding;
@@ -1363,11 +1364,11 @@ static void cleanup_fun(void* arg) {
     zxdg_output_manager_v1_destroy(output_manager);
     zdwl_ipc_manager_v2_destroy(dwl_wm);
 
-    pthread_mutex_lock( &font_mtx );
+    for (int i=0; i<font_sem_nusers; ++i) sem_wait( &font_sem );
     fcft_destroy(font);
     font = NULL;
     fcft_fini();
-    pthread_mutex_unlock( &font_mtx );
+    sem_destroy( &font_sem );
 
     wl_shm_destroy(shm);
     wl_compositor_destroy(compositor);
@@ -1397,7 +1398,8 @@ void* awl_bar_run( void* arg ) {
     if (!compositor || !shm || !layer_shell || !output_manager || !dwl_wm)
         P_awl_err_printf( "Compositor does not support all needed protocols" );
 
-    pthread_mutex_lock( &font_mtx );
+    sem_init( &font_sem, 0, 1 );
+    sem_wait( &font_sem );
     /* Load selected font */
     fcft_init(FCFT_LOG_COLORIZE_AUTO, 0, FCFT_LOG_CLASS_ERROR);
     fcft_set_scaling_filter(FCFT_SCALING_FILTER_LANCZOS3);
@@ -1409,7 +1411,7 @@ void* awl_bar_run( void* arg ) {
         P_awl_err_printf( "Could not load font %s", fontstr );
     textpadding = font->height / 2;
     height = font->height / buffer_scale + vertical_padding * 2;
-    pthread_mutex_unlock( &font_mtx );
+    for (int i=0; i<font_sem_nusers; ++i) sem_post( &font_sem );
 
     /* Setup bars */
     Bar* bar;

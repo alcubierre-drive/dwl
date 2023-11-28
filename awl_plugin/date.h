@@ -1,12 +1,13 @@
 #pragma once
 
 #include <pthread.h>
+#include <semaphore.h>
 
 typedef struct awl_date_t {
     char s[128];
     int update_sec;
     pthread_t me;
-    pthread_mutex_t mtx;
+    sem_t sem;
 } awl_date_t;
 
 awl_date_t* start_date_thread( int update_sec );

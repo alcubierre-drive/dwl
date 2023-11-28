@@ -164,7 +164,6 @@ void awl_dbus_destroy( awl_dbus_listener_t* bus ) {
         free(s);
     }
     HASH_CLEAR(hh, bus->callbacks);
-    sem_post( &bus->sem );
 
     sem_destroy( &bus->sem );
     free(bus);

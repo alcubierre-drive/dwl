@@ -15,7 +15,7 @@ static void* bat( void* arg ) {
     awl_battery_t* b = arg;
 
     while (1) {
-        pthread_mutex_lock( &b->mtx );
+        sem_wait( &b->sem );
         char bat_file[128];
 
         FILE* f = NULL;
@@ -51,7 +51,7 @@ static void* bat( void* arg ) {
         if (set) charging = -1;
         b->charging = charging;
         b->charge = charge;
-        pthread_mutex_unlock( &b->mtx );
+        sem_post( &b->sem );
         sleep( b->update_sec );
     }
     return NULL;
@@ -60,16 +60,15 @@ static void* bat( void* arg ) {
 awl_battery_t* start_bat_thread( int update_sec ) {
     awl_battery_t* b = calloc(1, sizeof(awl_battery_t));
     b->update_sec = update_sec;
-    pthread_mutex_init( &b->mtx, NULL );
+    sem_init( &b->sem, 0, 1 );
     P_awl_log_printf( "creating bat_thread" );
     AWL_PTHREAD_CREATE( &b->me, NULL, bat, b );
     return b;
 }
 
 void stop_bat_thread( awl_battery_t* b ) {
-    pthread_mutex_lock(&b->mtx);
+    sem_wait( &b->sem );
     if (!pthread_cancel(b->me)) pthread_join( b->me, NULL );
-    pthread_mutex_unlock(&b->mtx);
-    pthread_mutex_destroy(&b->mtx);
+    sem_destroy( &b->sem );
     free(b);
 }

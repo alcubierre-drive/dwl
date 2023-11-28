@@ -1,6 +1,7 @@
 #pragma once
 
 #include <pthread.h>
+#include <semaphore.h>
 
 typedef struct awl_battery_t {
     float charge;
@@ -8,7 +9,7 @@ typedef struct awl_battery_t {
     // -1: invalid
 
     pthread_t me;
-    pthread_mutex_t mtx;
+    sem_t sem;
     int update_sec;
 } awl_battery_t;
 

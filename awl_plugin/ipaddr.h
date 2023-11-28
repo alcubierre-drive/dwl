@@ -1,6 +1,7 @@
 #pragma once
 
 #include <pthread.h>
+#include <semaphore.h>
 
 struct awl_ipaddr_t {
     char address_string[2046];
@@ -11,7 +12,7 @@ struct awl_ipaddr_t {
     int sleep_sec, running;
     char exclude_list[4][16];
     int n_exclude_list;
-    pthread_mutex_t mtx;
+    sem_t sem;
 };
 typedef struct awl_ipaddr_t awl_ipaddr_t;
 

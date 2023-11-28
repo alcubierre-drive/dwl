@@ -61,7 +61,6 @@ void awl_log_destroy( void ) {
     if (awllg) fclose(awllg);
     awllg = NULL;
     awllg_lvl = -1;
-    sem_post( &awllg_sem );
     sem_destroy( &awllg_sem );
 }
 

@@ -16,6 +16,7 @@
 
 #include <glob.h>
 #include <pthread.h>
+#include <semaphore.h>
 #include <uthash.h>
 #include <time.h>
 
@@ -40,16 +41,16 @@ typedef struct awl_wallpaper_data_t {
          show_dirent_hidden;
 
     awl_dirent_t* dirent;
-    pthread_mutex_t dirent_mtx;
+    sem_t dirent_sem;
 
     int idx_thread_update_sec;
     pthread_t idx_thread;
-    pthread_mutex_t idx_mtx;
+    sem_t idx_sem;
 
     AWL_Window* w;
 
     wp_cache_t* cache;
-    pthread_mutex_t cache_mtx;
+    sem_t cache_sem;
     int64_t cache_count_max,
             cache_bytes_max;
     int cache_thread_update_sec;
@@ -83,9 +84,9 @@ awl_wallpaper_data_t* wallpaper_init( const char* fname, int update_seconds ) {
 
     d->dirent = calloc(1, sizeof(awl_dirent_t));
 
-    pthread_mutex_init( &d->dirent_mtx, NULL );
-    pthread_mutex_init( &d->idx_mtx, NULL );
-    pthread_mutex_init( &d->cache_mtx, NULL );
+    sem_init( &d->dirent_sem, 0, 1 );
+    sem_init( &d->idx_sem, 0, 1 );
+    sem_init( &d->cache_sem, 0, 1 );
 
     if (glob( fname, 0, NULL, &d->glob )) d->number = 0;
     else                                  d->number = d->glob.gl_pathc;
@@ -131,9 +132,8 @@ void wallpaper_destroy( awl_wallpaper_data_t* d ) {
     awl_dirent_destroy( *d->dirent );
 
     // gather the threads
-    pthread_mutex_lock( &d->cache_mtx );
+    sem_wait( &d->cache_sem );
     if (!pthread_cancel( d->cache_thread )) pthread_join( d->cache_thread, NULL );
-    pthread_mutex_unlock( &d->cache_mtx );
     struct wl_display *display;
     pthread_join( d->update_display_thread, (void**)&display );
     if (display) wl_display_disconnect(display);
@@ -150,9 +150,9 @@ void wallpaper_destroy( awl_wallpaper_data_t* d ) {
     }
     P_awl_log_printf( "wallpaper_destroy(): cleared %i cache entries", num_cleared );
 
-    pthread_mutex_unlock( &d->cache_mtx ); pthread_mutex_destroy( &d->cache_mtx );
-    pthread_mutex_unlock( &d->idx_mtx ); pthread_mutex_destroy( &d->idx_mtx );
-    pthread_mutex_unlock( &d->dirent_mtx ); pthread_mutex_destroy( &d->dirent_mtx );
+    sem_destroy( &d->cache_sem );
+    sem_destroy( &d->idx_sem );
+    sem_destroy( &d->dirent_sem );
 
     free( d->dirent );
     free( d );
@@ -205,7 +205,7 @@ static void wallpaper_draw( AWL_SingleWindow* win, pixman_image_t* final ) {
 
     wp_cache_cleaner_once(d);
 
-    pthread_mutex_lock( &d->cache_mtx );
+    sem_wait( &d->cache_sem );
     HASH_FIND(hh, d->cache, &item.id, sizeof(u128t), found);
     if (!found) {
         found = calloc(1,sizeof(wp_cache_t));
@@ -249,14 +249,14 @@ static void wallpaper_draw( AWL_SingleWindow* win, pixman_image_t* final ) {
     }
     // set wallpaper from cache
     pixman_image_composite32(PIXMAN_OP_OVER, found->img, NULL, final, 0, 0, 0, 0, 0, 0, win->width, win->height);
-    pthread_mutex_unlock( &d->cache_mtx );
+    sem_post( &d->cache_sem );
 
     if (d->show_dirent) {
         pixman_image_t *fg = pixman_image_create_bits(PIXMAN_a8r8g8b8, win->width, MIN(win->height, 140),
                 NULL, win->width*4);
-        pthread_mutex_lock( &d->dirent_mtx );
+        sem_wait( &d->dirent_sem );
         awl_dirent_update( d->dirent );
-        pthread_mutex_unlock( &d->dirent_mtx );
+        sem_post( &d->dirent_sem );
         uint32_t x = 0, dx = 20, y = 50, dy = 70;
         char str[512];
         pixman_color_t fg_color = black,
@@ -344,10 +344,10 @@ static void* wp_idx_thread_fun( void* arg ) {
     awl_wallpaper_data_t* d = (awl_wallpaper_data_t*)arg;
     while (1) {
         sleep(MAX(d->idx_thread_update_sec,1));
-        if (pthread_mutex_trylock( &d->idx_mtx ) == EBUSY) continue;
+        if (sem_trywait( &d->idx_sem ) == -1) continue;
         wallpaper_action( d, BTN_LEFT | BTN_MIDDLE | BTN_RIGHT );
         if (d->w) awl_minimal_window_refresh(d->w);
-        pthread_mutex_unlock( &d->idx_mtx );
+        sem_post( &d->idx_sem );
     }
     return NULL;
 }
@@ -373,7 +373,7 @@ static void wp_cache_cleaner_once(awl_wallpaper_data_t* d) {
     int count = HASH_COUNT(d->cache);
     if (count == 0) return;
 
-    if (pthread_mutex_trylock( &d->cache_mtx ) == EBUSY) return;
+    if (sem_trywait( &d->cache_sem ) == -1) return;
 
     int nwp_cached = 0;
     int64_t bytes = 0;
@@ -409,7 +409,7 @@ static void wp_cache_cleaner_once(awl_wallpaper_data_t* d) {
             ncleaned_mem, ncleaned_max );
 
 wp_cache_continue:
-    pthread_mutex_unlock( &d->cache_mtx );
+    sem_post( &d->cache_sem );
 }
 
 void* wp_cache_cleaner( void* arg ) {
