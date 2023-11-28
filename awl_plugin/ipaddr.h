@@ -4,8 +4,9 @@
 #include <semaphore.h>
 
 struct awl_ipaddr_t {
-    char address_string[2047];
+    char address_string[2046];
     unsigned char is_online;
+    unsigned char is_ready;
 
     pthread_t me;
     int sleep_sec, running;

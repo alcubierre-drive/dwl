@@ -22,6 +22,7 @@ static void* ip_thread_run( void* arg ) {
     if (!ip) return NULL;
     while (ip->running) {
 
+        ip->is_ready = 0;
         sem_wait( &ip->sem );
         ip->is_online = 1;
 
@@ -66,6 +67,7 @@ static void* ip_thread_run( void* arg ) {
 loopend:
         freeifaddrs(ifaddr);
 
+        ip->is_ready = 1;
         sem_post( &ip->sem );
         sleep(ip->sleep_sec);
     }

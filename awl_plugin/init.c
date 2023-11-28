@@ -240,7 +240,6 @@ static void awl_plugin_init(void) {
         if (!data->touched) {
             data->oneshot = true; // TODO this should not live here
             data->touched = true;
-            data->ignore = true; // TODO remove
         }
         #define AUTOSTART( thing, cmd ) { \
             if ( (!data->ignore && data->oneshot && !data->pid_##thing) || \

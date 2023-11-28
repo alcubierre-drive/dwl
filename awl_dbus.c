@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <semaphore.h>
+#include <stdatomic.h>
 #include <stdio.h>
 
 typedef struct {
@@ -21,7 +22,7 @@ typedef struct {
 struct awl_dbus_listener_t {
     awl_dbus_callback_t* callbacks;
 
-    int running;
+    _Atomic int running;
 
     pthread_t receiver;
     sem_t sem;
@@ -67,7 +68,7 @@ static void* receiver_thread(void* handle_) {
     awl_log_printf("dbus Match rule sent");
 
     // loop listening for signals being emmitted
-    while (handle->running) {
+    while (atomic_load( &handle->running )) {
 
         // non blocking read of the next available message
         dbus_connection_read_write(conn, 0);
@@ -111,7 +112,7 @@ static void* receiver_thread(void* handle_) {
 
 awl_dbus_listener_t* awl_dbus_init( void ) {
     awl_dbus_listener_t* h = calloc(1, sizeof(awl_dbus_listener_t));
-    h->running = 1;
+    atomic_init( &h->running, 1 );
     h->callbacks = NULL;
     sem_init( &h->sem, 0, 1 );
     AWL_PTHREAD_CREATE( &h->receiver, NULL, &receiver_thread, h );
@@ -154,7 +155,7 @@ void awl_dbus_remove_callback( awl_dbus_listener_t* bus, const char* name_ ) {
 }
 
 void awl_dbus_destroy( awl_dbus_listener_t* bus ) {
-    bus->running = 0;
+    atomic_store( &bus->running, 0 );
     pthread_join( bus->receiver, NULL );
 
     sem_wait( &bus->sem );

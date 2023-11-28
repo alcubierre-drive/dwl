@@ -219,7 +219,7 @@ static int n_tags = 0;
 
 static struct fcft_font *font;
 static sem_t font_sem = {0};
-static int font_sem_nusers = 32;
+static int font_sem_nusers = 64;
 
 #define CHECKFONT( expr, fail ) \
     if (sem_trywait( &font_sem ) == -1) return fail; \
@@ -1465,11 +1465,7 @@ static void* awl_bar_refresher( void* arg ) {
     P_awl_log_printf( "started bar refresh thread (%.2fs)", h->refresh_sec );
     while (true) {
         usleep( (useconds_t)(h->refresh_sec * 1.e6) );
-        Bar* bar;
-        DL_FOREACH(bar_list, bar) {
-            bar->redraw = true;
-        }
-        eventfd_write(h->redraw_fd, 1);
+        awl_bar_refresh( h, 1 );
     }
     return NULL;
 }
@@ -1647,6 +1643,7 @@ static uint32_t ipwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground,
     awl_plugin_data_t* P = awl_plugin_data();
     if (!P) return 0;
     if (!P->ip) return 0;
+    while (!P->ip->is_ready) usleep(20);
     /* if (sem_trywait( &P->ip->sem ) == -1) return 0; */
 
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
@@ -1664,8 +1661,8 @@ static uint32_t ipwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground,
 
 static uint32_t tempwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
     awl_plugin_data_t* P = awl_plugin_data();
-    if (!P) return 0;
-    if (!P->temp) return 0;
+    if (!P) return TEXT_WIDTH( "40°C", -1, bar->textpadding );
+    if (!P->temp) return TEXT_WIDTH( "40°C", -1, bar->textpadding );
     /* if (sem_trywait( &P->temp->sem ) == -1) return 0; */
 
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
@@ -1694,7 +1691,7 @@ static uint32_t batwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground
     awl_plugin_data_t* P = awl_plugin_data();
     if (!P) return 0;
     if (!P->bat) return 0;
-    if (sem_trywait( &P->bat->sem ) == -1) return 0;
+    /* if (sem_trywait( &P->bat->sem ) == -1) return 0; */
 
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
     if (P->bat->charging < 0) return 0;
@@ -1708,7 +1705,7 @@ static uint32_t batwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground
     if (P->bat->charging)       fgcolor = color_8bit_to_16bit( molokai_green );
     draw_text( text, x, y, foreground, background, &fgcolor, &barcolors.bg_status,
                bar->width, bar->height, bar->textpadding );
-    sem_post( &P->bat->sem );
+    /* sem_post( &P->bat->sem ); */
     return TEXT_WIDTH( text, -1, bar->textpadding );
 }
 #endif
@@ -1750,8 +1747,8 @@ static uint32_t systray_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, 
 static uint32_t statuswidget_draw( Bar* bar, uint32_t x, pixman_image_t* fg, pixman_image_t* background ) {
     (void)fg;
     awl_plugin_data_t* P = awl_plugin_data();
-    if (!P) return 0;
-    if (!P->stats) return 0;
+    if (!P) return 32*3;
+    if (!P->stats) return 32*3;
     /* if (sem_trywait( &P->stats->sem ) == -1) return 0; */
 
     awl_stats_t* st = P->stats;
