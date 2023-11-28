@@ -50,10 +50,11 @@ struct awl_calendar_t {
     AWL_Window* w;
     month_state_t m;
 };
-static month_state_t* MST = NULL;
 
 static void calendar_draw( AWL_SingleWindow* win, pixman_image_t* img ) {
-    if (!MST) return;
+    awl_calendar_t* cal = awl_minimal_window_get_userdata( win->parent );
+    if (!cal) return;
+    month_state_t* MST = &cal->m;
 
     uint32_t width_want = TEXT_WIDTH(" Mo Tu We Th Fr Sa Su", -1, 20);
     if (!width_want) return;
@@ -112,7 +113,6 @@ awl_calendar_t* calendar_popup( void ) {
     P_awl_log_printf("init calendar popup window");
     awl_calendar_t* r = calloc(1, sizeof(awl_calendar_t));
     r->m = month_state_init();
-    MST = &r->m;
     awl_minimal_window_props_t wp = awl_minimal_window_props_defaults;
     wp.only_current_output = 1;
     wp.width_want = 376;
@@ -122,6 +122,7 @@ awl_calendar_t* calendar_popup( void ) {
     wp.name = "awl_cal_popup";
     wp.draw = calendar_draw;
     r->w = awl_minimal_window_setup( &wp );
+    awl_minimal_window_set_userdata( r->w, r );
     return r;
 }
 
@@ -150,7 +151,7 @@ void calendar_next( awl_calendar_t* cal, int n ) {
 void calendar_destroy( awl_calendar_t* cal ) {
     P_awl_log_printf( "in cal destroy" );
     if (!cal) return;
-    MST = NULL;
+    awl_minimal_window_set_userdata( cal->w, NULL );
     awl_minimal_window_destroy( cal->w );
     free( cal );
 }

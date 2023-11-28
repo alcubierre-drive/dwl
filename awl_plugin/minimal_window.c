@@ -100,6 +100,8 @@ struct AWL_Window {
 
     pthread_t event_thread;
     pthread_attr_t* event_thread_attr;
+
+    void* userdata;
 };
 
 static int allocate_shm_file(size_t size) {
@@ -727,3 +729,10 @@ void awl_minimal_window_wait_ready( AWL_Window* w ) {
     while (!w->has_init) usleep(1000);
 }
 
+void awl_minimal_window_set_userdata( AWL_Window* w, void* userdata ) {
+    w->userdata = userdata;
+}
+
+void* awl_minimal_window_get_userdata( AWL_Window* w ) {
+    return w->userdata;
+}

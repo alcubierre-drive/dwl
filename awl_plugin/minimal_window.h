@@ -82,6 +82,8 @@ void awl_minimal_window_hide( AWL_Window* w );
 void awl_minimal_window_show( AWL_Window* w );
 void awl_minimal_window_refresh( AWL_Window* w );
 int awl_minimal_window_is_hidden( AWL_Window* w );
+void awl_minimal_window_set_userdata( AWL_Window* w, void* userdata );
+void* awl_minimal_window_get_userdata( AWL_Window* w );
 
 void awl_minimal_window_resize( AWL_Window* W, int w, int h );
 
