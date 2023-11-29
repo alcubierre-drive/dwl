@@ -589,8 +589,8 @@ static int draw_frame(Bar *bar) {
         if (bar->widgets_left[w].draw)
             bar->widgets_left[w].width = bar->widgets_left[w].draw( &bar->widgets_left[w], x, foreground, background );
         x += bar->widgets_left[w].width;
-        // TODO
-        if (bar->widgets_left[w].width == 0) printf( "left widget %i has zero width\n", w );
+        if (bar->widgets_left[w].width == 0)
+            P_awl_log_printf( "left widget %i has zero width\n", w );
     }
 
     uint32_t x_end = bar->width;
@@ -599,8 +599,8 @@ static int draw_frame(Bar *bar) {
             bar->widgets_right[w].width = bar->widgets_right[w].draw( &bar->widgets_right[w], x_end - bar->widgets_right[w].width,
                     foreground, background );
         x_end -= bar->widgets_right[w].width;
-        // TODO
-        if (bar->widgets_right[w].width == 0) printf( "right widget %i has zero width\n", w );
+        if (bar->widgets_right[w].width == 0)
+            P_awl_log_printf( "right widget %i has zero width\n", w );
     }
 
     bar->center_widget_space = x_end - x;

@@ -1,4 +1,7 @@
 #pragma once
+
+#ifndef NDEBUG
+
 #define _GNU_SOURCE
 #include <pthread.h>
 #include <stdio.h>
@@ -11,10 +14,10 @@ typedef struct {
     char starter_location[32];
     void* (*start_routine)(void*);
     void* arg;
-} awl_pthread_start_routine_wrap_t;
+} _AWL_PTHREAD_START_ROUTINE_WRAPPER_T;
 
-static inline void* awl_pthread_wrap_start_routine( void* arg_ ) {
-    awl_pthread_start_routine_wrap_t* w = (awl_pthread_start_routine_wrap_t*)arg_;
+static inline void* _AWL_PTHREAD_WRAP_START_ROUTINE( void* arg_ ) {
+    _AWL_PTHREAD_START_ROUTINE_WRAPPER_T* w = (_AWL_PTHREAD_START_ROUTINE_WRAPPER_T*)arg_;
     void* arg = w->arg;
     void* (*start_routine)(void*) = w->start_routine;
     printf( "%s: thread %i\n", w->starter_location, gettid() );
@@ -28,9 +31,16 @@ static inline void* awl_pthread_wrap_start_routine( void* arg_ ) {
 }
 
 #define AWL_PTHREAD_CREATE(THREAD, ATTR, START_ROUTINE, ARG) { \
-    awl_pthread_start_routine_wrap_t* _AWL_PTHREAD_ARG_W = calloc(1,sizeof(awl_pthread_start_routine_wrap_t)); \
+    _AWL_PTHREAD_START_ROUTINE_WRAPPER_T* _AWL_PTHREAD_ARG_W = calloc(1,sizeof(_AWL_PTHREAD_START_ROUTINE_WRAPPER_T)); \
     _AWL_PTHREAD_ARG_W->arg = ARG; \
     _AWL_PTHREAD_ARG_W->start_routine = START_ROUTINE; \
     sprintf( _AWL_PTHREAD_ARG_W->starter_location, "%s.%i", __FILE__, __LINE__ ); \
-    pthread_create(THREAD, ATTR, awl_pthread_wrap_start_routine, _AWL_PTHREAD_ARG_W); \
+    pthread_create(THREAD, ATTR, _AWL_PTHREAD_WRAP_START_ROUTINE, _AWL_PTHREAD_ARG_W); \
 }
+
+#else // !NDEBUG
+
+#include <pthread.h>
+#define AWL_PTHREAD_CREATE pthread_create
+
+#endif // !NDEBUG
