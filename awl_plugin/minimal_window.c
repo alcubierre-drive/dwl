@@ -62,6 +62,8 @@ struct WaylandSeat {
 
 struct AWL_Window {
     int has_init;
+    sem_t init_sem;
+    int init_sem_max;
     int redraw_fd;
 
     int only_current_output;
@@ -367,16 +369,20 @@ AWL_Window* awl_minimal_window_setup( const awl_minimal_window_props_t* props ) 
     w->click = props->click;
     w->scroll = props->scroll;
     sem_init( &w->showsem, 0, 1 );
+    sem_init( &w->init_sem, 0, 1 );
+    sem_wait( &w->init_sem );
+    w->init_sem_max = 64;
     P_awl_log_printf( "create window event thread (%p)", w );
     AWL_PTHREAD_CREATE( &w->event_thread, NULL, awl_minimal_window_event_loop_thread, w );
     return w;
 }
 
 static void awl_minimal_window_setup_async( AWL_Window* w ) {
-    awl_state_t* B = NULL;
-    while ((B = awl_plugin_state()) == NULL) {
-        P_awl_err_printf( "could not find state (deadlock?)" );
-        usleep(100);
+    awl_state_t* B = awl_plugin_state();
+    if (!B) {
+        w->has_init = 0;
+        sem_post( &w->init_sem );
+        return;
     }
     sem_wait( B->awl_is_ready_sem() );
     sem_post( B->awl_is_ready_sem() );
@@ -422,6 +428,7 @@ static void awl_minimal_window_setup_async( AWL_Window* w ) {
 
     w->redraw_fd = eventfd(0,0);
     w->has_init = 1;
+    for (int i=0; i<w->init_sem_max; ++i) sem_post( &w->init_sem );
 }
 
 static void* awl_minimal_window_event_loop_thread( void* arg ) {
@@ -474,6 +481,7 @@ void awl_minimal_window_destroy( AWL_Window* w ) {
     sem_wait( &w->showsem );
     w->draw = NULL;
     sem_post( &w->showsem );
+    for (int i=0; i<w->init_sem_max; ++i) sem_wait( &w->init_sem );
 
     if (w->running) {
         sem_wait( &w->showsem );
@@ -720,7 +728,8 @@ void awl_minimal_window_resize( AWL_Window* W, int w, int h ) {
 }
 
 void awl_minimal_window_wait_ready( AWL_Window* w ) {
-    while (!w->has_init) usleep(1000);
+    sem_wait( &w->init_sem );
+    sem_post( &w->init_sem );
 }
 
 void awl_minimal_window_set_userdata( AWL_Window* w, void* userdata ) {

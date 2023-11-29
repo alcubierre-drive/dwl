@@ -49,8 +49,8 @@ static void* bat( void* arg ) {
         }
 
         if (set) charging = -1;
-        b->charging = charging;
-        b->charge = charge;
+        atomic_store( &b->charging, charging );
+        atomic_store( &b->charge, charge );
         sem_post( &b->sem );
         sleep( b->update_sec );
     }

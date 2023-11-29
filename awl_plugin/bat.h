@@ -4,8 +4,8 @@
 #include <semaphore.h>
 
 typedef struct awl_battery_t {
-    float charge;
-    int charging;
+    _Atomic float charge;
+    _Atomic int charging;
     // -1: invalid
 
     pthread_t me;

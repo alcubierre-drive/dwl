@@ -22,7 +22,7 @@ static inline void* awl_pthread_wrap_start_routine( void* arg_ ) {
     for (char* c=w->starter_location; *c; ++c)
         if (*c == '/') strncpy( nam, c+1, 15 );
     if (!nam[0]) strncpy( nam, w->starter_location, 15 );
-    pthread_setname_np( pthread_self(), nam );
+    /* pthread_setname_np( pthread_self(), nam ); */
     free(w);
     return (*start_routine)( arg );
 }

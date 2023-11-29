@@ -19,26 +19,27 @@ static int is_not_in_exclude_list( const char* name, char exclude_list[4][16], i
 
 static void* ip_thread_run( void* arg ) {
     awl_ipaddr_t* ip = (awl_ipaddr_t*)arg;
-    if (!ip) return NULL;
     while (ip->running) {
-
-        ip->is_ready = 0;
+        sem_post( &ip->sem );
+        sleep(ip->sleep_sec);
         sem_wait( &ip->sem );
-        ip->is_online = 1;
 
+        int is_online = 1;
         int first = 1;
-        char* addr = ip->address_string;
-        memset(addr, 0, sizeof(ip->address_string));
+        int do_freeifaddrs = 0;
+        char* new_addr = calloc(1, 2048);
+        char* addr = new_addr;
 
         struct ifaddrs *ifaddr;
 
         if (getifaddrs(&ifaddr) == -1) {
             P_awl_err_printf("getifaddrs failed");
-            continue;
+            goto loopend;
         }
 
         for (struct ifaddrs *ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
-            if (ifa->ifa_addr == NULL) continue;
+            if (ifa->ifa_addr == NULL)
+                goto loopend;
             int family = ifa->ifa_addr->sa_family;
             if (family == AF_INET && is_not_in_exclude_list(ifa->ifa_name, ip->exclude_list, ip->n_exclude_list)) {
                 char host[NI_MAXHOST];
@@ -46,30 +47,31 @@ static void* ip_thread_run( void* arg ) {
                         NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
                 if (s) {
                     P_awl_err_printf("getnameinfo() failed: %s\n", gai_strerror(s));
+                    do_freeifaddrs = 1;
                     goto loopend;
                 }
-                if (first) {
-                    strcat(addr, host);
-                    first = 0;
-                } else {
-                    strcat(addr, " | ");
-                    strcat(addr, host );
-                }
+
+                if (first) first = 0;
+                else strcat(addr, " | ");
+                strcat(addr, host);
+
                 if (strstr(addr, "127.0.0"))
-                    ip->is_online = 0;
+                    is_online = 0;
                 addr += strlen(addr);
             }
         }
-        if (!*ip->address_string) {
-            ip->is_online = 0;
-            strcat(ip->address_string, "invalid");
+        if (!*new_addr) {
+            is_online = 0;
+            strcpy(new_addr, "invalid");
         }
-loopend:
-        freeifaddrs(ifaddr);
 
-        ip->is_ready = 1;
-        sem_post( &ip->sem );
-        sleep(ip->sleep_sec);
+loopend:
+        if (do_freeifaddrs) freeifaddrs(ifaddr);
+
+        char* old_addr = (char*)atomic_load( &ip->address );
+        atomic_store( &ip->address, (_Atomic char*)new_addr );
+        atomic_store( &ip->is_online, is_online );
+        free( old_addr );
     }
 
     return NULL;
@@ -81,9 +83,10 @@ awl_ipaddr_t* start_ip_thread( int update_sec ) {
     ip->sleep_sec = update_sec;
     strcpy( ip->exclude_list[ip->n_exclude_list++], "lo" );
     strcpy( ip->exclude_list[ip->n_exclude_list++], "virbr0" );
+    ip->address = calloc(1, 2048);
+    sem_init( &ip->sem, 0, 1 );
 
     P_awl_log_printf( "create ip_thread" );
-    sem_init( &ip->sem, 0, 1 );
     AWL_PTHREAD_CREATE( &ip->me, NULL, ip_thread_run, ip );
     return ip;
 }
@@ -92,6 +95,7 @@ void stop_ip_thread( awl_ipaddr_t* ip ) {
     sem_wait( &ip->sem );
     if (!pthread_cancel( ip->me )) pthread_join( ip->me, NULL );
     sem_destroy( &ip->sem );
+    free(ip->address);
     free(ip);
     P_awl_log_printf("cancelled ip thread");
 }
