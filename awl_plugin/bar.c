@@ -80,8 +80,6 @@ static char default_layout_name[] = "[T]";
 static const char* tags_names[] = { "1", "2", "3", "4", "5", "6", "7", "✉ 8", "✉ 9" };
 static const uint32_t n_tags_names = 9;
 
-static pixman_box32_t* widget_boxes = NULL;
-
 awlb_color_t barcolors = {
     .bg_tags = COLOR_16BIT_QUICK( 22, 22, 22, FF ),
     .bg_tags_occ = COLOR_16BIT_QUICK( 22, 22, 55, FF ),
@@ -129,10 +127,13 @@ typedef struct widget_t widget_t;
 
 struct widget_t {
     uint32_t width;
-    uint32_t (*draw)(Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background);
-    void (*callback_view)(Bar* bar, int32_t x_rel);
-    void (*callback_click)(Bar* bar, uint32_t x_rel, int button);
-    void (*callback_scroll)(Bar* bar, uint32_t x_rel, int amount);
+    uint32_t (*draw)(widget_t* this, uint32_t x, pixman_image_t* fg, pixman_image_t* bg);
+    void (*callback_view)(widget_t* this, int32_t x_rel);
+    void (*callback_click)(widget_t* this, uint32_t x_rel, int button);
+    void (*callback_scroll)(widget_t* this, uint32_t x_rel, int amount);
+    void* userdata;
+    void (*free)( void* userdata );
+    Bar* bar;
 };
 
 struct Bar {
@@ -516,40 +517,40 @@ uint32_t draw_text(char *text,
     return nx;
 }
 
-static uint32_t tagwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
-static void tagwidget_scroll( Bar* bar, uint32_t pointer_x, int amount );
-static void tagwidget_click( Bar* bar, uint32_t pointer_x, int button );
+static uint32_t tagwidget_draw( widget_t*, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
+static void tagwidget_scroll( widget_t*, uint32_t pointer_x, int amount );
+static void tagwidget_click( widget_t*, uint32_t pointer_x, int button );
 
-static uint32_t layoutwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
-static void layoutwidget_scroll( Bar* bar, uint32_t pointer_x, int amount );
-static void layoutwidget_click( Bar* bar, uint32_t pointer_x, int button );
+static uint32_t layoutwidget_draw( widget_t*, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
+static void layoutwidget_scroll( widget_t*, uint32_t pointer_x, int amount );
+static void layoutwidget_click( widget_t*, uint32_t pointer_x, int button );
 
-static uint32_t clockwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
-static void clockwidget_view( Bar* bar, int32_t x );
-static void clockwidget_click( Bar* bar, uint32_t pointer_x, int button );
-static void clockwidget_scroll( Bar* bar, uint32_t pointer_x, int amount );
+static uint32_t clockwidget_draw( widget_t*, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
+static void clockwidget_view( widget_t*, int32_t x );
+static void clockwidget_click( widget_t*, uint32_t pointer_x, int button );
+static void clockwidget_scroll( widget_t*, uint32_t pointer_x, int amount );
 
-static uint32_t pulsewidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
-static void pulsewidget_scroll( Bar* bar, uint32_t pointer_x, int amount );
-static void pulsewidget_click( Bar* bar, uint32_t pointer_x, int button );
+static uint32_t pulsewidget_draw( widget_t*, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
+static void pulsewidget_scroll( widget_t*, uint32_t pointer_x, int amount );
+static void pulsewidget_click( widget_t*, uint32_t pointer_x, int button );
 
-static uint32_t ipwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
+static uint32_t ipwidget_draw( widget_t*, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
 
-static uint32_t tempwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
+static uint32_t tempwidget_draw( widget_t*, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
 
 #ifndef AWL_SKIP_BATWIDGET
-static uint32_t batwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
+static uint32_t batwidget_draw( widget_t*, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
 #endif
 
-static uint32_t separator_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
-static uint32_t systray_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
+static uint32_t separator_draw( widget_t*, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
+static uint32_t systray_draw( widget_t*, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
 
-static uint32_t statuswidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
-static void statuswidget_click( Bar* bar, uint32_t pointer_x, int button );
+static uint32_t statuswidget_draw( widget_t*, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
+static void statuswidget_click( widget_t*, uint32_t pointer_x, int button );
 
-static uint32_t taskbarwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
-static void taskbarwidget_scroll( Bar* bar, uint32_t pointer_x, int amount );
-static void taskbarwidget_click( Bar* bar, uint32_t pointer_x, int button );
+static uint32_t taskbarwidget_draw( widget_t*, uint32_t x, pixman_image_t* foreground, pixman_image_t* background );
+static void taskbarwidget_scroll( widget_t*, uint32_t pointer_x, int amount );
+static void taskbarwidget_click( widget_t*, uint32_t pointer_x, int button );
 
 static int draw_frame(Bar *bar) {
     sem_wait(&bar->draw_sem);
@@ -586,14 +587,14 @@ static int draw_frame(Bar *bar) {
     uint32_t x = 0;
     for (int w=0; w<bar->n_widgets_left; ++w) {
         if (bar->widgets_left[w].draw)
-            bar->widgets_left[w].width = bar->widgets_left[w].draw( bar, x, foreground, background );
+            bar->widgets_left[w].width = bar->widgets_left[w].draw( &bar->widgets_left[w], x, foreground, background );
         x += bar->widgets_left[w].width;
     }
 
     uint32_t x_end = bar->width;
     for (int w=0; w<bar->n_widgets_right; ++w) {
         if (bar->widgets_right[w].draw)
-            bar->widgets_right[w].width = bar->widgets_right[w].draw( bar, x_end - bar->widgets_right[w].width,
+            bar->widgets_right[w].width = bar->widgets_right[w].draw( &bar->widgets_right[w], x_end - bar->widgets_right[w].width,
                     foreground, background );
         x_end -= bar->widgets_right[w].width;
     }
@@ -602,7 +603,7 @@ static int draw_frame(Bar *bar) {
     bar->center_widget_start = x;
     if (bar->has_center_widget) {
         if (bar->center_widget.draw)
-            bar->center_widget.draw( bar, x, foreground, background );
+            bar->center_widget.draw( &bar->center_widget, x, foreground, background );
     } else {
         pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &black, 1,
                 &(pixman_box32_t){ .x1 = x, .x2 = x_end, .y1 = 0, .y2 = bar->height });
@@ -750,9 +751,9 @@ static void pointer_leave(void *data, struct wl_pointer *pointer,
     if (!bar) return;
 
     if (bar->n_widgets_right > 0 && bar->widgets_right[0].callback_view)
-        bar->widgets_right[0].callback_view( bar, -1 );
+        bar->widgets_right[0].callback_view( &bar->widgets_right[0], -1 );
     if (bar->center_widget.callback_view)
-        bar->center_widget.callback_view( bar, -1 );
+        bar->center_widget.callback_view( &bar->center_widget, -1 );
 
     seat->bar = NULL;
 }
@@ -782,12 +783,12 @@ static void pointer_motion(void *data, struct wl_pointer *pointer, uint32_t time
     if (bar->has_center_widget && bar->center_widget.callback_view &&
         seat->pointer_x >= bar->center_widget_start/buffer_scale &&
         seat->pointer_x <= (bar->center_widget_start+bar->center_widget_space)/buffer_scale)
-            bar->center_widget.callback_view( bar, seat->pointer_x - bar->center_widget_start/buffer_scale );
+            bar->center_widget.callback_view( &bar->center_widget, seat->pointer_x - bar->center_widget_start/buffer_scale );
 
     // rightmost widget
     if (bar->n_widgets_right > 0 && bar->widgets_right[0].callback_view) {
         int32_t x = bar->width/buffer_scale - bar->widgets_right[0].width/buffer_scale;
-        bar->widgets_right[0].callback_view( bar, seat->pointer_x - x );
+        bar->widgets_right[0].callback_view( &bar->widgets_right[0], seat->pointer_x - x );
     }
 }
 
@@ -821,7 +822,7 @@ static void pointer_frame(void *data, struct wl_pointer *pointer) {
         for (int w=0; w<bar->n_widgets_left; ++w) {
             if (seat->pointer_x >= x && seat->pointer_x <= x + bar->widgets_left[w].width/buffer_scale) {
                 if (bar->widgets_left[w].callback_scroll)
-                    bar->widgets_left[w].callback_scroll( bar, seat->pointer_x - x, discrete_event );
+                    bar->widgets_left[w].callback_scroll( &bar->widgets_left[w], seat->pointer_x - x, discrete_event );
                 return;
             }
             x += bar->widgets_left[w].width/buffer_scale;
@@ -834,13 +835,13 @@ static void pointer_frame(void *data, struct wl_pointer *pointer) {
             x -= bar->widgets_right[w].width/buffer_scale;
             if (seat->pointer_x >= x && seat->pointer_x <= x + bar->widgets_right[w].width/buffer_scale) {
                 if (bar->widgets_right[w].callback_scroll)
-                    bar->widgets_right[w].callback_scroll( bar, seat->pointer_x - x, discrete_event );
+                    bar->widgets_right[w].callback_scroll( &bar->widgets_right[w], seat->pointer_x - x, discrete_event );
                 return;
             }
         }
         // center widget
         if (bar->has_center_widget && bar->center_widget.callback_scroll)
-            bar->center_widget.callback_scroll( bar, seat->pointer_x - c, discrete_event );
+            bar->center_widget.callback_scroll( &bar->center_widget, seat->pointer_x - c, discrete_event );
         return;
     }
 
@@ -850,7 +851,7 @@ static void pointer_frame(void *data, struct wl_pointer *pointer) {
         for (int w=0; w<bar->n_widgets_left; ++w) {
             if (seat->pointer_x >= x && seat->pointer_x <= x + bar->widgets_left[w].width/buffer_scale) {
                 if (bar->widgets_left[w].callback_click)
-                    bar->widgets_left[w].callback_click( bar, seat->pointer_x - x, seat->pointer_button );
+                    bar->widgets_left[w].callback_click( &bar->widgets_left[w], seat->pointer_x - x, seat->pointer_button );
                 seat->pointer_button = 0; return;
             }
             x += bar->widgets_left[w].width/buffer_scale;
@@ -863,13 +864,13 @@ static void pointer_frame(void *data, struct wl_pointer *pointer) {
             x -= bar->widgets_right[w].width/buffer_scale;
             if (seat->pointer_x >= x && seat->pointer_x <= x + bar->widgets_right[w].width/buffer_scale) {
                 if (bar->widgets_right[w].callback_click)
-                    bar->widgets_right[w].callback_click( bar, seat->pointer_x - x, seat->pointer_button );
+                    bar->widgets_right[w].callback_click( &bar->widgets_right[w], seat->pointer_x - x, seat->pointer_button );
                 seat->pointer_button = 0; return;
             }
         }
         // center widget
         if (bar->has_center_widget && bar->center_widget.callback_click)
-            bar->center_widget.callback_click( bar, seat->pointer_x - c, seat->pointer_button );
+            bar->center_widget.callback_click( &bar->center_widget, seat->pointer_x - c, seat->pointer_button );
         seat->pointer_button = 0; return;
     }
 
@@ -1179,6 +1180,7 @@ static void setup_bar(Bar *bar) {
         .draw = statuswidget_draw,
         .width = P->stats->ncpu + P->stats->nmem + P->stats->nswp,
         .callback_click = statuswidget_click,
+        .free = free,
     };
     bar->widgets_right[bar->n_widgets_right++] = (widget_t){
         .draw = tempwidget_draw,
@@ -1210,6 +1212,13 @@ static void setup_bar(Bar *bar) {
         .callback_click = taskbarwidget_click,
     };
     bar->has_center_widget = 1;
+
+    for (int i=0; i<bar->n_widgets_right; ++i)
+        bar->widgets_right[i].bar = bar;
+    for (int i=0; i<bar->n_widgets_left; ++i)
+        bar->widgets_left[i].bar = bar;
+    if (bar->has_center_widget)
+        bar->center_widget.bar = bar;
 
     bar->xdg_output = zxdg_output_manager_v1_get_xdg_output(output_manager, bar->wl_output);
     if (!bar->xdg_output)
@@ -1262,6 +1271,18 @@ static void teardown_bar(Bar *bar) {
     sem_destroy(&bar->draw_sem);
     if (bar->window_titles)
         free(bar->window_titles);
+
+    widget_t* W = NULL;
+    W = bar->widgets_left;
+    for (int w=0; w<bar->n_widgets_left; ++w)
+        if (W[w].free) (W[w].free)( W[w].userdata );
+    W = bar->widgets_right;
+    for (int w=0; w<bar->n_widgets_right; ++w)
+        if (W[w].free) (W[w].free)( W[w].userdata );
+    W = &bar->center_widget;
+    if (bar->has_center_widget)
+        if (W->free) (W->free)(W->userdata);
+
     zdwl_ipc_output_v2_destroy(bar->dwl_wm_output);
     if (bar->xdg_output_name)
         free(bar->xdg_output_name);
@@ -1364,8 +1385,6 @@ void awl_bar_stop( awl_bar_handle_t* h ) {
     pthread_join( h->bar, NULL );
     if (!pthread_cancel( h->refresh )) pthread_join( h->refresh, NULL );
     if (h->redraw_fd != -1) close( h->redraw_fd );
-
-    free( widget_boxes ); // TODO this data belongs to someone...
 
     Bar *bar, *bar2;
     Seat *seat, *seat2;
@@ -1472,7 +1491,8 @@ static void* awl_bar_refresher( void* arg ) {
 
 // widget implementations
 
-static uint32_t tagwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
+static uint32_t tagwidget_draw( widget_t* w, uint32_t x, pixman_image_t* fg, pixman_image_t* bg ) {
+    Bar* bar = w->bar;
     uint32_t x_enter = x;
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
     uint32_t boxs = font->height / 9;
@@ -1484,14 +1504,14 @@ static uint32_t tagwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground
         bool urgent = bar->urg & 1 << i;
         // draw small box
         if (occupied) {
-            pixman_image_fill_boxes(PIXMAN_OP_SRC, foreground,
+            pixman_image_fill_boxes(PIXMAN_OP_SRC, fg,
                         &barcolors.fg_tags, 1, &(pixman_box32_t){
                             .x1 = x + boxs, .x2 = x + boxs + boxw,
                             .y1 = boxs, .y2 = boxs + boxw
                         });
             if ((!bar->sel || !active) && boxw >= 3) {
                 /* Make box hollow */
-                pixman_image_fill_boxes(PIXMAN_OP_SRC, foreground,
+                pixman_image_fill_boxes(PIXMAN_OP_SRC, fg,
                             &(pixman_color_t){ 0 },
                             1, &(pixman_box32_t){
                                 .x1 = x + boxs + 1, .x2 = x + boxs + boxw - 1,
@@ -1500,17 +1520,18 @@ static uint32_t tagwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground
             }
         }
         // find the right bg color (maybe do that with fg too?)
-        pixman_color_t bg = barcolors.bg_tags;
-        if (occupied) bg = alpha_blend_16( bg, barcolors.bg_tags_occ );
-        if (active) bg = alpha_blend_16( bg, barcolors.bg_tags_act );
-        if (urgent) bg = alpha_blend_16( bg, barcolors.bg_tags_urg );
-        x = draw_text(tags[i], x, y, foreground, background, &barcolors.fg_tags, &bg,
+        pixman_color_t bgc = barcolors.bg_tags;
+        if (occupied) bgc = alpha_blend_16( bgc, barcolors.bg_tags_occ );
+        if (active) bgc = alpha_blend_16( bgc, barcolors.bg_tags_act );
+        if (urgent) bgc = alpha_blend_16( bgc, barcolors.bg_tags_urg );
+        x = draw_text(tags[i], x, y, fg, bg, &barcolors.fg_tags, &bgc,
                 bar->width, bar->height, bar->textpadding);
     }
     return x - x_enter;
 }
 
-static void tagwidget_scroll( Bar* bar, uint32_t pointer_x, int amount ) {
+static void tagwidget_scroll( widget_t* w, uint32_t pointer_x, int amount ) {
+    Bar* bar = w->bar;
     awl_plugin_data_t* P = awl_plugin_data();
     if (!P) return;
 
@@ -1525,7 +1546,8 @@ static void tagwidget_scroll( Bar* bar, uint32_t pointer_x, int amount ) {
     }
 }
 
-static void tagwidget_click( Bar* bar, uint32_t pointer_x, int button ) {
+static void tagwidget_click( widget_t* w, uint32_t pointer_x, int button ) {
+    Bar* bar = w->bar;
     awl_plugin_data_t* P = awl_plugin_data();
     if (!P) return;
 
@@ -1545,25 +1567,24 @@ static void tagwidget_click( Bar* bar, uint32_t pointer_x, int button ) {
     }
 }
 
-static uint32_t layoutwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
+static uint32_t layoutwidget_draw( widget_t* w, uint32_t x, pixman_image_t* fg, pixman_image_t* bg ) {
+    Bar* bar = w->bar;
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
-    uint32_t new_x = draw_text(bar->layout, x, y, foreground, background,
+    uint32_t new_x = draw_text(bar->layout, x, y, fg, bg,
               &barcolors.fg_lay, &barcolors.bg_lay, bar->width,
               bar->height, bar->textpadding);
     return new_x - x;
 }
 
-static void layoutwidget_scroll( Bar* bar, uint32_t pointer_x, int amount ) {
-    (void)bar;
+static void layoutwidget_scroll( widget_t* w, uint32_t pointer_x, int amount ) {
     (void)pointer_x;
     awl_plugin_data_t* P = awl_plugin_data();
     if (!P) return;
     P->cycle_layout( &( (const Arg){.i=amount} ) );
-    bar->redraw = true;
+    w->bar->redraw = true;
 }
 
-static void layoutwidget_click( Bar* bar, uint32_t pointer_x, int button ) {
-    (void)bar;
+static void layoutwidget_click( widget_t* w, uint32_t pointer_x, int button ) {
     (void)pointer_x;
     awl_plugin_data_t* P = awl_plugin_data();
     if (!P) return;
@@ -1572,45 +1593,45 @@ static void layoutwidget_click( Bar* bar, uint32_t pointer_x, int button ) {
         case BTN_RIGHT: P->cycle_layout( &( (const Arg){.i=-1} ) ); break;
         default: break;
     }
-    bar->redraw = true;
+    w->bar->redraw = true;
 }
 
-static uint32_t clockwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
+static uint32_t clockwidget_draw( widget_t* w, uint32_t x, pixman_image_t* fg, pixman_image_t* bg ) {
+    Bar* bar = w->bar;
     awl_plugin_data_t* P = awl_plugin_data();
     if (!P) return 0;
 
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
     if (P->date)
-        draw_text(P->date->s, x, y, foreground, background, &barcolors.fg_status, &barcolors.bg_status,
+        draw_text(P->date->s, x, y, fg, bg, &barcolors.fg_status, &barcolors.bg_status,
                   bar->width, bar->height, bar->textpadding );
     return TEXT_WIDTH( "XX:XX", -1, bar->textpadding );
 }
 
-static void clockwidget_view( Bar* bar, int32_t x ) {
+static void clockwidget_view( widget_t* w, int32_t x ) {
+    (void)w;
     awl_plugin_data_t* P = awl_plugin_data();
     if (!P) return;
-
-    (void)bar;
 
     if (x < 0) calendar_hide( P->cal );
     else calendar_show( P->cal );
 }
 
-static void clockwidget_scroll( Bar* bar, uint32_t pointer_x, int amount ) {
+static void clockwidget_scroll( widget_t* w, uint32_t pointer_x, int amount ) {
+    (void)w;
+    (void)pointer_x;
     awl_plugin_data_t* P = awl_plugin_data();
     if (!P) return;
-    (void)bar;
-    (void)pointer_x;
     calendar_next( P->cal, amount );
 }
 
 
-static void clockwidget_click( Bar* bar, uint32_t pointer_x, int button ) {
+static void clockwidget_click( widget_t* w, uint32_t pointer_x, int button ) {
+    (void)w;
+    (void)pointer_x;
+
     awl_plugin_data_t* P = awl_plugin_data();
     if (!P) return;
-
-    (void)bar;
-    (void)pointer_x;
 
     switch (button) {
         case BTN_LEFT:
@@ -1622,7 +1643,8 @@ static void clockwidget_click( Bar* bar, uint32_t pointer_x, int button ) {
     }
 }
 
-static uint32_t pulsewidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
+static uint32_t pulsewidget_draw( widget_t* w, uint32_t x, pixman_image_t* fg, pixman_image_t* bg ) {
+    Bar* bar = w->bar;
     awl_plugin_data_t* P = awl_plugin_data();
     if (!P) return 0;
     if (!P->pulse) return 0;
@@ -1633,13 +1655,14 @@ static uint32_t pulsewidget_draw( Bar* bar, uint32_t x, pixman_image_t* foregrou
     float val = atomic_load( &P->pulse->value );
     int muted = atomic_load( &P->pulse->muted );
     sprintf( string, "%3.0f%%", val * 100.0f );
-    draw_text( string, x, y, foreground, background, muted ? &_molokai_orange :
+    draw_text( string, x, y, fg, bg, muted ? &_molokai_orange :
                         lround(val*100.0) > 100 ? &_molokai_red : &barcolors.fg_status,
                         &barcolors.bg_status, bar->width, bar->height, bar->textpadding );
     return TEXT_WIDTH( "100%", -1, bar->textpadding );
 }
 
-static uint32_t ipwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
+static uint32_t ipwidget_draw( widget_t* w, uint32_t x, pixman_image_t* fg, pixman_image_t* bg ) {
+    Bar* bar = w->bar;
     awl_plugin_data_t* P = awl_plugin_data();
     if (!P) return 0;
     if (!P->ip) return 0;
@@ -1650,7 +1673,7 @@ static uint32_t ipwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground,
     pixman_color_t _molokai_red = color_8bit_to_16bit(molokai_red),
                    _molokai_green = color_8bit_to_16bit(molokai_green);
     if (*P->ip->address_string) {
-        draw_text( P->ip->address_string, x, y, foreground, background,
+        draw_text( P->ip->address_string, x, y, fg, bg,
                    P->ip->is_online ? &_molokai_green : &_molokai_red,
                    &barcolors.bg_status, bar->width, bar->height, bar->textpadding );
         return TEXT_WIDTH( P->ip->address_string, -1, bar->textpadding );
@@ -1659,7 +1682,8 @@ static uint32_t ipwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground,
     return TEXT_WIDTH( "ipaddr", -1, bar->textpadding );
 }
 
-static uint32_t tempwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
+static uint32_t tempwidget_draw( widget_t* w, uint32_t x, pixman_image_t* fg, pixman_image_t* bg ) {
+    Bar* bar = w->bar;
     awl_plugin_data_t* P = awl_plugin_data();
     if (!P) return TEXT_WIDTH( "40°C", -1, bar->textpadding );
     if (!P->temp) return TEXT_WIDTH( "40°C", -1, bar->textpadding );
@@ -1676,7 +1700,7 @@ static uint32_t tempwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foregroun
             snprintf( text, 127, "%.0f°C", P->temp->temps[i] );
         pixman_color_t fgcolor = color_8bit_to_16bit( temp_color( P->temp->temps[i],
                     P->temp->f_t_min[P->temp->idx[i]], P->temp->f_t_max[P->temp->idx[i]] ) );
-        draw_text( text, x, y, foreground, background, &fgcolor, &barcolors.bg_status,
+        draw_text( text, x, y, fg, bg, &fgcolor, &barcolors.bg_status,
                    bar->width, bar->height, bar->textpadding );
         uint32_t w = TEXT_WIDTH(text, -1, bar->textpadding);
         width += w;
@@ -1687,7 +1711,8 @@ static uint32_t tempwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foregroun
 }
 
 #ifndef AWL_SKIP_BATWIDGET
-static uint32_t batwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
+static uint32_t batwidget_draw( widget_t* w, uint32_t x, pixman_image_t* fg, pixman_image_t* bg ) {
+    Bar* bar = w->bar;
     awl_plugin_data_t* P = awl_plugin_data();
     if (!P) return 0;
     if (!P->bat) return 0;
@@ -1703,23 +1728,23 @@ static uint32_t batwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground
     if (P->bat->charge < 0.3)   fgcolor = color_8bit_to_16bit( molokai_orange );
     if (P->bat->charge < 0.15)  fgcolor = color_8bit_to_16bit( molokai_red );
     if (P->bat->charging)       fgcolor = color_8bit_to_16bit( molokai_green );
-    draw_text( text, x, y, foreground, background, &fgcolor, &barcolors.bg_status,
+    draw_text( text, x, y, fg, bg, &fgcolor, &barcolors.bg_status,
                bar->width, bar->height, bar->textpadding );
     /* sem_post( &P->bat->sem ); */
     return TEXT_WIDTH( text, -1, bar->textpadding );
 }
 #endif
 
-static void pulsewidget_scroll( Bar* bar, uint32_t pointer_x, int amount ) {
-    (void)bar;
+static void pulsewidget_scroll( widget_t* w, uint32_t pointer_x, int amount ) {
+    (void)w;
     (void)pointer_x;
     static char cmd[128];
     sprintf( cmd, "pactl set-sink-volume @DEFAULT_SINK@ %+d%%", -amount*2 );
     spawn_pid_str( cmd );
 }
 
-static void pulsewidget_click( Bar* bar, uint32_t pointer_x, int button ) {
-    (void)bar;
+static void pulsewidget_click( widget_t* w, uint32_t pointer_x, int button ) {
+    (void)w;
     (void)pointer_x;
     switch (button) {
         case BTN_LEFT:
@@ -1732,20 +1757,23 @@ static void pulsewidget_click( Bar* bar, uint32_t pointer_x, int button ) {
     }
 }
 
-static uint32_t separator_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
+static uint32_t separator_draw( widget_t* w, uint32_t x, pixman_image_t* fg, pixman_image_t* bg ) {
+    Bar* bar = w->bar;
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
-    draw_text( "|", x, y, foreground, background, &barcolors.fg_status, &barcolors.bg_status, bar->width, bar->height, 0 );
+    draw_text( "|", x, y, fg, bg, &barcolors.fg_status, &barcolors.bg_status, bar->width, bar->height, 0 );
     return TEXT_WIDTH( "|", -1, 0 );
 }
 
-static uint32_t systray_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
-    (void)foreground;
-    pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &barcolors.bg_status, 1, &(pixman_box32_t){.x1=x, .y1=0, .x2=x+128, .y2=bar->height});
+static uint32_t systray_draw( widget_t* w, uint32_t x, pixman_image_t* fg, pixman_image_t* bg ) {
+    (void)fg;
+    Bar* bar = w->bar;
+    pixman_image_fill_boxes(PIXMAN_OP_SRC, bg, &barcolors.bg_status, 1, &(pixman_box32_t){.x1=x, .y1=0, .x2=x+128, .y2=bar->height});
     return 128;
 }
 
-static uint32_t statuswidget_draw( Bar* bar, uint32_t x, pixman_image_t* fg, pixman_image_t* background ) {
+static uint32_t statuswidget_draw( widget_t* w, uint32_t x, pixman_image_t* fg, pixman_image_t* bg ) {
     (void)fg;
+    Bar* bar = w->bar;
     awl_plugin_data_t* P = awl_plugin_data();
     if (!P) return 32*3;
     if (!P->stats) return 32*3;
@@ -1759,7 +1787,8 @@ static uint32_t statuswidget_draw( Bar* bar, uint32_t x, pixman_image_t* fg, pix
     const float *icpu = st->cpu,
                 *imem = st->mem,
                 *iswp = st->swp;
-    widget_boxes = (pixman_box32_t*)realloc(widget_boxes, sizeof(pixman_box32_t)*2*(ncpu+nmem+nswp));
+    pixman_box32_t* widget_boxes = (pixman_box32_t*)w->userdata;
+    widget_boxes = realloc(widget_boxes, sizeof(pixman_box32_t)*2*(ncpu+nmem+nswp));
     pixman_box32_t *b_cpu = widget_boxes;
     pixman_box32_t *b_mem = b_cpu + ncpu;
     pixman_box32_t *b_swp = b_mem + nmem;
@@ -1791,23 +1820,24 @@ static uint32_t statuswidget_draw( Bar* bar, uint32_t x, pixman_image_t* fg, pix
             xx++;
         }
     }
-    pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &barcolors.bg_stats, b_bg_run-b_bg, b_bg);
-    pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &barcolors.fg_stats_cpu, ncpu, b_cpu);
-    pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &barcolors.fg_stats_mem, nmem, b_mem);
-    pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &barcolors.fg_stats_swp, nswp, b_swp);
+    pixman_image_fill_boxes(PIXMAN_OP_SRC, bg, &barcolors.bg_stats, b_bg_run-b_bg, b_bg);
+    pixman_image_fill_boxes(PIXMAN_OP_SRC, bg, &barcolors.fg_stats_cpu, ncpu, b_cpu);
+    pixman_image_fill_boxes(PIXMAN_OP_SRC, bg, &barcolors.fg_stats_mem, nmem, b_mem);
+    pixman_image_fill_boxes(PIXMAN_OP_SRC, bg, &barcolors.fg_stats_swp, nswp, b_swp);
     /* sem_post( &st->sem ); */
 
     return widget_width;
 }
 
-static void statuswidget_click( Bar* bar, uint32_t pointer_x, int button ) {
-    (void)bar;
+static void statuswidget_click( widget_t* w, uint32_t pointer_x, int button ) {
+    (void)w;
     (void)pointer_x;
     (void)button;
     spawn_pid_str( "kitty -e btop" );
 }
 
-static uint32_t taskbarwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foreground, pixman_image_t* background ) {
+static uint32_t taskbarwidget_draw( widget_t* w, uint32_t x, pixman_image_t* fg, pixman_image_t* bg ) {
+    Bar* bar = w->bar;
     uint32_t xspace = bar->center_widget_space;
     uint32_t nx;
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
@@ -1821,12 +1851,12 @@ static uint32_t taskbarwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foregr
             nx = x + space_per_window;
 
             // find the right bg color (maybe do that with fg too?)
-            pixman_color_t bg = barcolors.bg_win;
-            if (T->focused) bg = alpha_blend_16( bg, barcolors.bg_win_act );
-            if (T->urgent) bg = alpha_blend_16( bg, barcolors.bg_win_urg );
-            if (!T->visible) bg = alpha_blend_16( bg, barcolors.bg_win_min );
+            pixman_color_t bgc = barcolors.bg_win;
+            if (T->focused) bgc = alpha_blend_16( bgc, barcolors.bg_win_act );
+            if (T->urgent) bgc = alpha_blend_16( bgc, barcolors.bg_win_urg );
+            if (!T->visible) bgc = alpha_blend_16( bgc, barcolors.bg_win_min );
 
-            x = draw_text( " ", x, y, foreground, background, &barcolors.fg_win, &bg, nx, bar->height, 0 );
+            x = draw_text( " ", x, y, fg, bg, &barcolors.fg_win, &bgc, nx, bar->height, 0 );
 
             char* add = NULL;
 
@@ -1851,13 +1881,13 @@ static uint32_t taskbarwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foregr
                 free(add), add = NULL;
 
             if (add) {
-                x = draw_text( add, x, y, foreground, background, &barcolors.fg_win, &bg,
+                x = draw_text( add, x, y, fg, bg, &barcolors.fg_win, &bgc,
                         nx, bar->height, 0 );
                 free(add);
             }
-            x = draw_text( T->name, x, y, foreground, background, &barcolors.fg_win, &bg,
+            x = draw_text( T->name, x, y, fg, bg, &barcolors.fg_win, &bgc,
                 nx, bar->height, 0 );
-            pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &bg, 1,
+            pixman_image_fill_boxes(PIXMAN_OP_SRC, bg, &bgc, 1,
                         &(pixman_box32_t){ .x1 = x, .x2 = nx, .y1 = 0, .y2 = bar->height });
             x = nx;
         }
@@ -1865,7 +1895,7 @@ static uint32_t taskbarwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foregr
         nx = x;
         HASH_CLEAR(hh, bar->window_list);
     } else {
-        pixman_image_fill_boxes(PIXMAN_OP_SRC, background, &barcolors.bg_lay, 1,
+        pixman_image_fill_boxes(PIXMAN_OP_SRC, bg, &barcolors.bg_lay, 1,
                 &(pixman_box32_t){ .x1 = x, .x2 = x+xspace, .y1 = 0, .y2 = bar->height });
         x += xspace;
         nx = x;
@@ -1873,20 +1903,19 @@ static uint32_t taskbarwidget_draw( Bar* bar, uint32_t x, pixman_image_t* foregr
     return 0;
 }
 
-static void taskbarwidget_scroll( Bar* bar, uint32_t pointer_x, int amount ) {
+static void taskbarwidget_scroll( widget_t* w, uint32_t pointer_x, int amount ) {
     awl_plugin_data_t* P = awl_plugin_data();
     if (!P) return;
-
-    (void)bar;
     (void)pointer_x;
     if (P->focusstack) {
         (*P->focusstack)( &( (const Arg){.i=amount} ) );
-        bar->redraw = true;
+        w->bar->redraw = true;
     }
 }
 
-static void taskbarwidget_click( Bar* bar, uint32_t pointer_x, int button ) {
-    awl_state_t* B = AWL_VTABLE_SYM.state;
+static void taskbarwidget_click( widget_t* w, uint32_t pointer_x, int button ) {
+    Bar* bar = w->bar;
+    awl_state_t* B = awl_plugin_state();
     if (!B) return;
 
     uint32_t xspace = bar->center_widget_space;
