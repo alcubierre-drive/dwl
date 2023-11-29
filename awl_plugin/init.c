@@ -362,7 +362,7 @@ static void awl_plugin_init(void) {
         ADD_KEY( MODKEY_CT_SH, SKEY, toggletag,  {.ui = 1 << TAG} )
 
     #ifndef AWL_TERM_CMD
-    #define AWL_TERM_CMD "kitty"
+    #define AWL_TERM_CMD "kitty -d $HOME"
     #endif
     #ifndef AWL_MENU_CMD
     #define AWL_MENU_CMD "bemenu-run"
