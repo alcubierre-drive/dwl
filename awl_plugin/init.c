@@ -411,7 +411,7 @@ static void awl_plugin_init(void) {
     ADD_KEY( 0, XKB_KEY_XF86AudioLowerVolume, spawn_from_plugin,{.v="pactl set-sink-volume @DEFAULT_SINK@ -5%"} );
     ADD_KEY( 0, XKB_KEY_XF86AudioMute,        spawn_from_plugin,{.v="pactl set-sink-mute @DEFAULT_SINK@ toggle"} );
     ADD_KEY( 0, XKB_KEY_XF86AudioMicMute,     spawn_from_plugin,{.v="pactl set-source-mute @DEFAULT_SOURCE@ toggle"} );
-    ADD_KEY( 0, XKB_KEY_Print,                spawn_from_plugin,{.v="grim"} );
+    ADD_KEY( 0, XKB_KEY_Print,                spawn_from_plugin,{.v="grim_slurp"} );
     ADD_KEY( MODKEY, XKB_KEY_F1,              spawn_from_plugin,{.v="pulse_port_switch -t -N"} );
     ADD_KEY( MODKEY, XKB_KEY_d,               spawn_from_plugin,{.v="wdisplays"} );
     ADD_KEY( 0, XKB_KEY_XF86Display,          spawn_from_plugin,{.v="wdisplays"} );
