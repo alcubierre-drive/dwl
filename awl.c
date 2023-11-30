@@ -1790,7 +1790,7 @@ static void run(char *startup_cmd) {
     setenv( "WAYLAND_DISPLAY", socket, 1 );
     setenv( "XDG_CURRENT_DESKTOP", "kde", 1 );
     system( "systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP" );
-    system( "dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=sway" );
+    system( "dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=kde" );
 
     /* Start the backend. This will enumerate outputs and inputs, become the DRM
      * master, etc */

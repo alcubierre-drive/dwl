@@ -298,6 +298,7 @@ static void awl_plugin_init(void) {
     ARRAY_APPEND(Rule, rules, "wdisplays", NULL, 0, {1, 0}, -1 );
     ARRAY_APPEND(Rule, rules, "blueman-manager", NULL, 0, {1, 0}, -1 );
     ARRAY_APPEND(Rule, rules, "zoom", NULL, 0, {1, 0}, -1 );
+    ARRAY_APPEND(Rule, rules, "Zoom", NULL, 0, {1, 0}, -1 );
     ARRAY_APPEND(Rule, rules, "evolution-alarm-notify", NULL, 1<<8, {1, 0}, -1 );
     P_awl_log_printf( "created %i rules", S.n_rules );
 
