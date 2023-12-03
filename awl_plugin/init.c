@@ -230,6 +230,20 @@ typedef struct awl_persistent_plugin_data_t {
 
 static void awl_plugin_init(void) {
 
+    P_awl_log_printf("setting up environment");
+    setenv("MOZ_ENABLE_WAYLAND", "1", 1);
+    setenv("QT_STYLE_OVERRIDE","kvantum",1);
+    setenv("DESKTOP_SESSION","kde",1);
+    setenv("QT_AUTO_SCREEN_SCALE_FACTOR","0",1);
+    setenv("EDITOR","nvim",1);
+    setenv("SYSTEMD_EDITOR","/usr/bin/nvim",1);
+    setenv("SSH_AUTH_SOCK","1",1);
+    setenv("NO_AT_BRIDGE","1",1);
+    char buf[256] = {0};
+    strcpy( buf, getenv("HOME") );
+    strcat( buf, "/Desktop" );
+    setenv("GRIM_DEFAULT_DIR", buf, 1);
+
     P_awl_log_printf("persistent data…");
     awl_persistent_plugin_data_t* data = AWL_VTABLE_SYM.state->persistent_plugin_data;
     if (sizeof(awl_persistent_plugin_data_t) > AWL_VTABLE_SYM.state->persistent_plugin_data_nbytes) {
@@ -259,20 +273,6 @@ static void awl_plugin_init(void) {
         AUTOSTART( evolution, "evolution" );
         AUTOSTART( locker, "systemd-lock-handler swaylock" );
     }
-
-    P_awl_log_printf("setting up environment");
-    setenv("MOZ_ENABLE_WAYLAND", "1", 1);
-    setenv("QT_STYLE_OVERRIDE","kvantum",1);
-    setenv("DESKTOP_SESSION","kde",1);
-    setenv("QT_AUTO_SCREEN_SCALE_FACTOR","0",1);
-    setenv("EDITOR","nvim",1);
-    setenv("SYSTEMD_EDITOR","/usr/bin/nvim",1);
-    setenv("SSH_AUTH_SOCK","1",1);
-    setenv("NO_AT_BRIDGE","1",1);
-    char buf[256] = {0};
-    strcpy( buf, getenv("HOME") );
-    strcat( buf, "/Desktop" );
-    setenv("GRIM_DEFAULT_DIR", buf, 1);
 
     P_awl_log_printf( "general setup" );
     S.sloppyfocus = 1;
