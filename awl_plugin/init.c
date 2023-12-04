@@ -53,6 +53,7 @@ static void bordertoggle( const Arg* arg );
 static void cycle_tag( const Arg* arg );
 static void cycle_layout( const Arg* arg );
 static void focusstack(const Arg *arg);
+static void focusglobalstack(const Arg *arg);
 static void killclient(const Arg *arg);
 static void incnmaster(const Arg *arg);
 static void focusmon(const Arg *arg);
@@ -373,6 +374,8 @@ static void awl_plugin_init(void) {
     ADD_KEY( MODKEY,    XKB_KEY_Return,     spawn_from_plugin,  {.v=AWL_TERM_CMD} )
     ADD_KEY( MODKEY,    XKB_KEY_j,          focusstack,         {.i = +1} )
     ADD_KEY( MODKEY,    XKB_KEY_k,          focusstack,         {.i = -1} )
+    ADD_KEY( MODKEY_CT_SH,XKB_KEY_J,        focusglobalstack,   {.i = +1} )
+    ADD_KEY( MODKEY_CT_SH,XKB_KEY_K,        focusglobalstack,   {.i = -1} )
     /* ADD_KEY( MODKEY,    XKB_KEY_i,          incnmaster,         {.i = +1} ) */
     /* ADD_KEY( MODKEY,    XKB_KEY_d,          incnmaster,         {.i = -1} ) */
     ADD_KEY( MODKEY,    XKB_KEY_h,          setmfact,           {.f = -0.05} )
@@ -968,6 +971,44 @@ static void focusstack(const Arg *arg) {
         }
     }
     /* If only one client is visible on selmon, then c == sel */
+    B->focusclient(c, 1);
+}
+
+static int client_visible_anymon(Client* c) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    if (!B) return -1;
+
+    Monitor* m;
+    int visible = 0;
+    wl_list_for_each(m, &B->mons, link) {
+        if (m->wlr_output->enabled)
+            if (VISIBLEON(c, m)) visible++;
+    }
+    return visible;
+}
+
+static void focusglobalstack(const Arg *arg) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    if (!B) return;
+
+    Client *c, *sel = B->focustop(B->selmon);
+    if (!sel || sel->isfullscreen)
+        return;
+    if (arg->i > 0) {
+        wl_list_for_each(c, &sel->link, link) {
+            if (&c->link == &B->clients)
+                continue; /* wrap past the sentinel node */
+            if (client_visible_anymon(c)>0 && c->visible)
+                break; /* found it */
+        }
+    } else {
+        wl_list_for_each_reverse(c, &sel->link, link) {
+            if (&c->link == &B->clients)
+                continue; /* wrap past the sentinel node */
+            if (client_visible_anymon(c)>0 && c->visible)
+                break; /* found it */
+        }
+    }
     B->focusclient(c, 1);
 }
 
