@@ -421,12 +421,9 @@ static void awl_plugin_init(void) {
     ADD_KEY( 0, XKB_KEY_XF86Display,          spawn_from_plugin,{.v="wdisplays"} );
     ADD_KEY( MODKEY_SH, XKB_KEY_G,            spawn_from_plugin,{.v="swaylock"} );
 
-    ADD_KEY( MODKEY_CT_SH, XKB_KEY_D,         spawn_from_plugin,{.v="docked 1"} );
-    ADD_KEY( MODKEY_CT,    XKB_KEY_d,         spawn_from_plugin,{.v="docked 2"} );
-    ADD_KEY( MODKEY_SH,    XKB_KEY_D,         spawn_from_plugin,{.v="docked 3"} );
-    ADD_KEY( MODKEY_CT,    XKB_KEY_u,         spawn_from_plugin,{.v="docked 4"} );
-    ADD_KEY( MODKEY_SH,    XKB_KEY_U,         spawn_from_plugin,{.v="docked 5"} );
-    ADD_KEY( MODKEY_CT_SH, XKB_KEY_U,         spawn_from_plugin,{.v="docked 6"} );
+    ADD_KEY( MODKEY_CT_SH, XKB_KEY_D,         spawn_from_plugin,{.v="docked reset"} );
+    ADD_KEY( MODKEY_CT,    XKB_KEY_d,         spawn_from_plugin,{.v="docked dock"} );
+    ADD_KEY( MODKEY_SH,    XKB_KEY_D,         spawn_from_plugin,{.v="docked zoom"} );
 
     // TODO potentially missing keyboard shortcuts
     /* "systemctl --user stop backlight-tooler.timer; backlight-tooler -m toggle" */
