@@ -4,7 +4,7 @@
 #include <semaphore.h>
 
 struct awl_ipaddr_t {
-    _Atomic char* address;
+    char address[128];
     _Atomic int is_online;
 
     char exclude_list[4][16];

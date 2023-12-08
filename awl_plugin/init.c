@@ -481,7 +481,7 @@ static void awl_plugin_init(void) {
     P->temp->f_t_max[P->temp->f_ntemps] = 70;
     P->temp->f_t_min[P->temp->f_ntemps++] = 40;
     #endif // AWL_GPU_THERMAL_ZONE
-    start_temp_thread( P->temp, 1 );
+    start_temp_thread( P->temp, 2 );
 
     P->cycle_layout = cycle_layout;
     P->cycle_tag = cycle_tag;

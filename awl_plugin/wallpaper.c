@@ -80,7 +80,7 @@ awl_wallpaper_data_t* wallpaper_init( const char* fname, int update_seconds ) {
     d->show_dirent_hidden = 1;
     d->random = 1;
     d->cache_count_max = 120;
-    d->cache_bytes_max = 1024ul * 1024ul * 1024ul;
+    d->cache_bytes_max = 1024ul * 1024ul * 512ul;
 
     d->dirent = calloc(1, sizeof(awl_dirent_t));
 
@@ -98,7 +98,8 @@ awl_wallpaper_data_t* wallpaper_init( const char* fname, int update_seconds ) {
     p.hidden = 0;
     p.anchor = ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
         ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT |
-        ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
+        ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
+        ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP;
     p.layer = ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND;
     p.name = fname;
     p.only_current_output = 0;
@@ -185,6 +186,27 @@ static void* wp_update_display( void* arg ) {
     return display;
 }
 
+static pixman_transform_t transform_wp_to_screen( pixman_image_t* img, int w, int h ) {
+    float wp = pixman_image_get_width(img),
+          hp = pixman_image_get_height(img),
+          ww = w,
+          hw = h;
+    float sx = wp / ww,
+          sy = hp / hw;
+    float s = sx > sy ? sy : sx;
+    sx = s;
+    sy = s;
+
+    float tx = (wp / sx - ww) / 2 / sx,
+          ty = (hp / sy - hw) / 2 / sy;
+    pixman_f_transform_t t;
+    pixman_transform_t t2;
+    pixman_f_transform_init_translate(&t, tx, ty);
+    pixman_f_transform_init_scale(&t, sx, sy);
+    pixman_transform_from_pixman_f_transform(&t2, &t);
+    return t2;
+}
+
 static void wallpaper_draw( AWL_SingleWindow* win, pixman_image_t* final ) {
     awl_wallpaper_data_t* d = awl_minimal_window_get_userdata( win->parent );
     if (!d) return;
@@ -194,19 +216,13 @@ static void wallpaper_draw( AWL_SingleWindow* win, pixman_image_t* final ) {
     if (!d->number) return;
     char* wpfname = d->glob.gl_pathv[d->index];
 
-    wp_cache_t item = {0},
-                    *found = NULL;
-
-    char* wpfname_res = calloc(1, strlen(wpfname) + 64);
-    sprintf( wpfname_res, "%s@%ix%i", wpfname, win->width, win->height );
-    u128t md5 = awl_md5sum_int( wpfname_res, strlen(wpfname) );
-    free( wpfname_res );
-    item.id = md5;
+    wp_cache_t *found = NULL;
+    u128t md5 = awl_md5sum_int( wpfname, strlen(wpfname) );
 
     wp_cache_cleaner_once(d);
 
     sem_wait( &d->cache_sem );
-    HASH_FIND(hh, d->cache, &item.id, sizeof(u128t), found);
+    HASH_FIND(hh, d->cache, &md5, sizeof(u128t), found);
     if (!found) {
         found = calloc(1,sizeof(wp_cache_t));
         found->id = md5;
@@ -217,37 +233,17 @@ static void wallpaper_draw( AWL_SingleWindow* win, pixman_image_t* final ) {
             P_awl_err_printf("could not open file %s", wpfname);
             return;
         }
-        pixman_image_t* png_image = awl_png_load(f, wpfname);
+        found->img = awl_png_load(f, wpfname);
+        /* pixman_image_set_filter(found->img, PIXMAN_FILTER_BEST, NULL, 0); */
         fclose(f);
-        // best fit
-        float wp = pixman_image_get_width(png_image),
-              hp = pixman_image_get_height(png_image),
-              ww = win->width,
-              hw = win->height;
-        float sx = wp / ww,
-              sy = hp / hw;
-        float s = sx > sy ? sy : sx;
-        sx = s;
-        sy = s;
-
-        float tx = (wp / sx - ww) / 2 / sx,
-              ty = (hp / sy - hw) / 2 / sy;
-        pixman_f_transform_t t;
-        pixman_transform_t t2;
-        pixman_f_transform_init_translate(&t, tx, ty);
-        pixman_f_transform_init_scale(&t, sx, sy);
-        pixman_transform_from_pixman_f_transform(&t2, &t);
-        pixman_image_set_transform(png_image, &t2);
-        pixman_image_set_filter(png_image, PIXMAN_FILTER_BEST, NULL, 0);
-        found->img = pixman_image_create_bits(PIXMAN_a8r8g8b8, win->width, win->height, NULL, win->width*4);
-        pixman_image_composite32(PIXMAN_OP_OVER, png_image, NULL, found->img, 0, 0, 0, 0, 0, 0, win->width, win->height);
-        pixman_image_unref(png_image);
         found->memsz = ((uint64_t)PIXMAN_FORMAT_BPP(pixman_image_get_format(found->img)) *
-                                  pixman_image_get_width(found->img) * pixman_image_get_height(found->img))/8 +
+                            pixman_image_get_width(found->img) * pixman_image_get_height(found->img))/8 +
                        sizeof(wp_cache_t);
         HASH_ADD(hh, d->cache, id, sizeof(u128t), found);
     }
-    // set wallpaper from cache
+
+    pixman_transform_t t = transform_wp_to_screen( found->img, win->width, win->height );
+    pixman_image_set_transform( found->img, &t );
     pixman_image_composite32(PIXMAN_OP_OVER, found->img, NULL, final, 0, 0, 0, 0, 0, 0, win->width, win->height);
     sem_post( &d->cache_sem );
 

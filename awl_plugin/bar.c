@@ -31,6 +31,7 @@
 #include "../awl_title.h"
 #include "../awl_log.h"
 
+#include "sem_time.h"
 #include "init.h"
 #include "pulsetest.h"
 
@@ -1189,6 +1190,7 @@ static void setup_bar(Bar *bar) {
     bar->widgets_right[bar->n_widgets_right++] = (widget_t){
         .draw = tempwidget_draw,
         .width = TEXT_WIDTH( "CPU:45°C", -1, bar->textpadding ),
+        .free = free,
     };
     bar->widgets_right[bar->n_widgets_right++] = (widget_t){
         .draw = separator_draw,
@@ -1607,11 +1609,12 @@ static uint32_t clockwidget_draw( widget_t* w, uint32_t x, pixman_image_t* fg, p
     if (!P) return 0;
     if (!P->date) return 0;
 
-    sem_wait( &P->date->sem );
-    uint32_t y = (bar->height + font->ascent - font->descent) / 2;
-    draw_text(P->date->s, x, y, fg, bg, &barcolors.fg_status, &barcolors.bg_status,
-            bar->width, bar->height, bar->textpadding );
-    sem_post( &P->date->sem );
+    if (!sem_timedwait_nano(&P->date->sem, 10e6)) {
+        uint32_t y = (bar->height + font->ascent - font->descent) / 2;
+        draw_text(P->date->s, x, y, fg, bg, &barcolors.fg_status, &barcolors.bg_status,
+                bar->width, bar->height, bar->textpadding );
+        sem_post( &P->date->sem );
+    }
     return TEXT_WIDTH( "XX:XX", -1, bar->textpadding );
 }
 
@@ -1674,13 +1677,21 @@ static uint32_t ipwidget_draw( widget_t* w, uint32_t x, pixman_image_t* fg, pixm
     if (!P) return 0;
     if (!P->ip) return 0;
 
-    char* address = (char*)atomic_load( &P->ip->address );
+    char placeholder[] = "    invalid   ";
+    char address_[128] = {0};
+
+    char* address = address_;
+    if (sem_timedwait_nano( &P->ip->sem, 10e6 )) {
+        address = placeholder;
+    } else {
+        strncpy( address, P->ip->address, 128 );
+        sem_post( &P->ip->sem );
+    }
     int is_online = atomic_load( &P->ip->is_online );
 
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
     pixman_color_t _molokai_red = color_8bit_to_16bit(molokai_red),
                    _molokai_green = color_8bit_to_16bit(molokai_green);
-    char placeholder[] = "              ";
     if (!*address) address = placeholder;
     draw_text( address, x, y, fg, bg, is_online ? &_molokai_green : &_molokai_red,
             &barcolors.bg_status, bar->width, bar->height, bar->textpadding );
@@ -1692,26 +1703,36 @@ static uint32_t tempwidget_draw( widget_t* w, uint32_t x, pixman_image_t* fg, pi
     awl_plugin_data_t* P = awl_plugin_data();
     if (!P) return 0;
     if (!P->temp) return 0;
-    sem_wait( &P->temp->sem );
+
+    if (!w->userdata) w->userdata = calloc(1,sizeof(awl_temperature_t));
+    awl_temperature_t* T = w->userdata;
+
+    if (!sem_timedwait_nano( &P->temp->sem, 10e6 )) {
+        memcpy( T, P->temp, sizeof(awl_temperature_t) );
+        sem_post( &P->temp->sem );
+    }
+
+    if (T->ntemps == 0)
+        return TEXT_WIDTH("37°C", -1, bar->textpadding);
 
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
     uint32_t width = 0;
-    for (int i=0; i<P->temp->ntemps; ++i) {
+    for (int i=0; i<T->ntemps; ++i) {
         char text[128] = {0};
         // only put the label if the string is set
-        if (*P->temp->f_labels[P->temp->idx[i]])
-            snprintf( text, 127, "%s:%.0f°C", P->temp->f_labels[P->temp->idx[i]], P->temp->temps[i] );
+        if (*T->f_labels[T->idx[i]])
+            snprintf( text, 127, "%s:%.0f°C", T->f_labels[T->idx[i]], T->temps[i] );
         else
-            snprintf( text, 127, "%.0f°C", P->temp->temps[i] );
-        pixman_color_t fgcolor = color_8bit_to_16bit( temp_color( P->temp->temps[i],
-                    P->temp->f_t_min[P->temp->idx[i]], P->temp->f_t_max[P->temp->idx[i]] ) );
+            snprintf( text, 127, "%.0f°C", T->temps[i] );
+        pixman_color_t fgcolor = color_8bit_to_16bit( temp_color( T->temps[i],
+                    T->f_t_min[T->idx[i]], T->f_t_max[T->idx[i]] ) );
         draw_text( text, x, y, fg, bg, &fgcolor, &barcolors.bg_status,
                    bar->width, bar->height, bar->textpadding );
         uint32_t w = TEXT_WIDTH(text, -1, bar->textpadding);
         width += w;
         x += w;
     }
-    sem_post( &P->temp->sem );
+
     return width;
 }
 
@@ -1776,15 +1797,29 @@ static uint32_t systray_draw( widget_t* w, uint32_t x, pixman_image_t* fg, pixma
     return 128;
 }
 
+typedef struct {
+    awl_stats_t stats;
+    pixman_box32_t boxes[128*3*2];
+} statuswidget_userdata_t;
+
 static uint32_t statuswidget_draw( widget_t* w, uint32_t x, pixman_image_t* fg, pixman_image_t* bg ) {
     (void)fg;
     Bar* bar = w->bar;
     awl_plugin_data_t* P = awl_plugin_data();
     if (!P) return 32*3;
     if (!P->stats) return 32*3;
-    sem_wait( &P->stats->sem );
 
-    awl_stats_t* st = P->stats;
+    if (!w->userdata)
+        w->userdata = calloc(1, sizeof(statuswidget_userdata_t));
+    statuswidget_userdata_t* u = w->userdata;
+    pixman_box32_t* widget_boxes = u->boxes;
+    awl_stats_t* st = &u->stats;
+
+    if (!sem_timedwait_nano( &P->stats->sem, 10e6 )) {
+        memcpy( st, P->stats, sizeof(awl_stats_t) );
+        sem_post( &P->stats->sem );
+    }
+
     uint32_t widget_width = st->ncpu + st->nmem + st->nswp;
     const int ncpu = st->ncpu,
               nmem = st->nmem,
@@ -1792,8 +1827,6 @@ static uint32_t statuswidget_draw( widget_t* w, uint32_t x, pixman_image_t* fg, 
     const float *icpu = st->cpu,
                 *imem = st->mem,
                 *iswp = st->swp;
-    pixman_box32_t* widget_boxes = (pixman_box32_t*)w->userdata;
-    widget_boxes = realloc(widget_boxes, sizeof(pixman_box32_t)*2*(ncpu+nmem+nswp));
     pixman_box32_t *b_cpu = widget_boxes;
     pixman_box32_t *b_mem = b_cpu + ncpu;
     pixman_box32_t *b_swp = b_mem + nmem;
@@ -1829,7 +1862,6 @@ static uint32_t statuswidget_draw( widget_t* w, uint32_t x, pixman_image_t* fg, 
     pixman_image_fill_boxes(PIXMAN_OP_SRC, bg, &barcolors.fg_stats_cpu, ncpu, b_cpu);
     pixman_image_fill_boxes(PIXMAN_OP_SRC, bg, &barcolors.fg_stats_mem, nmem, b_mem);
     pixman_image_fill_boxes(PIXMAN_OP_SRC, bg, &barcolors.fg_stats_swp, nswp, b_swp);
-    sem_post( &st->sem );
 
     return widget_width;
 }
