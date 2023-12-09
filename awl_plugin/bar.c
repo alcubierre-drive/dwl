@@ -133,6 +133,7 @@ struct widget_t {
     void (*callback_click)(widget_t* this, uint32_t x_rel, int button);
     void (*callback_scroll)(widget_t* this, uint32_t x_rel, int amount);
     void* userdata;
+    int age;
     void (*free)( void* userdata );
     Bar* bar;
 };
@@ -597,8 +598,8 @@ static int draw_frame(Bar *bar) {
     uint32_t x_end = bar->width;
     for (int w=0; w<bar->n_widgets_right; ++w) {
         if (bar->widgets_right[w].draw)
-            bar->widgets_right[w].width = bar->widgets_right[w].draw( &bar->widgets_right[w], x_end - bar->widgets_right[w].width,
-                    foreground, background );
+            bar->widgets_right[w].width = bar->widgets_right[w].draw( &bar->widgets_right[w],
+                    x_end - bar->widgets_right[w].width, foreground, background );
         x_end -= bar->widgets_right[w].width;
         if (bar->widgets_right[w].width == 0)
             P_awl_log_printf( "right widget %i has zero width\n", w );
@@ -1609,12 +1610,17 @@ static uint32_t clockwidget_draw( widget_t* w, uint32_t x, pixman_image_t* fg, p
     if (!P) return 0;
     if (!P->date) return 0;
 
+    char timestr[128] = {0};
+    uint32_t y = (bar->height + font->ascent - font->descent) / 2;
     if (!sem_timedwait_nano(&P->date->sem, 10e6)) {
-        uint32_t y = (bar->height + font->ascent - font->descent) / 2;
-        draw_text(P->date->s, x, y, fg, bg, &barcolors.fg_status, &barcolors.bg_status,
-                bar->width, bar->height, bar->textpadding );
+        w->age = 0;
+        strncpy(timestr, P->date->s, 127);
         sem_post( &P->date->sem );
+    } else {
+        w->age++;
     }
+    draw_text(timestr, x, y, fg, bg, &barcolors.fg_status, &barcolors.bg_status,
+                bar->width, bar->height, bar->textpadding );
     return TEXT_WIDTH( "XX:XX", -1, bar->textpadding );
 }
 
