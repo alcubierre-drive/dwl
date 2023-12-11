@@ -46,3 +46,11 @@ pixman_color_t alpha_blend_16( pixman_color_t B, pixman_color_t A ) {
     return fcolor2pixman(uR.c);
 }
 
+pixman_color_t mean_color_16( pixman_color_t A, pixman_color_t B, float wA ) {
+    pixman_color_t result = {0};
+    result.red = wA * A.red + (1.-wA) * B.red;
+    result.green = wA * A.green + (1.-wA) * B.green;
+    result.blue = wA * A.blue + (1.-wA) * B.blue;
+    result.alpha = wA * A.alpha + (1.-wA) * B.alpha;
+    return result;
+}

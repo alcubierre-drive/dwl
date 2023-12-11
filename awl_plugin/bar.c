@@ -1619,8 +1619,9 @@ static uint32_t clockwidget_draw( widget_t* w, uint32_t x, pixman_image_t* fg, p
     } else {
         w->age++;
     }
-    draw_text(timestr, x, y, fg, bg, &barcolors.fg_status, &barcolors.bg_status,
-                bar->width, bar->height, bar->textpadding );
+    pixman_color_t bgcolor = barcolors.bg_status;
+    for (int a=0; a<w->age; ++a) bgcolor = mean_color_16( bgcolor, white, 0.9 );
+    draw_text(timestr, x, y, fg, bg, &barcolors.fg_status, &bgcolor, bar->width, bar->height, bar->textpadding );
     return TEXT_WIDTH( "XX:XX", -1, bar->textpadding );
 }
 
@@ -1687,20 +1688,24 @@ static uint32_t ipwidget_draw( widget_t* w, uint32_t x, pixman_image_t* fg, pixm
     char address_[128] = {0};
 
     char* address = address_;
-    if (sem_timedwait_nano( &P->ip->sem, 10e6 )) {
-        address = placeholder;
-    } else {
+    if (!sem_timedwait_nano( &P->ip->sem, 10e6 )) {
+        w->age = 0;
         strncpy( address, P->ip->address, 128 );
         sem_post( &P->ip->sem );
+    } else {
+        address = placeholder;
+        w->age++;
     }
     int is_online = atomic_load( &P->ip->is_online );
+    if (!*address) address = placeholder;
 
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
     pixman_color_t _molokai_red = color_8bit_to_16bit(molokai_red),
                    _molokai_green = color_8bit_to_16bit(molokai_green);
-    if (!*address) address = placeholder;
-    draw_text( address, x, y, fg, bg, is_online ? &_molokai_green : &_molokai_red,
-            &barcolors.bg_status, bar->width, bar->height, bar->textpadding );
+
+    pixman_color_t bgcolor = barcolors.bg_status;
+    for (int a=0; a<w->age; ++a) bgcolor = mean_color_16( bgcolor, white, 0.9 );
+    draw_text( address, x, y, fg, bg, is_online ? &_molokai_green : &_molokai_red, &bgcolor, bar->width, bar->height, bar->textpadding );
     return TEXT_WIDTH( address, -1, bar->textpadding );
 }
 
@@ -1714,12 +1719,18 @@ static uint32_t tempwidget_draw( widget_t* w, uint32_t x, pixman_image_t* fg, pi
     awl_temperature_t* T = w->userdata;
 
     if (!sem_timedwait_nano( &P->temp->sem, 10e6 )) {
+        w->age = 0;
         memcpy( T, P->temp, sizeof(awl_temperature_t) );
         sem_post( &P->temp->sem );
+    } else {
+        w->age++;
     }
 
     if (T->ntemps == 0)
         return TEXT_WIDTH("37°C", -1, bar->textpadding);
+
+    pixman_color_t bgcolor = barcolors.bg_status;
+    for (int a=0; a<w->age; ++a) bgcolor = mean_color_16( bgcolor, white, 0.9 );
 
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
     uint32_t width = 0;
@@ -1730,10 +1741,9 @@ static uint32_t tempwidget_draw( widget_t* w, uint32_t x, pixman_image_t* fg, pi
             snprintf( text, 127, "%s:%.0f°C", T->f_labels[T->idx[i]], T->temps[i] );
         else
             snprintf( text, 127, "%.0f°C", T->temps[i] );
-        pixman_color_t fgcolor = color_8bit_to_16bit( temp_color( T->temps[i],
-                    T->f_t_min[T->idx[i]], T->f_t_max[T->idx[i]] ) );
-        draw_text( text, x, y, fg, bg, &fgcolor, &barcolors.bg_status,
-                   bar->width, bar->height, bar->textpadding );
+        pixman_color_t fgcolor = color_8bit_to_16bit(
+                temp_color( T->temps[i], T->f_t_min[T->idx[i]], T->f_t_max[T->idx[i]] ) );
+        draw_text( text, x, y, fg, bg, &fgcolor, &bgcolor, bar->width, bar->height, bar->textpadding );
         uint32_t w = TEXT_WIDTH(text, -1, bar->textpadding);
         width += w;
         x += w;
@@ -1822,8 +1832,11 @@ static uint32_t statuswidget_draw( widget_t* w, uint32_t x, pixman_image_t* fg, 
     awl_stats_t* st = &u->stats;
 
     if (!sem_timedwait_nano( &P->stats->sem, 10e6 )) {
+        w->age = 0;
         memcpy( st, P->stats, sizeof(awl_stats_t) );
         sem_post( &P->stats->sem );
+    } else {
+        w->age++;
     }
 
     uint32_t widget_width = st->ncpu + st->nmem + st->nswp;
@@ -1864,7 +1877,11 @@ static uint32_t statuswidget_draw( widget_t* w, uint32_t x, pixman_image_t* fg, 
             xx++;
         }
     }
-    pixman_image_fill_boxes(PIXMAN_OP_SRC, bg, &barcolors.bg_stats, b_bg_run-b_bg, b_bg);
+
+    pixman_color_t bgcolor = barcolors.bg_stats;
+    for (int a=0; a<w->age; ++a) bgcolor = mean_color_16( bgcolor, barcolors.bg_status, 0.9 );
+
+    pixman_image_fill_boxes(PIXMAN_OP_SRC, bg, &bgcolor, b_bg_run-b_bg, b_bg);
     pixman_image_fill_boxes(PIXMAN_OP_SRC, bg, &barcolors.fg_stats_cpu, ncpu, b_cpu);
     pixman_image_fill_boxes(PIXMAN_OP_SRC, bg, &barcolors.fg_stats_mem, nmem, b_mem);
     pixman_image_fill_boxes(PIXMAN_OP_SRC, bg, &barcolors.fg_stats_swp, nswp, b_swp);

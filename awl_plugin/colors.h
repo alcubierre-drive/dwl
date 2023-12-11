@@ -18,6 +18,7 @@ static const pixman_color_t black = {.red = 0x0000, .green = 0x0000, .blue = 0x0
 
 pixman_color_t color_8bit_to_16bit( uint32_t c );
 pixman_color_t alpha_blend_16( pixman_color_t B, pixman_color_t A );
+pixman_color_t mean_color_16( pixman_color_t A, pixman_color_t B, float wA );
 
 #define COLOR_16BIT_QUICK( R, G, B, A ) { \
     .red = 0x##R##R, .green = 0x##G##G, .blue = 0x##B##B, .alpha = 0x##A##A, \
