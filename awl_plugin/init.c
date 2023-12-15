@@ -55,7 +55,7 @@ static void cycle_layout( const Arg* arg );
 static void focusstack(const Arg *arg);
 static void focusglobalstack(const Arg *arg);
 static void killclient(const Arg *arg);
-static void incnmaster(const Arg *arg);
+/* static void incnmaster(const Arg *arg); */
 static void focusmon(const Arg *arg);
 static void moveresize(const Arg *arg);
 static void setlayout(const Arg *arg);
@@ -72,7 +72,7 @@ static void view(const Arg *arg);
 
 static void gaplessgrid(Monitor *m);
 static void bstack(Monitor *m);
-static void dwindle(Monitor *mon);
+/* static void dwindle(Monitor *mon); */
 static void tile(Monitor *m);
 static void monocle(Monitor *m);
 
@@ -304,11 +304,11 @@ static void awl_plugin_init(void) {
     P_awl_log_printf( "created %i rules", S.n_rules );
 
     ARRAY_INIT(Layout, layouts, 16);
-    ARRAY_APPEND(Layout, layouts, "[◻]", gaplessgrid );
+    ARRAY_APPEND(Layout, layouts, "[T]", tile );
     ARRAY_APPEND(Layout, layouts, "[M]", monocle );
     ARRAY_APPEND(Layout, layouts, "[=]", bstack );
-    ARRAY_APPEND(Layout, layouts, "[T]", tile );
-    ARRAY_APPEND(Layout, layouts, "[@]", dwindle );
+    ARRAY_APPEND(Layout, layouts, "[◻]", gaplessgrid );
+    /* ARRAY_APPEND(Layout, layouts, "[@]", dwindle ); */
     S.cur_layout = 0;
     P_awl_log_printf( "created %i layouts", S.n_layouts );
 
@@ -789,6 +789,7 @@ static void bstack(Monitor *m) {
     }
 }
 
+/*
 static void fibonacci(Monitor *mon, int s) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
     if (!B) return;
@@ -858,6 +859,7 @@ static void fibonacci(Monitor *mon, int s) {
 static void dwindle(Monitor *mon) {
     fibonacci(mon, 1);
 }
+*/
 
 static void tile(Monitor *m) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
@@ -923,6 +925,7 @@ static void spawn_from_plugin( const Arg* arg ) {
     spawn_pid_str( arg->v );
 }
 
+/*
 static void incnmaster(const Arg *arg) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
     if (!B) return;
@@ -931,6 +934,7 @@ static void incnmaster(const Arg *arg) {
     B->selmon->nmaster = MAX(B->selmon->nmaster + arg->i, 0);
     B->arrange(B->selmon);
 }
+*/
 
 static void focusmon(const Arg *arg) {
     awl_state_t* B = AWL_VTABLE_SYM.state;
