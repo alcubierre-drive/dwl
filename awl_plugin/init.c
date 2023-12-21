@@ -272,7 +272,7 @@ static void awl_plugin_init(void) {
         AUTOSTART( printer, "system-config-printer-applet" );
         AUTOSTART( telegram, "telegram-desktop" );
         AUTOSTART( evolution, "evolution" );
-        AUTOSTART( locker, "systemd-lock-handler swaylock" );
+        AUTOSTART( locker, "systemd-lock-handler swaylock -c0x000000" );
     }
 
     P_awl_log_printf( "general setup" );
