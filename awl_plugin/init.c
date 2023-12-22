@@ -167,7 +167,49 @@ pid_t spawn_pid_str( const char* cmd ) {
     }
     free( tofree );
     s = NULL, vector_push_back( &argv_vec, &s );
+
+    // parse single quotes
+    char *xalloc = calloc(1,strlen(cmd)+1);
+    char invalid = 0;
+    int began = 0, touched = 0;
+    for (char** F = vector_data( &argv_vec ); *F; F++) {
+        char* FS = *F;
+        int l = strlen(FS);
+        if (FS[0] == '\'') {
+            began = 1;
+            if (FS[l-1] == '\'') FS[l-1] = '\0', began = 0;
+            strcat( xalloc, FS+1 );
+            free( FS );
+            *F = xalloc;
+            touched++;
+        } else if (FS[l-1] == '\'') {
+            FS[l-1] = '\0', began = 0;
+            strcat( xalloc, " " );
+            strcat( xalloc, FS );
+            free( FS ), *F = &invalid;
+            touched++;
+        } else {
+            if (began) {
+                strcat( xalloc, " " );
+                strcat( xalloc, FS );
+                free( FS ), *F = &invalid;
+                touched++;
+            }
+        }
+    }
+    if (!touched) free( xalloc );
+
+    // skip backwards the elements that are invalid
+    int n_invalid = 0;
     char** argv = vector_data( &argv_vec );
+    int argc_p1 = vector_size( &argv_vec );
+    for (int i=argc_p1-1; i>0; i--) {
+        if (argv[i] == &invalid)
+            n_invalid++;
+        if (argv[i-1] == &invalid)
+            argv[i-1] = argv[i];
+    }
+    vector_resize( &argv_vec, argc_p1-n_invalid );
 
     // spawn pid
     pid_t pid = spawn_pid( argv );
@@ -272,7 +314,7 @@ static void awl_plugin_init(void) {
         AUTOSTART( printer, "system-config-printer-applet" );
         AUTOSTART( telegram, "telegram-desktop" );
         AUTOSTART( evolution, "evolution" );
-        AUTOSTART( locker, "systemd-lock-handler swaylock -c0x000000" );
+        AUTOSTART( locker, "systemd-lock-handler -- swaylock -c 0x000000" );
     }
 
     P_awl_log_printf( "general setup" );
@@ -419,7 +461,7 @@ static void awl_plugin_init(void) {
     ADD_KEY( MODKEY, XKB_KEY_F1,              spawn_from_plugin,{.v="pulse_port_switch -t -N"} );
     ADD_KEY( MODKEY, XKB_KEY_d,               spawn_from_plugin,{.v="wdisplays"} );
     ADD_KEY( 0, XKB_KEY_XF86Display,          spawn_from_plugin,{.v="wdisplays"} );
-    ADD_KEY( MODKEY_SH, XKB_KEY_G,            spawn_from_plugin,{.v="swaylock"} );
+    ADD_KEY( MODKEY_SH, XKB_KEY_G,            spawn_from_plugin,{.v="swaylock -c 0x000000"} );
 
     ADD_KEY( MODKEY_CT_SH, XKB_KEY_D,         spawn_from_plugin,{.v="docked reset"} );
     ADD_KEY( MODKEY_CT,    XKB_KEY_d,         spawn_from_plugin,{.v="docked dock"} );
