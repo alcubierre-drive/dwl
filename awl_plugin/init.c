@@ -263,6 +263,7 @@ typedef struct awl_persistent_plugin_data_t {
     pid_t pid_tray;
     pid_t pid_nextcloud;
 
+    pid_t pid_dunst;
     pid_t pid_nm_applet;
     pid_t pid_blueman;
     pid_t pid_printer;
@@ -309,6 +310,7 @@ static void awl_plugin_init(void) {
         /* AUTOSTART( tray, "./tray/awl_tray" ); */
         /* AUTOSTART( nextcloud, "nextcloud --background" ); */
 
+        AUTOSTART( dunst, "dunst" );
         AUTOSTART( nm_applet, "nm-applet" );
         AUTOSTART( blueman, "blueman-applet" );
         AUTOSTART( printer, "system-config-printer-applet" );
