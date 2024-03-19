@@ -452,6 +452,7 @@ static void awl_plugin_init(void) {
     ADD_KEY( MODKEY_SH, XKB_KEY_K,          movestack,          {.i = -1} )
 
     ADD_KEY( MODKEY,    XKB_KEY_b,          bordertoggle,       {0} )
+    ADD_KEY( MODKEY,    XKB_KEY_c,          spawn_from_plugin,  {.v="sh -c 'hyprpicker | wl_copy'"} );
 
     ADD_KEY( 0, XKB_KEY_XF86MonBrightnessUp,  spawn_from_plugin,{.v="backlight-tooler -m inc -V 0.05"} );
     ADD_KEY( 0, XKB_KEY_XF86MonBrightnessDown,spawn_from_plugin,{.v="backlight-tooler -m dec -V 0.05"} );
