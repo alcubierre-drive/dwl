@@ -1363,6 +1363,10 @@ void ipc_send_toggle_vis( struct wl_resource* resource ) {
     zdwl_ipc_output_v2_send_toggle_visibility(resource);
 }
 
+void ipc_send_vis( struct wl_resource* resource, uint32_t mode ) {
+    zdwl_ipc_output_v2_send_visibility(resource, mode);
+}
+
 static int keybinding(uint32_t mods, xkb_keysym_t sym) {
     /*
      * Here we handle compositor keybindings. This is when the compositor is

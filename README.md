@@ -30,3 +30,21 @@
 * -DAWL_TERM_CMD=\"kitty\"
 * -DAWL_STATS_FORCE_CPU_MULT
 * -DAWL_SKIP_BATWIDGET
+
+# dbus interface
+awl is built with some very rudimentary dbus support. Using ``dbus-send``, one
+can talk to the interface ``INTERFACE`` with argument ``ARG`` as follows:
+```bash
+dbus-send org.freedesktop.awl / org.freedesktop.awl.INTERFACE string:ARG
+```
+
+awl supports the following interfaces/arguments:
+
+| interface     | argument     | effect                               |
+| ------------- | ------------ | ------------------------------------ |
+| ``wallpaper`` | ``left``     | left click on the wallpaper          |
+| ``wallpaper`` | ``right``    | right click on the wallpaper         |
+| ``wallpaper`` | ``middle``   | middle click on the wallpaper        |
+| ``bar``       | ``show``     | show all bars                        |
+| ``bar``       | ``hide``     | hide all bars                        |
+| ``bar``       | ``toggle``   | toggle all bars                      |

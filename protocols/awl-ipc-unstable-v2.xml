@@ -90,6 +90,13 @@ I would probably just submit raphi's patchset but I don't think that would be po
       </description>
     </event>
 
+    <event name="visibility">
+      <description summary="Set visibilty">
+        Indicates the client should hide/show/anything else themselves.
+      </description>
+      <arg name="mode" type="uint"/>
+    </event>
+
     <event name="active">
       <description summary="Update the selected output.">
         Indicates if the output is active. Zero is invalid, nonzero is valid.

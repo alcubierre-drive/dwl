@@ -118,10 +118,11 @@ struct awl_state_t {
     void (*setfloating)(Client* , int);
     void (*setontop)(Client*, int);
     void (*xytonode)(double, double, struct wlr_surface**, Client**, LayerSurface**, double* , double*);
-    void (*dwl_ipc_output_set_layout)(struct wl_client*, struct wl_resource*, uint32_t);
+    void (*dwl_ipc_output_set_layout)(struct wl_client*, struct wl_resource*, uint32_t );
     void (*setmon)(Client*, Monitor*, uint32_t);
     void (*setfullscreen)(Client*, int);
     void (*ipc_send_toggle_vis)( struct wl_resource* );
+    void (*ipc_send_vis)( struct wl_resource*, uint32_t );
 
     sem_t* (*awl_is_ready_sem)( void );
     int (*awl_is_ready)( void );

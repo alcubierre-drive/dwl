@@ -1021,6 +1021,18 @@ static void dwl_wm_output_toggle_visibility(void *data, struct zdwl_ipc_output_v
         hide_bar(bar);
 }
 
+static void dwl_wm_output_visibility(void *data, struct zdwl_ipc_output_v2 *dwl_wm_output, uint32_t mode) {
+    (void)dwl_wm_output;
+    Bar *bar = (Bar *)data;
+
+    switch (mode) {
+        case AWL_BAR_SHOW: if (bar->hidden) show_bar(bar); break;
+        case AWL_BAR_HIDE: if (!bar->hidden) hide_bar(bar); break;
+        case AWL_BAR_TOGGLE: dwl_wm_output_toggle_visibility( data, dwl_wm_output ); break;
+        default: break;
+    }
+}
+
 static void dwl_wm_output_active(void *data, struct zdwl_ipc_output_v2 *dwl_wm_output, uint32_t active) {
     (void)dwl_wm_output;
     Bar *bar = (Bar *)data;
@@ -1113,6 +1125,7 @@ static void dwl_wm_output_floating(void *data, struct zdwl_ipc_output_v2 *dwl_wm
 
 static const struct zdwl_ipc_output_v2_listener dwl_wm_output_listener = {
     .toggle_visibility = dwl_wm_output_toggle_visibility,
+    .visibility = dwl_wm_output_visibility,
     .active = dwl_wm_output_active,
     .tag = dwl_wm_output_tag,
     .layout = dwl_wm_output_layout,

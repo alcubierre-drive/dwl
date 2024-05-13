@@ -30,6 +30,7 @@ awl_state_t* awl_state_init( void ) {
     B->setmon = setmon;
     B->setfullscreen = setfullscreen;
     B->ipc_send_toggle_vis = ipc_send_toggle_vis;
+    B->ipc_send_vis = ipc_send_vis;
 
     B->awl_is_ready_sem = awl_is_ready_sem;
     B->awl_is_ready = awl_is_ready;

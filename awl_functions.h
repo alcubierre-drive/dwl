@@ -17,6 +17,7 @@ void xytonode(double x, double y, struct wlr_surface **psurface, Client **pc,
 void setmon(Client *c, Monitor *m, uint32_t newtags);
 void setfullscreen(Client *c, int fullscreen);
 void ipc_send_toggle_vis( struct wl_resource* resource );
+void ipc_send_vis( struct wl_resource* resource, uint32_t mode );
 
 void awl_change_modkey( uint32_t modkey );
 int awl_is_ready( void );

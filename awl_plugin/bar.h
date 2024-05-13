@@ -7,6 +7,13 @@
 typedef struct Bar Bar;
 typedef struct awl_bar_handle_t awl_bar_handle_t;
 
+enum {
+    AWL_BAR_TOGGLE = 0,
+    AWL_BAR_SHOW,
+    AWL_BAR_HIDE,
+    AWL_BAR_NUM_MODES
+};
+
 awl_bar_handle_t* awl_bar_run( float refresh_sec );
 void awl_bar_stop( awl_bar_handle_t* h );
 void awl_bar_refresh( awl_bar_handle_t* h, int redraw );

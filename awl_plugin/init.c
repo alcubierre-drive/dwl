@@ -63,6 +63,7 @@ static void setmfact(const Arg *arg);
 static void tag(const Arg *arg);
 static void tagmon(const Arg *arg);
 static void togglebar(const Arg *arg);
+static void setbar(const Arg *arg);
 static void togglefloating(const Arg *arg);
 static void togglefullscreen(const Arg *arg);
 static void toggleontop(const Arg *arg);
@@ -77,6 +78,8 @@ static void tile(Monitor *m);
 static void monocle(Monitor *m);
 
 static void spawn_from_plugin( const Arg* arg );
+
+static void bar_dbus_hook( const char* cmd, void* data );
 
 static void setup_bar_colors( void ) {
     pixman_color_t c16 = {0};
@@ -546,8 +549,24 @@ static void awl_plugin_init(void) {
     S.P = P;
     S.bars = awl_bar_run( P->refresh_sec );
 
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    if (B && B->dbus) B->dbus_add_callback( B->dbus, "bar", &bar_dbus_hook, NULL );
+
     char wpname[1024]; strcpy( wpname, getenv("HOME") ); strcat( wpname, "/Wallpapers/*.png" );
     P->wp = wallpaper_init( wpname, 1800 );
+}
+
+static void bar_dbus_hook( const char* cmd, void* data ) {
+    (void)data;
+    if (!strcmp( cmd, "toggle" )) {
+        setbar( &(Arg){.ui = AWL_BAR_TOGGLE} );
+    } else if (!strcmp( cmd, "hide" )) {
+        setbar( &(Arg){.ui = AWL_BAR_HIDE} );
+    } else if (!strcmp( cmd, "show" )) {
+        setbar( &(Arg){.ui = AWL_BAR_SHOW} );
+    } else {
+        setbar( &(Arg){.ui = AWL_BAR_NUM_MODES} ); // TODO
+    }
 }
 
 static void awl_plugin_free(void) {
@@ -562,6 +581,9 @@ static void awl_plugin_free(void) {
     free(S.monrules);
     free(S.keys);
     free(S.buttons);
+
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    if (B && B->dbus) B->dbus_remove_callback( B->dbus, "bar" );
 
     P_awl_log_printf( "cancel bar thread" );
     awl_bar_stop( S.bars );
@@ -1155,6 +1177,15 @@ static void tagmon(const Arg *arg) {
     Client *sel = B->focustop(B->selmon);
     if (sel)
         B->setmon(sel, B->dirtomon(arg->i), 0);
+}
+
+static void setbar(const Arg *arg) {
+    awl_state_t* B = AWL_VTABLE_SYM.state;
+    if (!B) return;
+
+    DwlIpcOutput *ipc_output;
+    wl_list_for_each(ipc_output, &B->selmon->dwl_ipc_outputs, link)
+        B->ipc_send_vis(ipc_output->resource, arg->ui);
 }
 
 static void togglebar(const Arg *arg) {
