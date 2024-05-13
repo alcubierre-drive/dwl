@@ -80,6 +80,7 @@ static void monocle(Monitor *m);
 static void spawn_from_plugin( const Arg* arg );
 
 static void bar_dbus_hook( const char* cmd, void* data );
+static void cal_dbus_hook( uint64_t cmd, void* data );
 
 static void setup_bar_colors( void ) {
     pixman_color_t c16 = {0};
@@ -550,7 +551,10 @@ static void awl_plugin_init(void) {
     S.bars = awl_bar_run( P->refresh_sec );
 
     awl_state_t* B = AWL_VTABLE_SYM.state;
-    if (B && B->dbus) B->dbus_add_callback( B->dbus, "bar", &bar_dbus_hook, NULL );
+    if (B && B->dbus) {
+        B->dbus_add_callback( B->dbus, "bar", &bar_dbus_hook, NULL );
+        B->dbus_add_callback_int( B->dbus, "cal", &cal_dbus_hook, P->cal );
+    }
 
     char wpname[1024]; strcpy( wpname, getenv("HOME") ); strcat( wpname, "/Wallpapers/*.png" );
     P->wp = wallpaper_init( wpname, 1800 );
@@ -558,6 +562,7 @@ static void awl_plugin_init(void) {
 
 static void bar_dbus_hook( const char* cmd, void* data ) {
     (void)data;
+    if (!cmd) return;
     if (!strcmp( cmd, "toggle" )) {
         setbar( &(Arg){.ui = AWL_BAR_TOGGLE} );
     } else if (!strcmp( cmd, "hide" )) {
@@ -565,7 +570,20 @@ static void bar_dbus_hook( const char* cmd, void* data ) {
     } else if (!strcmp( cmd, "show" )) {
         setbar( &(Arg){.ui = AWL_BAR_SHOW} );
     } else {
-        setbar( &(Arg){.ui = AWL_BAR_NUM_MODES} ); // TODO
+        setbar( &(Arg){.ui = AWL_BAR_NUM_MODES} ); // TODO some more stuff
+    }
+}
+
+static void cal_dbus_hook( uint64_t cmd_, void* data ) {
+    awl_calendar_t* cal = (awl_calendar_t*)data;
+    int32_t cmd = 0;
+    memcpy( &cmd, &cmd_, sizeof(cmd) );
+    if (abs(cmd) > 1000) {
+        calendar_hide( cal );
+    } else {
+        calendar_show( cal );
+        for (int i=0; i<abs(cmd); ++i)
+            calendar_next( cal, cmd );
     }
 }
 
@@ -583,7 +601,10 @@ static void awl_plugin_free(void) {
     free(S.buttons);
 
     awl_state_t* B = AWL_VTABLE_SYM.state;
-    if (B && B->dbus) B->dbus_remove_callback( B->dbus, "bar" );
+    if (B && B->dbus) {
+        B->dbus_remove_callback( B->dbus, "bar" );
+        B->dbus_remove_callback( B->dbus, "cal" );
+    }
 
     P_awl_log_printf( "cancel bar thread" );
     awl_bar_stop( S.bars );

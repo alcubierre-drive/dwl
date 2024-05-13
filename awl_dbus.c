@@ -13,6 +13,8 @@
 
 typedef struct {
     awl_dbus_hook_t hook;
+    awl_dbus_ui64_t ihook;
+    awl_dbus_void_t nhook;
     void* userdata;
 
     char name[1024];
@@ -28,6 +30,13 @@ struct awl_dbus_listener_t {
     sem_t sem;
 };
 
+typedef enum {
+    awl_dbus_param_invalid = -1,
+    awl_dbus_param_none = 0,
+    awl_dbus_param_int,
+    awl_dbus_param_str,
+} awl_dbus_param_t;
+
 static void* receiver_thread(void* handle_) {
     awl_dbus_listener_t* handle = (awl_dbus_listener_t*)handle_;
     DBusMessage* msg;
@@ -35,7 +44,8 @@ static void* receiver_thread(void* handle_) {
     DBusConnection* conn;
     DBusError err;
     int ret;
-    char* sigvalue;
+    char* sigvalue = NULL;
+    uint64_t integer = 0;
 
     awl_log_printf("dbus: listening for signals");
 
@@ -86,20 +96,65 @@ static void* receiver_thread(void* handle_) {
 
         awl_dbus_callback_t *s, *tmp;
         HASH_ITER(hh, handle->callbacks, s, tmp) {
+            awl_dbus_param_t dtype = awl_dbus_param_invalid;
             if (dbus_message_is_signal(msg, AWL_DBUS_ROOT_PATH, s->name)) {
                 // read the parameters
                 if (!dbus_message_iter_init(msg, &args)) {
-                   awl_err_printf("dbus: Message Has No Parameters");
-                } else if (DBUS_TYPE_STRING != dbus_message_iter_get_arg_type(&args)) {
-                   awl_err_printf("dbus: Argument is not string!");
+                    dtype = awl_dbus_param_none;
                 } else {
-                   dbus_message_iter_get_basic(&args, &sigvalue);
+                    switch (dbus_message_iter_get_arg_type(&args)) {
+                        case DBUS_TYPE_STRING:
+                            dtype = awl_dbus_param_str;
+                            dbus_message_iter_get_basic(&args, &sigvalue);
+                            break;
+                        case DBUS_TYPE_BYTE:
+                        case DBUS_TYPE_BOOLEAN:
+                        case DBUS_TYPE_INT16:
+                        case DBUS_TYPE_UINT16:
+                        case DBUS_TYPE_INT32:
+                        case DBUS_TYPE_UINT32:
+                        case DBUS_TYPE_INT64:
+                        case DBUS_TYPE_UINT64:
+                        case DBUS_TYPE_DOUBLE:
+                            dtype = awl_dbus_param_int;
+                            dbus_message_iter_get_basic(&args, &integer);
+                            break;
+                        default:
+                            awl_err_printf("dbus: arg is of unsupported type!");
+                            break;
+                    }
                 }
 
-                if (sigvalue)
-                    awl_log_printf("dbus: Got Signal with value '%s'", sigvalue);
-                awl_log_printf("dbus: calling hook %p", s->hook);
-                s->hook( sigvalue, s->userdata );
+                switch (dtype) {
+                    case awl_dbus_param_none:
+                        if (s->nhook) {
+                            awl_log_printf( "dbus: calling hook %p without arg", s->nhook );
+                            s->nhook( s->userdata );
+                        } else {
+                            awl_log_printf( "dbus: expected parameter for hook %s", s->name );
+                        }
+                        break;
+                    case awl_dbus_param_int:
+                        if (s->ihook) {
+                            awl_log_printf( "dbus: calling hook %p with arg %lu", s->ihook, integer );
+                            s->ihook( integer, s->userdata );
+                        } else {
+                            awl_log_printf( "dbus: expected something else than an integer for hook %s", s->name );
+                        }
+                        break;
+                    case awl_dbus_param_str:
+                        if (s->hook) {
+                            awl_log_printf( "dbus: calling hook %p with arg %s", s->hook, sigvalue );
+                            s->hook( sigvalue, s->userdata );
+                        } else {
+                            awl_log_printf( "dbus: expected something else than a string for hook %s", s->name );
+                        }
+                        break;
+                    default:
+                    case awl_dbus_param_invalid:
+                        awl_err_printf( "dbus: invalid argument, not calling hook" );
+                        break;
+                }
             }
         }
         sem_post(&handle->sem);
@@ -119,7 +174,10 @@ awl_dbus_listener_t* awl_dbus_init( void ) {
     return h;
 }
 
-void awl_dbus_add_callback( awl_dbus_listener_t* bus, const char* name_, awl_dbus_hook_t hook, void* userdata ) {
+typedef void (*funcptr_t)( void );
+
+static void awl_dbus_add_callback_any( awl_dbus_listener_t* bus, const char* name_,
+        funcptr_t hook, awl_dbus_param_t type, void* userdata ) {
     sem_wait( &bus->sem );
 
     awl_dbus_callback_t* s = NULL;
@@ -130,7 +188,20 @@ void awl_dbus_add_callback( awl_dbus_listener_t* bus, const char* name_, awl_dbu
     }
 
     s = calloc(1, sizeof(awl_dbus_callback_t));
-    s->hook = hook;
+    switch (type) {
+        default:
+        case awl_dbus_param_invalid:
+            break;
+        case awl_dbus_param_int:
+            s->ihook = (awl_dbus_ui64_t)hook;
+            break;
+        case awl_dbus_param_none:
+            s->nhook = (awl_dbus_void_t)hook;
+            break;
+        case awl_dbus_param_str:
+            s->hook = (awl_dbus_hook_t)hook;
+            break;
+    }
     strncpy( s->name, name_, 1023 );
     s->userdata = userdata;
 
@@ -138,6 +209,19 @@ void awl_dbus_add_callback( awl_dbus_listener_t* bus, const char* name_, awl_dbu
 
 end_add_callback:
     sem_post( &bus->sem );
+}
+
+void awl_dbus_add_callback( awl_dbus_listener_t* bus, const char* name,
+        awl_dbus_hook_t hook, void* userdata ) {
+    awl_dbus_add_callback_any( bus, name, (funcptr_t)hook, awl_dbus_param_str, userdata );
+}
+void awl_dbus_add_callback_int( awl_dbus_listener_t* bus, const char* name,
+        awl_dbus_ui64_t hook, void* userdata ) {
+    awl_dbus_add_callback_any( bus, name, (funcptr_t)hook, awl_dbus_param_int, userdata );
+}
+void awl_dbus_add_callback_void( awl_dbus_listener_t* bus, const char* name,
+        awl_dbus_void_t hook, void* userdata ) {
+    awl_dbus_add_callback_any( bus, name, (funcptr_t)hook, awl_dbus_param_none, userdata );
 }
 
 void awl_dbus_remove_callback( awl_dbus_listener_t* bus, const char* name_ ) {

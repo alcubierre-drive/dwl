@@ -40,6 +40,8 @@ awl_state_t* awl_state_init( void ) {
     B->dbus = awl_dbus_init();
     B->dbus_notify = &awl_dbus_notify;
     B->dbus_add_callback = &awl_dbus_add_callback;
+    B->dbus_add_callback_void = &awl_dbus_add_callback_void;
+    B->dbus_add_callback_int = &awl_dbus_add_callback_int;
     B->dbus_remove_callback = &awl_dbus_remove_callback;
 
     B->persistent_plugin_data = ecalloc(1024,1);

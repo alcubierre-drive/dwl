@@ -2589,13 +2589,17 @@ static void plugin_free(void) {
     awl_extension_free(E);
 }
 
-static void updatemons_dbus_hook( const char* str, void* data ) {
-    (void)str;
+static void updatemons_dbus_hook( void* data ) {
     (void)data;
     awl_log_printf( "in updatemons_dbus_hook" );
     while (!awl_is_ready()) usleep(1000);
     awl_log_printf( "exec updatemons" );
     updatemons(NULL, NULL);
+}
+
+static void reload_dbus_hook( void* data ) {
+    (void)data;
+    defer_reload_fun( NULL );
 }
 
 int main(int argc, char *argv[]) {
@@ -2623,9 +2627,10 @@ int main(int argc, char *argv[]) {
     awl_log_init( awl_loglevel );
     atexit( awl_log_destroy );
     B = awl_state_init();
-    if (B->dbus && B->dbus_add_callback) {
-        awl_log_printf( "add monitor update dbus hook" );
-        B->dbus_add_callback( B->dbus, "updatemons", updatemons_dbus_hook, NULL );
+    if (B->dbus && B->dbus_add_callback_void) {
+        awl_log_printf( "add dbus hooks…" );
+        B->dbus_add_callback_void( B->dbus, "updatemons", updatemons_dbus_hook, NULL );
+        B->dbus_add_callback_void( B->dbus, "reload", reload_dbus_hook, NULL );
     }
 
     /* Wayland requires XDG_RUNTIME_DIR for creating its communications socket */

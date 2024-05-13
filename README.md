@@ -35,16 +35,19 @@
 awl is built with some very rudimentary dbus support. Using ``dbus-send``, one
 can talk to the interface ``INTERFACE`` with argument ``ARG`` as follows:
 ```bash
-dbus-send org.freedesktop.awl / org.freedesktop.awl.INTERFACE string:ARG
+dbus-send org.freedesktop.awl / org.freedesktop.awl.INTERFACE ARG
 ```
 
 awl supports the following interfaces/arguments:
 
-| interface     | argument     | effect                               |
-| ------------- | ------------ | ------------------------------------ |
-| ``wallpaper`` | ``left``     | left click on the wallpaper          |
-| ``wallpaper`` | ``right``    | right click on the wallpaper         |
-| ``wallpaper`` | ``middle``   | middle click on the wallpaper        |
-| ``bar``       | ``show``     | show all bars                        |
-| ``bar``       | ``hide``     | hide all bars                        |
-| ``bar``       | ``toggle``   | toggle all bars                      |
+| interface      | argument            | effect                               |
+| -------------- | ------------------- | ------------------------------------ |
+| ``wallpaper``  | ``string:left``     | left click on the wallpaper          |
+| ``wallpaper``  | ``string:right``    | right click on the wallpaper         |
+| ``wallpaper``  | ``string:middle``   | middle click on the wallpaper        |
+| ``bar``        | ``string:show``     | show all bars                        |
+| ``bar``        | ``string:hide``     | hide all bars                        |
+| ``bar``        | ``string:toggle``   | toggle all bars                      |
+| ``updatemons`` |                     | update monitors                      |
+| ``reload``     |                     | reload plugin                        |
+| ``cal``        | ``int32:i``         | show the calendar popup for the ith next/prev (negative i) month. hide the popup if abs(i) > 1000 |
