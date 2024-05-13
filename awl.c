@@ -22,6 +22,11 @@ typedef struct {
     struct wl_listener destroy;
 } SessionLock;
 
+typedef struct {
+	struct wlr_pointer_constraint_v1 *constraint;
+	struct wl_listener destroy;
+} PointerConstraint;
+
 struct LayerSurface {
     /* Must keep these three elements in this order */
     unsigned int type; /* LayerShell */
@@ -44,6 +49,8 @@ struct LayerSurface {
 // macros
 #define LISTEN(E, L, H) wl_signal_add((E), ((L)->notify = (H), (L)))
 #define CLEANMASK(mask) (mask & ~WLR_MODIFIER_CAPS)
+#define ROUND(X)                ((int)((X < 0) ? (X - 0.5) : (X + 0.5)))
+#define LISTEN_STATIC(E, H)     do { static struct wl_listener _l = {.notify = (H)}; wl_signal_add((E), &_l); } while (0)
 
 static awl_config_t* C = NULL;
 static awl_state_t* B = NULL;
@@ -114,7 +121,9 @@ static void maplayersurfacenotify(struct wl_listener *listener, void *data);
 static void mapnotify(struct wl_listener *listener, void *data);
 static void maximizenotify(struct wl_listener *listener, void *data);
 static void motionabsolute(struct wl_listener *listener, void *data);
-static void motionnotify(uint32_t time);
+static void motionnotify(uint32_t time, struct wlr_input_device *device, double sx,
+        double sy, double sx_unaccel, double sy_unaccel);
+#define motionnotify_old( time ) motionnotify( time, NULL, 0, 0, 0, 0 )
 static void motionrelative(struct wl_listener *listener, void *data);
 static void outputmgrapply(struct wl_listener *listener, void *data);
 static void outputmgrapplyortest(struct wlr_output_configuration_v1 *config, int test);
@@ -293,7 +302,7 @@ void arrange(Monitor *m) {
 
     if (C->layouts[m->lt[m->sellt]].arrange)
         C->layouts[m->lt[m->sellt]].arrange(m);
-    motionnotify(0);
+    motionnotify_old(0);
     checkidleinhibitor(NULL);
 }
 
@@ -380,6 +389,7 @@ static void buttonpress(struct wl_listener *listener, void *data) {
     switch (event->state) {
     case WLR_BUTTON_PRESSED:
         B->cursor_mode = CurPressed;
+        B->held_grab = B->seat->pointer_state.focused_surface;
         if (B->locked)
             break;
 
@@ -399,6 +409,7 @@ static void buttonpress(struct wl_listener *listener, void *data) {
         }
         break;
     case WLR_BUTTON_RELEASED:
+        B->held_grab = NULL;
         /* If you released any buttons, we exit interactive move/resize mode. */
         if (!B->locked && B->cursor_mode != CurNormal && B->cursor_mode != CurPressed) {
             B->cursor_mode = CurNormal;
@@ -406,7 +417,7 @@ static void buttonpress(struct wl_listener *listener, void *data) {
              * we will send an enter event after which the client will provide us
              * a cursor surface */
             wlr_seat_pointer_clear_focus(B->seat);
-            motionnotify(0);
+            motionnotify_old(0);
             /* Drop the window off on its new monitor */
             B->selmon = xytomon(B->cursor->x, B->cursor->y);
             setmon(B->grabc, B->selmon, 0);
@@ -799,45 +810,95 @@ static void createnotify(struct wl_listener *listener, void *data) {
 }
 
 static void createpointer(struct wlr_pointer *pointer) {
-    if (wlr_input_device_is_libinput(&pointer->base)) {
-        struct libinput_device *libinput_device = (struct libinput_device*)
-            wlr_libinput_get_device_handle(&pointer->base);
+    struct libinput_device *device;
+    if (wlr_input_device_is_libinput(&pointer->base)
+            && (device = wlr_libinput_get_device_handle(&pointer->base))) {
 
-        if (libinput_device_config_tap_get_finger_count(libinput_device)) {
-            libinput_device_config_tap_set_enabled(libinput_device, C->tap_to_click);
-            libinput_device_config_tap_set_drag_enabled(libinput_device, C->tap_and_drag);
-            libinput_device_config_tap_set_drag_lock_enabled(libinput_device, C->drag_lock);
-            libinput_device_config_tap_set_button_map(libinput_device, C->button_map);
+        if (libinput_device_config_tap_get_finger_count(device)) {
+            libinput_device_config_tap_set_enabled(device, C->tap_to_click);
+            libinput_device_config_tap_set_drag_enabled(device, C->tap_and_drag);
+            libinput_device_config_tap_set_drag_lock_enabled(device, C->drag_lock);
+            libinput_device_config_tap_set_button_map(device, C->button_map);
         }
 
-        if (libinput_device_config_scroll_has_natural_scroll(libinput_device))
-            libinput_device_config_scroll_set_natural_scroll_enabled(libinput_device, C->natural_scrolling);
+        if (libinput_device_config_scroll_has_natural_scroll(device))
+            libinput_device_config_scroll_set_natural_scroll_enabled(device, C->natural_scrolling);
 
-        if (libinput_device_config_dwt_is_available(libinput_device))
-            libinput_device_config_dwt_set_enabled(libinput_device, C->disable_while_typing);
+        if (libinput_device_config_dwt_is_available(device))
+            libinput_device_config_dwt_set_enabled(device, C->disable_while_typing);
 
-        if (libinput_device_config_left_handed_is_available(libinput_device))
-            libinput_device_config_left_handed_set(libinput_device, C->left_handed);
+        if (libinput_device_config_left_handed_is_available(device))
+            libinput_device_config_left_handed_set(device, C->left_handed);
 
-        if (libinput_device_config_middle_emulation_is_available(libinput_device))
-            libinput_device_config_middle_emulation_set_enabled(libinput_device, C->middle_button_emulation);
+        if (libinput_device_config_middle_emulation_is_available(device))
+            libinput_device_config_middle_emulation_set_enabled(device, C->middle_button_emulation);
 
-        if (libinput_device_config_scroll_get_methods(libinput_device) != LIBINPUT_CONFIG_SCROLL_NO_SCROLL)
-            libinput_device_config_scroll_set_method (libinput_device, C->scroll_method);
+        if (libinput_device_config_scroll_get_methods(device) != LIBINPUT_CONFIG_SCROLL_NO_SCROLL)
+            libinput_device_config_scroll_set_method (device, C->scroll_method);
 
-        if (libinput_device_config_click_get_methods(libinput_device) != LIBINPUT_CONFIG_CLICK_METHOD_NONE)
-            libinput_device_config_click_set_method (libinput_device, C->click_method);
+        if (libinput_device_config_click_get_methods(device) != LIBINPUT_CONFIG_CLICK_METHOD_NONE)
+            libinput_device_config_click_set_method (device, C->click_method);
 
-        if (libinput_device_config_send_events_get_modes(libinput_device))
-            libinput_device_config_send_events_set_mode(libinput_device, C->send_events_mode);
+        if (libinput_device_config_send_events_get_modes(device))
+            libinput_device_config_send_events_set_mode(device, C->send_events_mode);
 
-        if (libinput_device_config_accel_is_available(libinput_device)) {
-            libinput_device_config_accel_set_profile(libinput_device, C->accel_profile);
-            libinput_device_config_accel_set_speed(libinput_device, C->accel_speed);
+        if (libinput_device_config_accel_is_available(device)) {
+            libinput_device_config_accel_set_profile(device, C->accel_profile);
+            libinput_device_config_accel_set_speed(device, C->accel_speed);
         }
     }
 
     wlr_cursor_attach_input_device(B->cursor, &pointer->base);
+}
+
+static void destroypointerconstraint(struct wl_listener *listener, void *data);
+static void createpointerconstraint(struct wl_listener *listener, void *data);
+static void cursorwarptohint(void);
+static void cursorconstrain(struct wlr_pointer_constraint_v1 *constraint);
+
+static void createpointerconstraint(struct wl_listener *listener, void *data) {
+    (void)listener;
+    PointerConstraint *pointer_constraint = ecalloc(1, sizeof(*pointer_constraint));
+    pointer_constraint->constraint = data;
+    LISTEN(&pointer_constraint->constraint->events.destroy,
+            &pointer_constraint->destroy, destroypointerconstraint);
+}
+
+static void destroypointerconstraint(struct wl_listener *listener, void *data) {
+    (void)data;
+    PointerConstraint *pointer_constraint = wl_container_of(listener, pointer_constraint, destroy);
+
+    if (B->active_constraint == pointer_constraint->constraint) {
+        cursorwarptohint();
+        B->active_constraint = NULL;
+    }
+
+    wl_list_remove(&pointer_constraint->destroy.link);
+    free(pointer_constraint);
+}
+
+static void cursorwarptohint(void) {
+    Client *c = NULL;
+    double sx = B->active_constraint->current.cursor_hint.x;
+    double sy = B->active_constraint->current.cursor_hint.y;
+
+    toplevel_from_wlr_surface(B->active_constraint->surface, &c, NULL);
+    /* TODO: wlroots 0.18: https://gitlab.freedesktop.org/wlroots/wlroots/-/merge_requests/4478 */
+    if (c && (B->active_constraint->current.committed & WLR_POINTER_CONSTRAINT_V1_STATE_CURSOR_HINT )) {
+        wlr_cursor_warp(B->cursor, NULL, sx + c->geom.x + c->bw, sy + c->geom.y + c->bw);
+        wlr_seat_pointer_warp(B->active_constraint->seat, sx, sy);
+    }
+}
+
+static void cursorconstrain(struct wlr_pointer_constraint_v1 *constraint) {
+    if (B->active_constraint == constraint)
+        return;
+
+    if (B->active_constraint)
+        wlr_pointer_constraint_v1_send_deactivated(B->active_constraint);
+
+    B->active_constraint = constraint;
+    wlr_pointer_constraint_v1_send_activated(constraint);
 }
 
 static void cursorframe(struct wl_listener *listener, void *data) {
@@ -857,7 +918,7 @@ static void destroydragicon(struct wl_listener *listener, void *data) {
     wlr_scene_node_destroy(icon->data);
     /* Focus enter isn't sent during drag, so refocus the focused node. */
     focusclient(focustop(B->selmon), 1);
-    motionnotify(0);
+    motionnotify_old(0);
 }
 
 static void destroyidleinhibitor(struct wl_listener *listener, void *data) {
@@ -888,7 +949,7 @@ static void destroylock(SessionLock *lock, int unlock) {
     wlr_scene_node_set_enabled(&B->locked_bg->node, 0);
 
     focusclient(focustop(B->selmon), 0);
-    motionnotify(0);
+    motionnotify_old(0);
 
 destroy:
     wl_list_remove(&lock->new_surface.link);
@@ -1224,7 +1285,7 @@ void focusclient(Client *c, int lift) {
     }
 
     /* Change cursor surface */
-    motionnotify(0);
+    motionnotify_old(0);
 
     /* Have a client, so focus its top-level wlr_surface */
     client_notify_enter(B, client_surface(c), wlr_seat_get_keyboard(B->seat));
@@ -1437,7 +1498,7 @@ static void locksession(struct wl_listener *listener, void *data) {
 static void maplayersurfacenotify(struct wl_listener *listener, void *data) {
     (void)data;
     LayerSurface *l = wl_container_of(listener, l, map);
-    motionnotify(0);
+    motionnotify_old(0);
 }
 
 static void mapnotify(struct wl_listener *listener, void *data) {
@@ -1552,19 +1613,51 @@ static void motionabsolute(struct wl_listener *listener, void *data) {
      * so we have to warp the mouse there. There is also some hardware which
      * emits these events. */
     struct wlr_pointer_motion_absolute_event *event = data;
-    wlr_cursor_warp_absolute(B->cursor, &event->pointer->base, event->x, event->y);
-    motionnotify(event->time_msec);
+    double lx, ly, dx, dy;
+
+    if (!event->time_msec) /* this is 0 with virtual pointers */
+        wlr_cursor_warp_absolute(B->cursor, &event->pointer->base, event->x, event->y);
+
+    wlr_cursor_absolute_to_layout_coords(B->cursor, &event->pointer->base, event->x, event->y, &lx, &ly);
+    dx = lx - B->cursor->x;
+    dy = ly - B->cursor->y;
+    motionnotify(event->time_msec, &event->pointer->base, dx, dy, dx, dy);
 }
 
-static void motionnotify(uint32_t time) {
-    double sx = 0, sy = 0;
+static void motionnotify(uint32_t time, struct wlr_input_device *device, double
+        dx, double dy, double dx_unaccel, double dy_unaccel) {
+    double sx = 0, sy = 0, sx_confined, sy_confined;
     Client *c = NULL, *w = NULL;
     LayerSurface *l = NULL;
-    int type;
     struct wlr_surface *surface = NULL;
+    struct wlr_pointer_constraint_v1 *constraint;
 
     /* time is 0 in internal calls meant to restore pointer focus. */
     if (time) {
+        wlr_relative_pointer_manager_v1_send_relative_motion(
+                B->relative_pointer_mgr, B->seat, (uint64_t)time * 1000,
+                dx, dy, dx_unaccel, dy_unaccel);
+
+        wl_list_for_each(constraint, &B->pointer_constraints->constraints, link)
+            cursorconstrain(constraint);
+
+        if (B->active_constraint && B->cursor_mode != CurResize && B->cursor_mode != CurMove) {
+            toplevel_from_wlr_surface(B->active_constraint->surface, &c, NULL);
+            if (c && B->active_constraint->surface == B->seat->pointer_state.focused_surface) {
+                sx = B->cursor->x - c->geom.x - c->bw;
+                sy = B->cursor->y - c->geom.y - c->bw;
+                if (wlr_region_confine(&B->active_constraint->region, sx, sy,
+                        sx + dx, sy + dy, &sx_confined, &sy_confined)) {
+                    dx = sx_confined - sx;
+                    dy = sy_confined - sy;
+                }
+
+                if (B->active_constraint->type == WLR_POINTER_CONSTRAINT_V1_LOCKED)
+                    return;
+            }
+        }
+
+        wlr_cursor_move(B->cursor, device, dx, dy);
         IDLE_NOTIFY_ACTIVITY;
 
         /* Update selmon (even while dragging a window) */
@@ -1573,36 +1666,36 @@ static void motionnotify(uint32_t time) {
     }
 
     /* Update drag icon's position */
-    wlr_scene_node_set_position(&B->drag_icon->node, B->cursor->x, B->cursor->y);
+    wlr_scene_node_set_position(&B->drag_icon->node, ROUND(B->cursor->x), ROUND(B->cursor->y));
 
     /* If we are currently grabbing the mouse, handle and return */
     if (B->cursor_mode == CurMove) {
         /* Move the grabbed client to the new position. */
-        resize(B->grabc, (struct wlr_box){.x = B->cursor->x - B->grabcx, .y = B->cursor->y - B->grabcy,
+        resize(B->grabc, (struct wlr_box){.x = ROUND(B->cursor->x) - B->grabcx, .y = ROUND(B->cursor->y) - B->grabcy,
             .width = B->grabc->geom.width, .height = B->grabc->geom.height}, 1);
         return;
     } else if (B->cursor_mode == CurResize) {
         resize(B->grabc, (struct wlr_box){.x = B->grabc->geom.x, .y = B->grabc->geom.y,
-            .width = B->cursor->x - B->grabc->geom.x, .height = B->cursor->y - B->grabc->geom.y}, 1);
+            .width = ROUND(B->cursor->x) - B->grabc->geom.x, .height = ROUND(B->cursor->y) - B->grabc->geom.y}, 1);
         return;
     }
 
     /* Find the client under the pointer and send the event along. */
     xytonode(B->cursor->x, B->cursor->y, &surface, &c, NULL, &sx, &sy);
 
-    if (B->cursor_mode == CurPressed && !B->seat->drag) {
-        if ((type = toplevel_from_wlr_surface(
-                 B->seat->pointer_state.focused_surface, &w, &l)) >= 0) {
-            c = w;
-            surface = B->seat->pointer_state.focused_surface;
-            sx = B->cursor->x - (type == LayerShell ? l->geom.x : w->geom.x);
-            sy = B->cursor->y - (type == LayerShell ? l->geom.y : w->geom.y);
-        }
+    if (B->cursor_mode == CurPressed && !B->seat->drag && surface != B->held_grab
+            && toplevel_from_wlr_surface(B->held_grab, &w, &l) >= 0) {
+        c = w;
+        surface = B->held_grab;
+        sx = B->cursor->x - (l ? l->geom.x : w->geom.x);
+        sy = B->cursor->y - (l ? l->geom.y : w->geom.y);
     }
 
     /* If there's no client surface under the cursor, set the cursor image to a
      * default. This is what makes the cursor image appear when you move it
      * off of a client or over its border. */
+    /* if (!surface && !B->seat->drag) */
+    /*     wlr_cursor_set_xcursor(B->cursor, B->cursor_mgr, "default"); */
     if (!surface && !B->seat->drag && strcmp(B->cursor_image, "left_ptr"))
         strcpy(B->cursor_image, "left_ptr"),
         wlr_xcursor_manager_set_cursor_image(B->cursor_mgr, B->cursor_image, B->cursor);
@@ -1620,8 +1713,8 @@ static void motionrelative(struct wl_listener *listener, void *data) {
      * special configuration applied for the specific input device which
      * generated the event. You can pass NULL for the device if you want to move
      * the cursor around without any input. */
-    wlr_cursor_move(B->cursor, &event->pointer->base, event->delta_x, event->delta_y);
-    motionnotify(event->time_msec);
+    motionnotify(event->time_msec, &event->pointer->base, event->delta_x, event->delta_y,
+            event->unaccel_dx, event->unaccel_dy);
 }
 
 static void outputmgrapply(struct wl_listener *listener, void *data) {
@@ -1689,12 +1782,13 @@ static void outputmgrtest(struct wl_listener *listener, void *data) {
     outputmgrapplyortest(config, 1);
 }
 
-static void pointerfocus(Client *c, struct wlr_surface *surface, double sx, double sy,
+void pointerfocus(Client *c, struct wlr_surface *surface, double sx, double sy,
         uint32_t time) {
     struct timespec now;
     int internal_call = !time;
 
-    if (C->sloppyfocus && !internal_call && c && !client_is_unmanaged(c))
+    if ((!B->active_constraint || B->active_constraint->surface != surface) &&
+            C->sloppyfocus && !internal_call && c && !client_is_unmanaged(c))
         focusclient(c, 0);
 
     /* If surface is NULL, clear pointer focus */
@@ -2047,6 +2141,12 @@ static void setup(void) {
     B->xdg_decoration_mgr = wlr_xdg_decoration_manager_v1_create(B->dpy);
     wl_signal_add(&B->xdg_decoration_mgr->events.new_toplevel_decoration, &new_xdg_decoration);
 
+    B->pointer_constraints = wlr_pointer_constraints_v1_create(B->dpy);
+    LISTEN_STATIC(&B->pointer_constraints->events.new_constraint, createpointerconstraint);
+
+    B->relative_pointer_mgr = wlr_relative_pointer_manager_v1_create(B->dpy);
+
+
     /*
      * Creates a cursor, which is a wlroots utility for tracking the cursor
      * image shown on screen.
@@ -2149,7 +2249,7 @@ static void unmaplayersurfacenotify(struct wl_listener *listener, void *data) {
     if (layersurface->layer_surface->surface ==
             B->seat->keyboard_state.focused_surface)
         focusclient(focustop(B->selmon), 1);
-    motionnotify(0);
+    motionnotify_old(0);
 }
 
 static void unmapnotify(struct wl_listener *listener, void *data) {
@@ -2175,7 +2275,7 @@ static void unmapnotify(struct wl_listener *listener, void *data) {
     wl_list_remove(&c->commit.link);
     wlr_scene_node_destroy(&c->scene->node);
     printstatus();
-    motionnotify(0);
+    motionnotify_old(0);
 }
 
 static void updatemons(struct wl_listener *listener, void *data) {

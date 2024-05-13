@@ -89,12 +89,17 @@ struct awl_state_t {
     struct wlr_cursor *cursor;
     struct wlr_xcursor_manager *cursor_mgr;
 
+    struct wlr_pointer_constraints_v1 *pointer_constraints;
+    struct wlr_relative_pointer_manager_v1 *relative_pointer_mgr;
+    struct wlr_pointer_constraint_v1 *active_constraint;
+
     struct wlr_session_lock_manager_v1 *session_lock_mgr;
     struct wlr_scene_rect *locked_bg;
     struct wlr_session_lock_v1 *cur_lock;
 
     struct wlr_seat *seat;
     struct wl_list keyboards;
+    struct wlr_surface *held_grab;
     unsigned int cursor_mode;
     Client *grabc;
     int grabcx, grabcy;

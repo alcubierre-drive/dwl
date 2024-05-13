@@ -26,7 +26,8 @@ DEPS := $(patsubst %.c,%.c.d,$(AWL_SRC) $(PLUGIN_SRC))
 AWL_PROTOCOLS := xdg-shell-protocol.h \
 		 wlr-layer-shell-unstable-v1-protocol.h \
 		 awl-ipc-unstable-v2-protocol.h \
-		 awl-ipc-unstable-v2-protocol.c
+		 awl-ipc-unstable-v2-protocol.c \
+		 pointer-constraints-unstable-v1-protocol.h
 PLUGIN_PROTOCOLS := awl_plugin/xdg-shell-protocol.h \
 		awl_plugin/xdg-shell-protocol.c \
 		awl_plugin/xdg-output-unstable-v1-protocol.h \
@@ -55,6 +56,9 @@ libawlplugin.so: $(PLUGIN_OBJ)
 
 WAYLAND_SCANNER   = $(shell pkg-config --variable=wayland_scanner wayland-scanner)
 WAYLAND_PROTOCOLS = $(shell pkg-config --variable=pkgdatadir wayland-protocols)
+
+pointer-constraints-unstable-v1-protocol.h:
+	$(WAYLAND_SCANNER) server-header $(WAYLAND_PROTOCOLS)/unstable/pointer-constraints/pointer-constraints-unstable-v1.xml $@
 
 xdg-shell-protocol.h:
 	$(WAYLAND_SCANNER) server-header $(WAYLAND_PROTOCOLS)/stable/xdg-shell/xdg-shell.xml $@
