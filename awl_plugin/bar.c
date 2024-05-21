@@ -1684,9 +1684,13 @@ static uint32_t pulsewidget_draw( widget_t* w, uint32_t x, pixman_image_t* fg, p
                    _molokai_orange = color_8bit_to_16bit(molokai_orange);
     float val = atomic_load( &P->pulse->value );
     int muted = atomic_load( &P->pulse->muted );
-    sprintf( string, "𝅘𝅥𝅮%3.0f%%", val * 100.0f );
+    int headphones = atomic_load( &P->pulse->headphones ) > 0;
+    const char headphones_str[] = "🎧";
+    const char speakers_str[] = "🔈";
+    sprintf( string, "%s%3.0f%%", headphones ? headphones_str : speakers_str, val * 100.0f );
     draw_text( string, x, y, fg, bg, muted ? &_molokai_orange :
-                        lround(val*100.0) > 100 ? &_molokai_red : &barcolors.fg_status,
+                   lround(val*100.0) > 100 ? &_molokai_red :
+                                             &barcolors.fg_status,
                         &barcolors.bg_status, bar->width, bar->height, bar->textpadding );
     return TEXT_WIDTH( "𝅘𝅥𝅮100%", -1, bar->textpadding );
 }

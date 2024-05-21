@@ -433,15 +433,15 @@ static void awl_plugin_init(void) {
     ADD_KEY( MODKEY_CT, XKB_KEY_space,      togglefloating,     {0} )
     ADD_KEY( MODKEY,    XKB_KEY_f,          togglefullscreen,   {0} )
     ADD_KEY( MODKEY,    XKB_KEY_t,          toggleontop,        {0} )
-    ADD_KEY( MODKEY_CT, XKB_KEY_j,          focusmon,           {.i = WLR_DIRECTION_LEFT} )
-    ADD_KEY( MODKEY_CT, XKB_KEY_k,          focusmon,           {.i = WLR_DIRECTION_RIGHT} )
+    ADD_KEY( MODKEY_CT, XKB_KEY_j,          focusmon,           {.i = WLR_DIRECTION_RIGHT} )
+    ADD_KEY( MODKEY_CT, XKB_KEY_k,          focusmon,           {.i = WLR_DIRECTION_LEFT} )
     /* ADD_KEY( MODKEY,    XKB_KEY_comma,      focusmon,           {.i = WLR_DIRECTION_LEFT} ) */
     /* ADD_KEY( MODKEY,    XKB_KEY_period,     focusmon,           {.i = WLR_DIRECTION_RIGHT} ) */
     /* ADD_KEY( MODKEY_SH, XKB_KEY_semicolon,  tagmon,             {.i = WLR_DIRECTION_LEFT} ) */
     /* ADD_KEY( MODKEY_SH, XKB_KEY_colon,      tagmon,             {.i = WLR_DIRECTION_RIGHT} ) */
 
-    ADD_KEY( MODKEY_SH,    XKB_KEY_O,       tagmon_f,           {.i = WLR_DIRECTION_LEFT} )
-    ADD_KEY( MODKEY_CT_SH, XKB_KEY_O,       tagmon_f,           {.i = WLR_DIRECTION_RIGHT} )
+    ADD_KEY( MODKEY_SH,    XKB_KEY_O,       tagmon_f,           {.i = WLR_DIRECTION_RIGHT} )
+    ADD_KEY( MODKEY_CT_SH, XKB_KEY_O,       tagmon_f,           {.i = WLR_DIRECTION_LEFT} )
 
     ADD_KEY( MODKEY,    XKB_KEY_i,          togglebar,          {0} )
     ADD_KEY( MODKEY,    XKB_KEY_n,          client_hide,        {.ui=1} )

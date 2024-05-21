@@ -7,6 +7,7 @@ typedef struct pulse_test_thread_t pulse_test_thread_t;
 typedef struct pulse_test_t {
     _Atomic float value;
     _Atomic int muted;
+    _Atomic int headphones;
 
     int ret;
 

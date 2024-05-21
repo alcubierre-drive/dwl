@@ -128,8 +128,30 @@ static void sink_info_callback(pa_context *c, const pa_sink_info *i, int eol, vo
 
     pulse_test_t* t = ((PulseAudio*)userdata)->t;
     if (i && t) {
-        atomic_store( &t->value, (float)pa_cvolume_avg(&(i->volume)) / (float)PA_VOLUME_NORM );
-        atomic_store( &t->muted, i->mute );
+        int active_sink = 1;
+        int headphone_sink = 0;
+
+        #ifdef AWL_PULSEWIDGET_SINK
+        active_sink = !strcmp(i->name, AWL_PULSEWIDGET_SINK);
+        #endif // AWL_PULSEWIDGET_SINK
+
+        #ifdef AWL_PULSEWIDGET_HEAD
+        if (i->n_ports > 1 && i->active_port) {
+            if (!strcmp( i->active_port->name, "analog-output-headphones" ))
+                headphone_sink = 1;
+            else
+                headphone_sink = -1;
+        }
+        #endif // AWL_PULSEWIDGET_HEAD
+
+        if (active_sink) {
+            atomic_store( &t->value, (float)pa_cvolume_avg(&(i->volume)) / (float)PA_VOLUME_NORM );
+            atomic_store( &t->muted, i->mute );
+        }
+
+        if (headphone_sink) {
+            atomic_store( &t->headphones, headphone_sink );
+        }
     }
 }
 
