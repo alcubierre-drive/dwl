@@ -78,6 +78,7 @@ static void tile(Monitor *m);
 static void monocle(Monitor *m);
 
 static void spawn_from_plugin( const Arg* arg );
+static void pulsetoggle( const Arg* arg );
 
 static void bar_dbus_hook( const char* cmd, void* data );
 static void cal_dbus_hook( uint64_t cmd, void* data );
@@ -465,7 +466,7 @@ static void awl_plugin_init(void) {
     ADD_KEY( 0, XKB_KEY_XF86AudioMute,        spawn_from_plugin,{.v="pactl set-sink-mute @DEFAULT_SINK@ toggle"} );
     ADD_KEY( 0, XKB_KEY_XF86AudioMicMute,     spawn_from_plugin,{.v="pactl set-source-mute @DEFAULT_SOURCE@ toggle"} );
     ADD_KEY( 0, XKB_KEY_Print,                spawn_from_plugin,{.v="grim_slurp"} );
-    ADD_KEY( MODKEY, XKB_KEY_F1,              spawn_from_plugin,{.v="pulse_port_switch -t -N"} );
+    ADD_KEY( MODKEY, XKB_KEY_F1,              pulsetoggle,      {0} );
     ADD_KEY( MODKEY, XKB_KEY_d,               spawn_from_plugin,{.v="wdisplays"} );
     ADD_KEY( 0, XKB_KEY_XF86Display,          spawn_from_plugin,{.v="wdisplays"} );
     ADD_KEY( MODKEY_SH, XKB_KEY_G,            spawn_from_plugin,{.v="swaylock -c 0x000000"} );
@@ -1011,6 +1012,16 @@ static void monocle(Monitor *m) {
 
 static void spawn_from_plugin( const Arg* arg ) {
     spawn_pid_str( arg->v );
+}
+
+static void pulsetoggle( const Arg* arg ) {
+    (void)arg;
+    awl_plugin_data_t* P = awl_plugin_data();
+    if (!P || !P->pulse) return;
+    pulse_thread_toggle_headphones( P->pulse );
+    char pulsetoggle_cmd[256] = {0};
+    sprintf( pulsetoggle_cmd, "notify-send ToggleOutput %s", P->pulse->ports[P->pulse->port] );
+    spawn_pid_str( pulsetoggle_cmd );
 }
 
 /*
