@@ -1679,7 +1679,7 @@ static uint32_t pulsewidget_draw( widget_t* w, uint32_t x, pixman_image_t* fg, p
     if (!P) return 0;
     if (!P->pulse) return 0;
     uint32_t y = (bar->height + font->ascent - font->descent) / 2;
-    char string[8];
+    char string[32] = {0};
     pixman_color_t _molokai_red = color_8bit_to_16bit(molokai_red),
                    _molokai_orange = color_8bit_to_16bit(molokai_orange);
     float val = atomic_load( &P->pulse->value );
@@ -1805,11 +1805,15 @@ static void pulsewidget_scroll( widget_t* w, uint32_t pointer_x, int amount ) {
 static void pulsewidget_click( widget_t* w, uint32_t pointer_x, int button ) {
     (void)w;
     (void)pointer_x;
+    awl_plugin_data_t* P = awl_plugin_data();
+    if (!P) return;
+    if (!P->pulse) return;
     switch (button) {
         case BTN_LEFT:
             spawn_pid_str("pavucontrol"); break;
         case BTN_RIGHT:
-            spawn_pid_str("pulse_port_switch -t -N"); break;
+            /*spawn_pid_str("pulse_port_switch -t -N"); break;*/
+            pulse_thread_toggle_headphones( P->pulse );
         case BTN_MIDDLE:
         default:
             break;

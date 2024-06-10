@@ -30,11 +30,11 @@ static void context_state_callback(pa_context *c, void *userdata);
 static void subscribe_callback(pa_context *c, pa_subscription_event_type_t type, uint32_t idx, void *userdata);
 static void sink_info_callback(pa_context *c, const pa_sink_info *i, int eol, void *userdata);
 static void server_info_callback(pa_context *c, const pa_server_info *i, void *userdata);
-int PulseAudio_initialize( PulseAudio* p );
 
-int PulseAudio_run( PulseAudio* p );
-void PulseAudio_quit( PulseAudio* p, int ret );
-void PulseAudio_destroy( PulseAudio* p );
+static int PulseAudio_initialize( PulseAudio* p );
+static int PulseAudio_run( PulseAudio* p );
+static void PulseAudio_quit( PulseAudio* p, int ret );
+static void PulseAudio_destroy( PulseAudio* p );
 
 pulse_test_t* start_pulse_thread( void ) {
     pulse_test_t* p = calloc(1, sizeof(pulse_test_t));
@@ -42,6 +42,7 @@ pulse_test_t* start_pulse_thread( void ) {
     p->h->PA.t = p;
     atomic_init( &p->value, 0 );
     atomic_init( &p->muted, 0 );
+    sem_init( &p->sem, 0, 1 );
 
     if (!PulseAudio_initialize( &p->h->PA )) {
         free( p->h );
@@ -58,8 +59,23 @@ void stop_pulse_thread( pulse_test_t* p ) {
         PulseAudio_quit( &p->h->PA, 0 );
         pthread_join( p->h->me, NULL );
         PulseAudio_destroy( &p->h->PA );
+        sem_wait( &p->sem );
+        sem_destroy( &p->sem );
         free( p->h );
         free( p );
+    }
+}
+
+void pulse_thread_toggle_headphones( pulse_test_t* p ) {
+    if (p && p->h && p->h->PA._context) {
+        sem_wait( &p->sem );
+        if (p->n_ports > 0) {
+            p->port++;
+            p->port %= p->n_ports;
+            pa_context_set_sink_port_by_name( p->h->PA._context, p->name, p->ports[p->port], NULL, NULL );
+            P_awl_log_printf( "Pulse toggle '%s' ('%s') :: %i/%i", p->name, p->ports[p->port], p->port+1, p->n_ports );
+        }
+        sem_post( &p->sem );
     }
 }
 
@@ -152,15 +168,35 @@ static void sink_info_callback(pa_context *c, const pa_sink_info *i, int eol, vo
         if (headphone_sink) {
             atomic_store( &t->headphones, headphone_sink );
         }
+
+    }
+}
+
+static void sink_info_list_create_cb(pa_context* c, const pa_sink_info *i, int eol, void *userdata) {
+    (void)c;
+    (void)eol;
+
+    pulse_test_t* t = ((PulseAudio*)userdata)->t;
+    if (i && i->n_ports > 1) {
+        sem_wait( &t->sem );
+        for (uint32_t p=0; p<i->n_ports; ++p) {
+            strcpy( t->ports[p], i->ports[p]->name );
+            if (i->active_port && !strcmp(i->active_port->name, i->ports[p]->name))
+                t->port = p;
+        }
+        t->n_ports = i->n_ports;
+        strcpy( t->name, i->name );
+        sem_post( &t->sem );
     }
 }
 
 static void server_info_callback(pa_context *c, const pa_server_info *i, void *userdata) {
     P_awl_log_printf( "pulse sink name = %s", i->default_sink_name );
     pa_context_get_sink_info_by_name(c, i->default_sink_name, sink_info_callback, userdata);
+    pa_context_get_sink_info_list(c, sink_info_list_create_cb, userdata);
 }
 
-int PulseAudio_initialize( PulseAudio* p ) {
+static int PulseAudio_initialize( PulseAudio* p ) {
     if (!p) {
         P_awl_err_printf( "pulse handle was NULL." );
         return 0;
@@ -192,7 +228,7 @@ int PulseAudio_initialize( PulseAudio* p ) {
     return 1;
 }
 
-int PulseAudio_run( PulseAudio* p ) {
+static int PulseAudio_run( PulseAudio* p ) {
     int ret = 1;
     if (pa_mainloop_run(p->_mainloop, &ret) < 0) {
         P_awl_err_printf( "pulse pa_mainloop_run() failed.." );
@@ -201,11 +237,11 @@ int PulseAudio_run( PulseAudio* p ) {
     return ret;
 }
 
-void PulseAudio_quit( PulseAudio* p, int ret ) {
+static void PulseAudio_quit( PulseAudio* p, int ret ) {
     p->_mainloop_api->quit(p->_mainloop_api, ret);
 }
 
-void PulseAudio_destroy( PulseAudio* p ) {
+static void PulseAudio_destroy( PulseAudio* p ) {
     if (p->_context) {
         pa_context_unref(p->_context);
         p->_context = NULL;
