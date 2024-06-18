@@ -183,6 +183,12 @@ static void sink_info_list_create_cb(pa_context* c, const pa_sink_info *i, int e
             strcpy( t->ports[p], i->ports[p]->name );
             if (i->active_port && !strcmp(i->active_port->name, i->ports[p]->name))
                 t->port = p;
+            #ifdef AWL_PULSEWIDGET_HEAD
+            if (i->active_port && !strcmp(i->active_port->name, "analog-output-headphones"))
+                atomic_store( &t->headphones, 1 );
+            else
+                atomic_store( &t->headphones, -1 );
+            #endif
         }
         t->n_ports = i->n_ports;
         strcpy( t->name, i->name );
