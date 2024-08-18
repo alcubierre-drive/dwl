@@ -8,6 +8,14 @@
 
 ## Unreleased
 ### Added
+
+* Support for the linux-drm-syncobj-v1 protocol ([wlroots!4715][wlroots!4715], [#685][685])
+* Allow the use of non-system wlroots library ([#646][646])
+
+[wlroots!4715]: https://gitlab.freedesktop.org/wlroots/wlroots/-/merge_requests/4715
+[685]: https://codeberg.org/dwl/dwl/pulls/685
+
+
 ### Changed
 ### Deprecated
 ### Removed
