@@ -17,7 +17,7 @@ int drwl_init(void) {
 
 static uint32_t draw_dummy( widget_t* w, uint32_t x, pixman_image_t* pix );
 static uint32_t tagwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
-static uint32_t windowwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
+static uint32_t taskbarwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
 static uint32_t layoutwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
 static uint32_t clockwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
 static uint32_t systray_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
@@ -45,7 +45,7 @@ Drwl * drwl_create(Monitor* m) {
 
     drwl->center_widget = (widget_t){
         .bar = drwl,
-        .draw = &windowwidget_draw,
+        .draw = &taskbarwidget_draw,
     };
     drwl->has_center_widget = 1;
 
@@ -415,11 +415,18 @@ static uint32_t tagwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {
     return width;
 }
 
-static uint32_t windowwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {
+static uint32_t taskbarwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {
     uint32_t space = w->bar->center_widget_space;
     if (space == 0) return 0;
+
+    awl_plugin_data_t* P = awl_plugin_get();
+    if (!P) return 0;
+
     int n_windows = w->bar->n_tagwindows;
-    if (n_windows <= 0) return 0;
+    if (n_windows <= 0) {
+        TEXT( space, "", P->awl_colors.fg_win, P->awl_colors.bg_win_min );
+        return 0;
+    }
 
     // calculate space per window
     uint32_t spaces[n_windows];
@@ -431,9 +438,6 @@ static uint32_t windowwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix 
     for (int wi=0; wi<n_windows; ++wi)
         if (spaces[wi] <= 20)
             nospace = 1;
-
-    awl_plugin_data_t* P = awl_plugin_get();
-    if (!P) return 0;
 
     if (nospace)
         return TEXT( space, "+++", P->awl_colors.fg_win, P->awl_colors.bg_win_urg );

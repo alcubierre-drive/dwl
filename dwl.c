@@ -3,6 +3,10 @@
 #include "drwl.h"
 #include "plugins.h"
 
+typedef int (*wallpaper_func_t)( pixman_image_t* pix );
+static wallpaper_func_t wallpaper = NULL;
+static void drawroot_setter( wallpaper_func_t f ) { wallpaper = f; }
+
 /* function declarations */
 static void applybounds(Client *c, struct wlr_box *bbox);
 static void applyrules(Client *c);
@@ -13,6 +17,7 @@ static void arrangelayers(Monitor *m);
 static void axisnotify(struct wl_listener *listener, void *data);
 static bool bar_accepts_input(struct wlr_scene_buffer *buffer, double *sx, double *sy);
 static void buffer_destroy(struct wlr_buffer *buffer);
+static void bg_buffer_destroy(struct wlr_buffer *buffer);
 static bool buffer_begin_data_ptr_access(struct wlr_buffer *buffer, uint32_t flags, void **data, uint32_t *format, size_t *stride);
 static void buffer_end_data_ptr_access(struct wlr_buffer *buffer);
 static void buttonpress(struct wl_listener *listener, void *data);
@@ -51,6 +56,8 @@ static void destroysessionmgr(struct wl_listener *listener, void *data);
 static void destroykeyboardgroup(struct wl_listener *listener, void *data);
 static Monitor *dirtomon(enum wlr_direction dir);
 static void drawbar(Monitor *m);
+static void drawroot(void);
+static void WLP(const Arg* arg);
 static void drawbars(void);
 static void focusclient(Client *c, int lift);
 static void focusmon(const Arg *arg);
@@ -191,6 +198,12 @@ static struct wl_event_source *status_event_source;
 
 static const struct wlr_buffer_impl buffer_impl = {
     .destroy = buffer_destroy,
+    .begin_data_ptr_access = buffer_begin_data_ptr_access,
+    .end_data_ptr_access = buffer_end_data_ptr_access
+};
+
+static const struct wlr_buffer_impl bg_buffer_impl = {
+    .destroy = bg_buffer_destroy,
     .begin_data_ptr_access = buffer_begin_data_ptr_access,
     .end_data_ptr_access = buffer_end_data_ptr_access
 };
@@ -401,6 +414,11 @@ buffer_destroy(struct wlr_buffer *wlr_buffer)
 	free(buf);
 }
 
+void
+bg_buffer_destroy(struct wlr_buffer *wlr_buffer)
+{
+}
+
 bool
 buffer_begin_data_ptr_access(struct wlr_buffer *wlr_buffer, uint32_t flags,
                              void **data, uint32_t *format, size_t *stride)
@@ -534,6 +552,9 @@ checkidleinhibitor(struct wlr_surface *exclude)
 void
 cleanup(void)
 {
+    atomic_store(&plugin_data->drawbars, 0);
+    awl_plugin_free(plugin_data);
+
 #ifdef XWAYLAND
 	wlr_xwayland_destroy(xwayland);
 	xwayland = NULL;
@@ -555,10 +576,7 @@ cleanup(void)
 	/* Destroy after the wayland display (when the monitors are already destroyed)
 	   to avoid destroying them with an invalid scene output. */
 	wlr_scene_node_destroy(&scene->tree.node);
-
-    atomic_store(&plugin_data->drawbars, 0);
-    awl_plugin_free(plugin_data);
-	drwl_fini();
+    drwl_fini();
 }
 
 void
@@ -586,6 +604,8 @@ cleanupmon(struct wl_listener *listener, void *data)
 
 	closemon(m);
 	wlr_scene_node_destroy(&m->fullscreen_bg->node);
+
+    if (m->bg_buffer_handle) free(m->bg_buffer_handle);
 	free(m);
 }
 
@@ -891,6 +911,10 @@ createmon(struct wl_listener *listener, void *data)
 
 	m->scene_buffer = wlr_scene_buffer_create(layers[LyrBottom], NULL);
 	m->scene_buffer->point_accepts_input = bar_accepts_input;
+
+    m->bg_buffer = wlr_scene_buffer_create(layers[LyrBg], NULL);
+    wlr_scene_node_set_enabled(&m->bg_buffer->node, 1);
+
 	m->showbar = showbar;
 	updatebar(m);
 
@@ -1046,6 +1070,7 @@ cursorwarptohint(void)
 void
 destroydecoration(struct wl_listener *listener, void *data)
 {
+    return;
 	Client *c = wl_container_of(listener, c, destroy_decoration);
 	c->decoration = NULL;
 
@@ -1209,6 +1234,48 @@ dirtomon(enum wlr_direction dir)
 	return selmon;
 }
 
+// TODO how do i update the wallpaper from external? only through some file
+// shit?
+static void WLP(const Arg* arg) {
+    (void)arg;
+    drawroot();
+}
+
+void
+drawroot( void )
+{
+    Monitor *m = NULL;
+    wl_list_for_each(m, &mons, link) {
+        Buffer* buf = m->bg_buffer_handle;
+        int32_t stride = drwl_stride(m->m.width);
+        int32_t size = stride * m->m.height;
+
+        if (!buf)
+            buf = m->bg_buffer_handle = ecalloc(1, sizeof(Buffer) + size);
+
+        buf->stride = stride;
+        buf->w = m->m.width;
+        buf->h = m->m.height;
+
+        wlr_buffer_init(&buf->base, &bg_buffer_impl, m->m.width, m->m.height);
+        wlr_scene_buffer_set_dest_size(m->bg_buffer, m->m.width, m->m.height);
+        wlr_scene_node_set_position(&m->bg_buffer->node, 0, 0);
+
+        pixman_region32_t clip;
+        pixman_image_t* pix = pixman_image_create_bits_no_clear( PIXMAN_a8r8g8b8,
+                m->m.width, m->m.height, buf->data, buf->stride);
+        pixman_region32_init_rect(&clip, 0, 0, m->m.width, m->m.height);
+        pixman_image_set_clip_region32(pix, &clip);
+        pixman_region32_fini(&clip);
+
+        int update = wallpaper ? (*wallpaper)( pix ) : 1;
+        pixman_image_unref(pix);
+        if (update && m->bg_buffer)
+            wlr_scene_buffer_set_buffer(m->bg_buffer, &buf->base);
+        wlr_buffer_drop(&buf->base);
+    }
+}
+
 void
 drawbar(Monitor *m)
 {
@@ -1290,36 +1357,6 @@ drawbar(Monitor *m)
         if (m->drw->center_widget.draw)
             m->drw->center_widget.draw( &m->drw->center_widget, x, m->drw->pix );
     }
-
-    /*
-	x = 0;
-	c = ct;
-	for (i = 0; i < LENGTH(tags); i++) {
-		w = TEXTW(m, tags[i]);
-		drwl_setscheme(m->drw, colors[m->tagset[m->seltags] & 1 << i ? SchemeSel : SchemeNorm]);
-		drwl_text(m->drw, x, 0, w, m->b.height, m->lrpad / 2, tags[i], urg & 1 << i);
-		if (occ & 1 << i)
-			drwl_rect(m->drw, x + boxs, boxs, boxw, boxw,
-				m == selmon && c && c->tags & 1 << i,
-				urg & 1 << i);
-		x += w;
-	}
-	w = TEXTW(m, m->ltsymbol);
-	drwl_setscheme(m->drw, colors[SchemeNorm]);
-	x = drwl_text(m->drw, x, 0, w, m->b.height, m->lrpad / 2, m->ltsymbol, 0);
-
-	if ((w = m->b.width - tw - x) > m->b.height) {
-		if (c) {
-			drwl_setscheme(m->drw, colors[m == selmon ? SchemeSel : SchemeNorm]);
-			drwl_text(m->drw, x, 0, w, m->b.height, m->lrpad / 2, client_get_title(c), 0);
-			if (c && c->isfloating)
-				drwl_rect(m->drw, x + boxs, boxs, boxw, boxw, 0, 0);
-		} else {
-			drwl_setscheme(m->drw, colors[SchemeNorm]);
-			drwl_rect(m->drw, x, 0, w, m->b.height, 1, 1);
-		}
-	}
-    */
 
 	drwl_finish_drawing(m->drw);
 	wlr_scene_buffer_set_dest_size(m->scene_buffer,
@@ -2662,6 +2699,7 @@ setup(void)
     plugin_data = awl_plugin_init();
 	drwl_init();
     atomic_store( &plugin_data->drawbars, (uint64_t)&drawbars );
+    atomic_store( &plugin_data->drawroot_setter, (uint64_t)&drawroot_setter );
 
 	status_event_source = wl_event_loop_add_fd(wl_display_get_event_loop(dpy),
 		STDIN_FILENO, WL_EVENT_READABLE, status_in, NULL);

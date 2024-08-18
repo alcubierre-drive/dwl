@@ -33,6 +33,11 @@ typedef struct awl_plugin_data_t {
     /*void (*drawbars)(void);*/
     pthread_t drawbar_thread;
     double drawbar_sleep_secs;
+    _Atomic int drawbar_run;
+
+    _Atomic uint64_t drawroot_setter;
+    /*void (*drawroot_setter)( wallpaper_func_t func );*/
+    pthread_t drawroot_setter_thread;
 } awl_plugin_data_t;
 
 awl_plugin_data_t* awl_plugin_init( void );

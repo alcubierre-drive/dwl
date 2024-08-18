@@ -123,8 +123,8 @@ LIBINPUT_CONFIG_TAP_MAP_LMR -- 1/2/3 finger tap maps to left/middle/right
 static const enum libinput_config_tap_button_map button_map = LIBINPUT_CONFIG_TAP_MAP_LRM;
 
 /* If you want to use the windows key for MODKEY, use WLR_MODIFIER_LOGO */
-#define MODKEY WLR_MODIFIER_LOGO
-/*#define MODKEY WLR_MODIFIER_ALT*/
+/*#define MODKEY WLR_MODIFIER_LOGO*/
+#define MODKEY WLR_MODIFIER_ALT
 
 #define TAGKEYS(KEY,SKEY,TAG) \
 	{ MODKEY,                    KEY,            view,            {.ui = 1ul << TAG} }, \
@@ -168,6 +168,7 @@ static const Key keys[] = {
     { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_space,      togglefloating, {0} },
     { MODKEY,                    XKB_KEY_t,          toggleontop, {0} },
     { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_r,          plugin_restart, {0} },
+    { MODKEY,                    XKB_KEY_w,          WLP, {0} },
 	/*{ MODKEY,                    XKB_KEY_0,          view,           {.ui = ~0} },*/
 	/*{ MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_parenright, tag,            {.ui = ~0} },*/
     // TODO

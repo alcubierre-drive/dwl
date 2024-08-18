@@ -199,12 +199,15 @@ typedef struct {
 	void (*arrange)(Monitor *);
 } Layout;
 
+typedef struct Buffer Buffer;
 typedef struct Drwl Drwl;
 struct Monitor {
 	struct wl_list link;
 	struct wlr_output *wlr_output;
 	struct wlr_scene_output *scene_output;
 	struct wlr_scene_buffer *scene_buffer; /* bar buffer */
+	struct wlr_scene_buffer *bg_buffer; /* bg buffer */ // TODO
+    Buffer* bg_buffer_handle;
 	struct wlr_scene_rect *fullscreen_bg; /* See createmon() for info */
 	struct wl_listener frame;
 	struct wl_listener destroy;
@@ -233,11 +236,12 @@ struct Monitor {
 	int lrpad;
 };
 
-typedef struct {
+struct Buffer {
     struct wlr_buffer base;
     size_t stride;
+    size_t w, h;
     uint32_t data[];
-} Buffer;
+};
 
 typedef struct {
 	const char *name;

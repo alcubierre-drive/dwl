@@ -16,3 +16,7 @@ XLIBS = xcb xcb-icccm
 # To avoid warnings about them, we do not use -std=c99 and instead of using the
 # gmake default 'CC=c99', we use cc.
 CC = cc
+
+# CFLAGS += -fsanitize=address
+# LDFLAGS += -fsanitize=address
+CFLAGS += -g -ggdb
