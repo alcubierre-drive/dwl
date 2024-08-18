@@ -120,6 +120,7 @@ static void updatebar(Monitor *m);
 static void updatetitle(struct wl_listener *listener, void *data);
 static void urgent(struct wl_listener *listener, void *data);
 static void view(const Arg *arg);
+static void cycle_view(const Arg* arg);
 static void virtualkeyboard(struct wl_listener *listener, void *data);
 static void virtualpointer(struct wl_listener *listener, void *data);
 static Monitor *xytomon(double x, double y);
@@ -3058,6 +3059,27 @@ view(const Arg *arg)
 	focusclient(focustop(selmon), 1);
 	arrange(selmon);
 	drawbars();
+}
+
+static void cycle_view(const Arg* arg)
+{
+    if (arg->i == 0) return;
+    int tmax = -1;
+    int tmin = 32;
+    int nt = LENGTH(tags);
+    for (int t=0; t<nt; ++t)
+        if (selmon->tagset[selmon->seltags] & (1 << t)) {
+            tmax = MAX(tmax, t);
+            tmin = MIN(tmin, t);
+        }
+
+    selmon->seltags ^= 1; /* toggle sel tagset */
+    int next = arg->i > 0 ? (tmax + 1)%nt : (tmin - 1 + nt)%nt;
+    selmon->tagset[selmon->seltags] = (1 << next) & TAGMASK;
+
+    focusclient(focustop(selmon), 1);
+    arrange(selmon);
+    drawbars();
 }
 
 void
