@@ -23,9 +23,7 @@ static void* drawbar_thread_fun( void* arg ) {
     return NULL;
 }
 
-awl_plugin_data_t* awl_plugin_init( void ) {
-    awl_plugin_data_t* p = calloc(1,sizeof(awl_plugin_data_t));
-
+static void awl_plugin_start( awl_plugin_data_t* p ) {
     p->awl_colors = awl_colors();
 
     p->ip = start_ip_thread(1);
@@ -51,10 +49,15 @@ awl_plugin_data_t* awl_plugin_init( void ) {
     atomic_init( &p->drawbars, 0 );
     p->drawbar_sleep_secs = 0.2;
     AWL_PTHREAD_CREATE( &p->drawbar_thread, NULL, &drawbar_thread_fun, p );
+}
+
+awl_plugin_data_t* awl_plugin_init( void ) {
+    awl_plugin_data_t* p = calloc(1,sizeof(awl_plugin_data_t));
+    awl_plugin_start( p );
     return p;
 }
 
-void awl_plugin_free( awl_plugin_data_t* p ) {
+static void awl_plugin_stop( awl_plugin_data_t* p ) {
     stop_ip_thread(p->ip);
     stop_stats_thread(p->stats);
     stop_temp_thread(p->temp); free(p->temp);
@@ -64,6 +67,14 @@ void awl_plugin_free( awl_plugin_data_t* p ) {
     stop_pulse_thread(p->pulse);
 
     if (!pthread_cancel(p->drawbar_thread)) pthread_join( p->drawbar_thread, NULL );
+}
 
+void awl_plugin_free( awl_plugin_data_t* p ) {
+    awl_plugin_stop( p );
     free(p);
+}
+
+void awl_plugin_restart( awl_plugin_data_t* p ) {
+    awl_plugin_stop(p);
+    awl_plugin_start(p);
 }

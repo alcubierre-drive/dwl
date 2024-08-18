@@ -273,7 +273,7 @@ int drwl_text_color(Drwl *drwl, int x, int y, unsigned int w, unsigned int h,
         clr = convert_color(fg);
         fg_pix = pixman_image_create_solid_fill(&clr);
 
-        drwl_rect_color(drwl, x, y, w, h, 1, bg);
+        drwl_rect_color(drwl, x, y, w, y<0?h-y:h, 1, bg);
 
         x += lpad;
         w -= lpad;
@@ -374,7 +374,7 @@ void drwl_fini(void) {
 }
 
 #define TEXT( width, string, fg, bg ) \
-    drwl_text_color2( w->bar, x, 0, width, w->bar->m->b.height, w->bar->m->lrpad/2, string, \
+    drwl_text_color2( w->bar, x, -2, width, w->bar->m->b.height, w->bar->m->lrpad/2, string, \
             fg, bg )
 
 static uint32_t draw_dummy( widget_t* w, uint32_t x, pixman_image_t* pix ) {
@@ -408,8 +408,7 @@ static uint32_t tagwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {
             bg_add.alpha = 0xaaaa;
             bg_color = alpha_blend_16(bg_color, bg_add);
         }
-        drwl_text_color(w->bar, x, 0, ww, w->bar->m->b.height, w->bar->m->lrpad / 2, num,
-                color_16bit_to_8bit(P->awl_colors.fg_lay), color_16bit_to_8bit(bg_color));
+        TEXT( ww, num, P->awl_colors.fg_lay, bg_color );
         x += ww;
         width += ww;
     }

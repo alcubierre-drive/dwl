@@ -129,6 +129,7 @@ static void xytonode(double x, double y, struct wlr_surface **psurface,
 static void zoom(const Arg *arg);
 static void setontop(Client *c, int ontop);
 static void toggleontop(const Arg* arg);
+static void plugin_restart(const Arg* arg);
 
 /* variables */
 static pid_t child_pid = -1;
@@ -2582,8 +2583,7 @@ setup(void)
 	session_lock_mgr = wlr_session_lock_manager_v1_create(dpy);
 	wl_signal_add(&session_lock_mgr->events.new_lock, &lock_listener);
 	LISTEN_STATIC(&session_lock_mgr->events.destroy, destroysessionmgr);
-	locked_bg = wlr_scene_rect_create(layers[LyrBlock], sgeom.width, sgeom.height,
-			(float [4]){0.1f, 0.1f, 0.1f, 1.0f});
+	locked_bg = wlr_scene_rect_create(layers[LyrBlock], sgeom.width, sgeom.height, locked_color);
 	wlr_scene_node_set_enabled(&locked_bg->node, 0);
 
 	/* Use decoration protocols to negotiate server-side decorations */
@@ -3102,6 +3102,14 @@ toggleontop(const Arg* arg)
     (void)arg;
     Client* sel = focustop(selmon);
     if (sel && !sel->isfullscreen) setontop(sel, !sel->isontop);
+}
+
+void
+plugin_restart(const Arg* arg)
+{
+    (void)arg;
+    awl_plugin_data_t* P = awl_plugin_get();
+    if (P) awl_plugin_restart(P);
 }
 
 void

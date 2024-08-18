@@ -10,12 +10,6 @@
 #include "plugins/sem_time.h"
 #include "plugins/colors.h"
 
-/*typedef struct awl_ipaddr_t awl_ipaddr_t;*/
-/*typedef struct awl_stats_t awl_stats_t;*/
-/*typedef struct awl_temperature_t awl_temperature_t;*/
-/*typedef struct awl_battery_t awl_battery_t;*/
-/*typedef struct awl_date_t awl_date_t;*/
-/*typedef struct pulse_test_t pulse_test_t;*/
 typedef struct awl_calendar_t awl_calendar_t;
 typedef struct awl_wallpaper_data_t awl_wallpaper_data_t;
 
@@ -43,3 +37,5 @@ typedef struct awl_plugin_data_t {
 
 awl_plugin_data_t* awl_plugin_init( void );
 void awl_plugin_free( awl_plugin_data_t* p );
+
+void awl_plugin_restart( awl_plugin_data_t* p );

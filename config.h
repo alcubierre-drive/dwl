@@ -6,18 +6,23 @@
 /* appearance */
 static const int sloppyfocus               = 1;  /* focus follows mouse */
 static const int bypass_surface_visibility = 0;  /* 1 means idle inhibitors will disable idle tracking even if it's surface isn't visible  */
-static const unsigned int borderpx         = 1;  /* border pixel of windows */
+static const unsigned int borderpx         = 2;  /* border pixel of windows */
 static const int showbar                   = 1; /* 0 means no bar */
 static const int topbar                    = 0; /* 0 means bottom bar */
 static const char *fonts[]                 = {"monospace:size=10"};
 static const float rootcolor[]             = COLOR(0x000000ff);
+static const float locked_color[]          = {0.2f, 0.15f, 0.15f, 0.9f};
 /* This conforms to the xdg-protocol. Set the alpha to zero to restore the old behavior */
 static const float fullscreen_bg[]         = {0.1f, 0.1f, 0.1f, 1.0f}; /* You can also use glsl colors */
+
+/*static const uint32_t molokai_blue = 0x66d9efff;*/
+/*static const uint32_t molokai_orange = 0xfd971fff;*/
+/*static const uint32_t molokai_gray = 0x232526ff;*/
 static uint32_t colors[][3]                = {
 	/*               fg          bg          border    */
-	[SchemeNorm] = { 0xbbbbbbff, 0x222222ff, 0x444444ff },
-	[SchemeSel]  = { 0xeeeeeeff, 0x005577ff, 0x005577ff },
-	[SchemeUrg]  = { 0,          0,          0x770000ff },
+	[SchemeNorm] = { 0xbbbbbbff, 0x222222ff, molokai_gray },
+	[SchemeSel]  = { 0xeeeeeeff, 0x005577ff, molokai_blue },
+	[SchemeUrg]  = { 0,          0,          molokai_orange },
 };
 
 /* tagging - TAGCOUNT must be no greater than 31 */
@@ -162,6 +167,7 @@ static const Key keys[] = {
 	{ MODKEY,                    XKB_KEY_f,          togglefullscreen, {0} },
     { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_space,      togglefloating, {0} },
     { MODKEY,                    XKB_KEY_t,          toggleontop, {0} },
+    { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_r,          plugin_restart, {0} },
 	/*{ MODKEY,                    XKB_KEY_0,          view,           {.ui = ~0} },*/
 	/*{ MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_parenright, tag,            {.ui = ~0} },*/
     // TODO
