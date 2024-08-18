@@ -4,6 +4,8 @@
  */
 #pragma once
 
+#include "dwl.h"
+
 #include <stdlib.h>
 #include <fcft/fcft.h>
 #include <pixman-1/pixman.h>
@@ -12,11 +14,55 @@
 
 enum { ColFg, ColBg, ColBorder }; /* colorscheme index */
 
-typedef struct {
+typedef struct widget_t widget_t;
+typedef struct Drwl Drwl;
+
+struct widget_t {
+    uint32_t width;
+    uint32_t (*draw)(widget_t* this, uint32_t x, pixman_image_t* pix);
+    void (*callback_view)(widget_t* this, int32_t x_rel);
+    void (*callback_click)(widget_t* this, uint32_t x_rel, int button);
+    void (*callback_scroll)(widget_t* this, uint32_t x_rel, int amount);
+    void* userdata;
+    int age;
+    void (*free)( void* userdata );
+    Drwl* bar;
+};
+
+typedef struct drwl_window_t {
+    char name[255];
+    struct { uint8_t
+        floating:1,
+        urgent:1,
+        focused:1,
+        visible:1,
+        maximized:1,
+        fullscreen:1,
+        ontop:1;
+    };
+} drwl_window_t;
+
+struct Drwl {
 	pixman_image_t *pix;
 	struct fcft_font *font;
 	uint32_t *scheme;
-} Drwl;
+
+    widget_t widgets_left[32];
+    int n_widgets_left;
+    widget_t widgets_right[32];
+    int n_widgets_right;
+    widget_t center_widget;
+    uint32_t center_widget_space;
+    uint32_t center_widget_start;
+    int has_center_widget;
+
+    drwl_window_t tagwindows[128];
+    int n_tagwindows;
+    uint32_t occ, urg, sel;
+    int ntags;
+
+    Monitor* m;
+};
 
 #define UTF_INVALID 0xFFFD
 #define UTF_SIZ     4
@@ -60,47 +106,6 @@ utf8decode(const char *c, uint32_t *u)
 	return len;
 }
 
-static int
-drwl_init(void)
-{
-	fcft_set_scaling_filter(FCFT_SCALING_FILTER_LANCZOS3);
-	return fcft_init(FCFT_LOG_COLORIZE_AUTO, 0, FCFT_LOG_CLASS_ERROR);
-}
-
-static Drwl *
-drwl_create(void)
-{
-	Drwl *drwl;
-	
-	if (!(drwl = calloc(1, sizeof(Drwl))))
-		return NULL;
-
-	return drwl;
-}
-
-static void
-drwl_setfont(Drwl *drwl, struct fcft_font *font)
-{
-	if (drwl)
-		drwl->font = font;
-}
-
-static struct fcft_font *
-drwl_load_font(Drwl *drwl, size_t fontcount,
-		const char *fonts[static fontcount], const char *attributes)
-{
-	struct fcft_font *font = fcft_from_name(fontcount, fonts, attributes);
-	if (drwl)
-		drwl_setfont(drwl, font);
-	return font;
-}
-
-static void
-drwl_destroy_font(struct fcft_font *font)
-{
-	fcft_destroy(font);
-}
-
 static inline pixman_color_t
 convert_color(uint32_t clr)
 {
@@ -112,173 +117,30 @@ convert_color(uint32_t clr)
 	};
 }
 
-static void
-drwl_setscheme(Drwl *drwl, uint32_t *scm)
-{
-	if (drwl)
-		drwl->scheme = scm;
-}
-
 static inline int
 drwl_stride(unsigned int width)
 {
 	return (((PIXMAN_FORMAT_BPP(PIXMAN_a8r8g8b8) * width + 7) / 8 + 4 - 1) & -4);
 }
 
-static void
-drwl_prepare_drawing(Drwl *drwl, unsigned int w, unsigned int h,
-		uint32_t *bits, int stride)
-{
-	pixman_region32_t clip;
-
-	if (!drwl)
-		return;
-
-	drwl->pix = pixman_image_create_bits_no_clear(
-		PIXMAN_a8r8g8b8, w, h, bits, stride);
-	pixman_region32_init_rect(&clip, 0, 0, w, h);
-	pixman_image_set_clip_region32(drwl->pix, &clip);
-	pixman_region32_fini(&clip);
-}
-
-static void
-drwl_rect(Drwl *drwl,
-		int x, int y, unsigned int w, unsigned int h,
-		int filled, int invert)
-{
-	pixman_color_t clr;
-	if (!drwl || !drwl->scheme || !drwl->pix)
-		return;
-
-	clr = convert_color(drwl->scheme[invert ? ColBg : ColFg]);
-	if (filled)
-		pixman_image_fill_rectangles(PIXMAN_OP_SRC, drwl->pix, &clr, 1,
-			&(pixman_rectangle16_t){x, y, w, h});
-	else
-		pixman_image_fill_rectangles(PIXMAN_OP_SRC, drwl->pix, &clr, 4,
-			(pixman_rectangle16_t[4]){
-				{ x,         y,         w, 1 },
-				{ x,         y + h - 1, w, 1 },
-				{ x,         y,         1, h },
-				{ x + w - 1, y,         1, h }});
-}
-
-static int
-drwl_text(Drwl *drwl,
-		int x, int y, unsigned int w, unsigned int h,
-		unsigned int lpad, const char *text, int invert)
-{
-	int ty;
-	int utf8charlen, render = x || y || w || h;
-	long x_kern;
-	uint32_t cp = 0, last_cp = 0;
-	pixman_color_t clr;
-	pixman_image_t *fg_pix = NULL;
-	int noellipsis = 0;
-	const struct fcft_glyph *glyph, *eg;
-	int fcft_subpixel_mode = FCFT_SUBPIXEL_DEFAULT;
-
-	if (!drwl || (render && (!drwl->scheme || !w || !drwl->pix)) || !text || !drwl->font)
-		return 0;
-
-	if (!render) {
-		w = invert ? invert : ~invert;
-	} else {
-		clr = convert_color(drwl->scheme[invert ? ColBg : ColFg]);
-		fg_pix = pixman_image_create_solid_fill(&clr);
-
-		drwl_rect(drwl, x, y, w, h, 1, !invert);
-
-		x += lpad;
-		w -= lpad;
-	}
-
-	if (render && (drwl->scheme[ColBg] & 0xFF) != 0xFF)
-		fcft_subpixel_mode = FCFT_SUBPIXEL_NONE;
-
-	// U+2026 == …
-	eg = fcft_rasterize_char_utf32(drwl->font, 0x2026, fcft_subpixel_mode);
-
-	while (*text) {
-		utf8charlen = utf8decode(text, &cp);
-
-		glyph = fcft_rasterize_char_utf32(drwl->font, cp, fcft_subpixel_mode);
-		if (!glyph)
-			continue;
-
-		x_kern = 0;
-		if (last_cp)
-			fcft_kerning(drwl->font, last_cp, cp, &x_kern, NULL);
-		last_cp = cp;
-
-		ty = y + (h - drwl->font->height) / 2 + drwl->font->ascent;
-
-		/* draw ellipsis if remaining text doesn't fit */
-		if (!noellipsis && x_kern + glyph->advance.x + eg->advance.x > w && *(text + 1) != '\0') {
-			if (drwl_text(drwl, 0, 0, 0, 0, 0, text, 0)
-					- glyph->advance.x < eg->advance.x) {
-				noellipsis = 1;
-			} else {
-				w -= eg->advance.x;
-				pixman_image_composite32(
-					PIXMAN_OP_OVER, fg_pix, eg->pix, drwl->pix, 0, 0, 0, 0,
-					x + eg->x, ty - eg->y, eg->width, eg->height);
-			}
-		}
-
-		if ((x_kern + glyph->advance.x) > w)
-			break;
-
-		x += x_kern;
-
-		if (render && pixman_image_get_format(glyph->pix) == PIXMAN_a8r8g8b8)
-			// pre-rendered glyphs (eg. emoji)
-			pixman_image_composite32(
-				PIXMAN_OP_OVER, glyph->pix, NULL, drwl->pix, 0, 0, 0, 0,
-				x + glyph->x, ty - glyph->y, glyph->width, glyph->height);
-		else if (render)
-			pixman_image_composite32(
-				PIXMAN_OP_OVER, fg_pix, glyph->pix, drwl->pix, 0, 0, 0, 0,
-				x + glyph->x, ty - glyph->y, glyph->width, glyph->height);
-
-		text += utf8charlen;
-		x += glyph->advance.x;
-		w -= glyph->advance.x;
-	}
-
-	if (render)
-		pixman_image_unref(fg_pix);
-
-	return x + (render ? w : 0);
-}
-
-static unsigned int
-drwl_font_getwidth(Drwl *drwl, const char *text)
-{
-	if (!drwl || !drwl->font || !text)
-		return 0;
-	return drwl_text(drwl, 0, 0, 0, 0, 0, text, 0);
-}
-
-static void
-drwl_finish_drawing(Drwl *drwl)
-{
-	if (drwl && drwl->pix)
-		pixman_image_unref(drwl->pix);
-}
-
-static void
-drwl_destroy(Drwl *drwl)
-{
-	if (drwl->pix)
-		pixman_image_unref(drwl->pix);
-	if (drwl->font)
-		drwl_destroy_font(drwl->font);
-	free(drwl);
-}
-
-static void
-drwl_fini(void)
-{
-	fcft_fini();
-}
+int drwl_init(void);
+Drwl * drwl_create(Monitor* m);
+void drwl_setfont(Drwl *drwl, struct fcft_font *font);
+struct fcft_font * drwl_load_font(Drwl *drwl, size_t fontcount,
+        const char *fonts[static fontcount], const char *attributes);
+void drwl_destroy_font(struct fcft_font *font);
+void drwl_setscheme(Drwl *drwl, uint32_t *scm);
+void drwl_prepare_drawing(Drwl *drwl, unsigned int w, unsigned int h, uint32_t *bits, int stride);
+void drwl_rect(Drwl *drwl, int x, int y, unsigned int w, unsigned int h, int filled, int invert);
+int drwl_text(Drwl *drwl, int x, int y, unsigned int w, unsigned int h, unsigned int lpad,
+        const char *text, int invert);
+void drwl_rect_color(Drwl *drwl, int x, int y, unsigned int w, unsigned int h, int filled, uint32_t color);
+void drwl_rect_color2(Drwl *drwl, int x, int y, unsigned int w, unsigned int h, int filled, pixman_color_t color);
+int drwl_text_color(Drwl *drwl, int x, int y, unsigned int w, unsigned int h,
+        unsigned int lpad, const char *text, uint32_t fg, uint32_t bg);
+int drwl_text_color2(Drwl *drwl, int x, int y, unsigned int w, unsigned int h,
+        unsigned int lpad, const char *text, pixman_color_t fg, pixman_color_t bg);
+unsigned int drwl_font_getwidth(Drwl *drwl, const char *text);
+void drwl_finish_drawing(Drwl *drwl);
+void drwl_destroy(Drwl *drwl);
+void drwl_fini(void);
