@@ -159,7 +159,9 @@ static const Key keys[] = {
 	{ MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_space,      cycle_layout, {.i = -1} },
     { MODKEY,                    XKB_KEY_Right,      cycle_view,   {.i = +1} },
     { MODKEY,                    XKB_KEY_Left,       cycle_view,   {.i = -1} },
-	{ MODKEY,                    XKB_KEY_f,         togglefullscreen, {0} },
+	{ MODKEY,                    XKB_KEY_f,          togglefullscreen, {0} },
+    { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_space,      togglefloating, {0} },
+    { MODKEY,                    XKB_KEY_t,          toggleontop, {0} },
 	/*{ MODKEY,                    XKB_KEY_0,          view,           {.ui = ~0} },*/
 	/*{ MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_parenright, tag,            {.ui = ~0} },*/
     // TODO

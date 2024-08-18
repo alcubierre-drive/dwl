@@ -440,8 +440,19 @@ static uint32_t windowwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix 
         return TEXT( space, "+++", P->awl_colors.fg_win, P->awl_colors.bg_win_urg );
 
     drwl_window_t* windows = w->bar->tagwindows;
+
+    // max, float, top
     for (int wi=0; wi<n_windows; ++wi) {
-        TEXT( spaces[wi], windows[wi].name, P->awl_colors.fg_win,
+        char txt[256] = {0};
+        if (windows[wi].floating || windows[wi].maximized || windows[wi].ontop) {
+            strcat( txt, "[" );
+            if (windows[wi].floating) strcat( txt, "F" );
+            if (windows[wi].maximized) strcat( txt, "M" );
+            if (windows[wi].ontop) strcat( txt, "T" );
+            strcat( txt, "] " );
+        }
+        strcat( txt, windows[wi].name );
+        TEXT( spaces[wi], txt, P->awl_colors.fg_win,
                 windows[wi].focused ? P->awl_colors.bg_win_act :
                 windows[wi].urgent  ? P->awl_colors.bg_win_urg :
                 windows[wi].visible ? P->awl_colors.bg_win     :

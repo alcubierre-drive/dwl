@@ -127,6 +127,8 @@ static Monitor *xytomon(double x, double y);
 static void xytonode(double x, double y, struct wlr_surface **psurface,
 		Client **pc, LayerSurface **pl, double *nx, double *ny);
 static void zoom(const Arg *arg);
+static void setontop(Client *c, int ontop);
+static void toggleontop(const Arg* arg);
 
 /* variables */
 static pid_t child_pid = -1;
@@ -291,6 +293,7 @@ arrange(Monitor *m)
 			continue;
 
 		wlr_scene_node_reparent(&c->scene->node,
+                c->isontop ? layers[LyrTop] :
 				(!m->lt[m->sellt]->arrange && c->isfloating)
 						? layers[LyrTile]
 						: (m->lt[m->sellt]->arrange && c->isfloating)
@@ -3061,7 +3064,8 @@ view(const Arg *arg)
 	drawbars();
 }
 
-static void cycle_view(const Arg* arg)
+void
+cycle_view(const Arg* arg)
 {
     if (arg->i == 0) return;
     int tmax = -1;
@@ -3080,6 +3084,24 @@ static void cycle_view(const Arg* arg)
     focusclient(focustop(selmon), 1);
     arrange(selmon);
     drawbars();
+}
+
+void
+setontop(Client* c, int ontop)
+{
+    c->isontop = ontop;
+    if (!c->mon) return;
+    wlr_scene_node_reparent(&c->scene->node, c->isontop ? layers[LyrTop] : c->isfloating ? layers[LyrFloat] : layers[LyrTile]);
+    arrange(c->mon);
+    drawbars();
+}
+
+void
+toggleontop(const Arg* arg)
+{
+    (void)arg;
+    Client* sel = focustop(selmon);
+    if (sel && !sel->isfullscreen) setontop(sel, !sel->isontop);
 }
 
 void
