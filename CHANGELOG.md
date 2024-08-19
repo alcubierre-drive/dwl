@@ -14,6 +14,7 @@
 
 [wlroots!4715]: https://gitlab.freedesktop.org/wlroots/wlroots/-/merge_requests/4715
 [685]: https://codeberg.org/dwl/dwl/pulls/685
+[646]: https://codeberg.org/dwl/dwl/pulls/646
 
 
 ### Changed
