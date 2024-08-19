@@ -27,8 +27,16 @@ static void* drawbar_thread_fun( void* arg ) {
 static int wpfunc( pixman_image_t* pix ) {
     int w = pixman_image_get_width(pix),
         h = pixman_image_get_height(pix);
-    pixman_box32_t box = {.x1=10, .y1=10, .x2=w-10, .y2=h-10};
-    pixman_image_fill_boxes(PIXMAN_OP_SRC, pix, &white, 1, &box);
+    int x=0;
+    pixman_color_t colors[] = {black, {.red=0x1111, .green=0x1111, .blue=0x1111, .alpha=0xFFFF}};
+    int cidx=0;
+    while (x < h && x < w) {
+        pixman_box32_t box = {.x1=x, .y1=x, .x2=w-x, .y2=h-x};
+        pixman_image_fill_boxes(PIXMAN_OP_SRC, pix, &colors[cidx], 1, &box);
+        cidx++;
+        cidx %= 2;
+        x += 10;
+    }
     return 1;
 }
 
