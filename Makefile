@@ -53,6 +53,7 @@ config.h:
 	cp config.def.h $@
 clean:
 	rm -f dwl *.o *-protocol.h
+	rm -f $(PLUGINS_OBJ)
 
 dist: clean
 	mkdir -p dwl-$(VERSION)
