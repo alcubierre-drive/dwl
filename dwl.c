@@ -1296,6 +1296,7 @@ drawbar(Monitor *m)
 	if (!m->showbar)
 		return;
 
+    sem_wait(&m->drw->draw);
 	stride = drwl_stride(m->b.width);
 	size = stride * m->b.height;
 
@@ -1366,6 +1367,8 @@ drawbar(Monitor *m)
 		m->m.y + (topbar ? 0 : m->m.height - m->b.real_height));
 	wlr_scene_buffer_set_buffer(m->scene_buffer, &buf->base);
 	wlr_buffer_drop(&buf->base);
+
+    sem_post(&m->drw->draw);
 }
 
 void

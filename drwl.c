@@ -77,6 +77,8 @@ Drwl * drwl_create(Monitor* m) {
         .width = 50,
     };
 
+    sem_init(&drwl->draw, 0, 0);
+    sem_post(&drwl->draw);
     return drwl;
 }
 
@@ -342,6 +344,8 @@ void drwl_finish_drawing(Drwl *drwl) {
 }
 
 void drwl_destroy(Drwl *drwl) {
+    sem_wait(&drwl->draw);
+    sem_destroy(&drwl->draw);
     if (drwl->pix)
         pixman_image_unref(drwl->pix);
     if (drwl->font)

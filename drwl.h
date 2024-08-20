@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <fcft/fcft.h>
 #include <pixman-1/pixman.h>
+#include <semaphore.h>
 
 #define BETWEEN(X, A, B) ((A) <= (X) && (X) <= (B))
 
@@ -62,6 +63,7 @@ struct Drwl {
     int ntags;
 
     Monitor* m;
+    sem_t draw;
 };
 
 #define UTF_INVALID 0xFFFD
