@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <stdatomic.h>
+#include <stdlib.h>
 
 /*#include "init.h"*/
 /*#include "../awl_log.h"*/

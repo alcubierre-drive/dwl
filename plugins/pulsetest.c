@@ -3,6 +3,7 @@
 /*#include "../awl_log.h"*/
 #include <stdio.h>
 #include <assert.h>
+#include <string.h>
 #include <pulse/pulseaudio.h>
 #include "pulsetest.h"
 /*#include "bar.h"*/

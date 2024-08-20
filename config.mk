@@ -21,5 +21,5 @@ CFLAGS = -std=c11 -Wall -Wextra -pedantic -Wno-unused-parameter
 
 # CFLAGS += -fsanitize=address
 # LDFLAGS += -fsanitize=address
-CFLAGS += -g -ggdb
-# CFLAGS += -Ofast -march=native -mtune=native -DNDEBUG -DUSLEEP_NOT_DEFINED
+# CFLAGS += -g -ggdb
+CFLAGS += -Ofast -march=native -mtune=native -DNDEBUG -DUSLEEP_NOT_DEFINED
