@@ -3,19 +3,11 @@
 #include "plugins/date.h"
 #include "plugins/colors.h"
 
-static uint32_t colors[][3]                = {
-	/*               fg          bg          border    */
-	[SchemeNorm] = { 0xbbbbbbff, 0x222222ff, 0x444444ff },
-	[SchemeSel]  = { 0xeeeeeeff, 0x005577ff, 0x005577ff },
-	[SchemeUrg]  = { 0,          0,          0x770000ff },
-};
-
 int drwl_init(void) {
     fcft_set_scaling_filter(FCFT_SCALING_FILTER_LANCZOS3);
     return fcft_init(FCFT_LOG_COLORIZE_AUTO, 0, FCFT_LOG_CLASS_ERROR);
 }
 
-static uint32_t draw_dummy( widget_t* w, uint32_t x, pixman_image_t* pix );
 static uint32_t tagwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
 static uint32_t taskbarwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
 static uint32_t layoutwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
@@ -377,13 +369,6 @@ void drwl_fini(void) {
     drwl_text_color2( w->bar, x, -2, width, w->bar->m->b.height, w->bar->m->lrpad/2, string, \
             fg, bg )
 
-static uint32_t draw_dummy( widget_t* w, uint32_t x, pixman_image_t* pix ) {
-    int ww = TEXTW(w->bar->m, "yos");
-    /*drwl_setscheme(w->bar, colors[SchemeSel]);*/
-    drwl_text_color(w->bar, x, 0, ww, w->bar->m->b.height, w->bar->m->lrpad / 2, "yos", 0xff00ffff, 0x00000000);
-    return ww;
-}
-
 static uint32_t tagwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {
     awl_plugin_data_t* P = awl_plugin_get();
     if (!P) return 0;
@@ -497,7 +482,6 @@ static uint32_t systray_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {
 }
 
 static uint32_t pulsewidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {
-    Drwl* bar = w->bar;
     awl_plugin_data_t* P = awl_plugin_get();
     if (!P || !P->pulse) return 0;
     char string[32] = {0};
@@ -506,9 +490,9 @@ static uint32_t pulsewidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix )
     float val = atomic_load( &P->pulse->value );
     int muted = atomic_load( &P->pulse->muted );
     int headphones = atomic_load( &P->pulse->headphones ) > 0;
-    const char headphones_str[] = "🎧";
-    const char speakers_str[] = "🔈";
-    sprintf( string, "%s%3.0f%%", headphones ? headphones_str : speakers_str, val * 100.0f );
+    /*const char headphones_str[] = "🎧";*/
+    /*const char speakers_str[] = "🔈";*/
+    sprintf( string, "%s%3.0f%%", headphones ? "H" : "S", val * 100.0f );
     int ww = TEXTW( w->bar->m, "V___%" );
     pixman_color_t fg = (muted?_molokai_orange : lround(val*100.0)>100?_molokai_red : P->awl_colors.fg_lay);
     TEXT( ww, string, fg, P->awl_colors.bg_lay );
@@ -521,7 +505,6 @@ typedef struct {
 } statuswidget_userdata_t;
 
 static uint32_t statuswidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {
-    Drwl* bar = w->bar;
     awl_plugin_data_t* P = awl_plugin_get();
     if (!P || !P->stats) return 16*3;
 

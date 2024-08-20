@@ -1279,10 +1279,11 @@ drawroot( void )
 void
 drawbar(Monitor *m)
 {
-	int x = 0, w, tw = 0;
-	int boxs = m->drw->font->height / 9;
-	int boxw = m->drw->font->height / 6 + 2;
-	uint32_t i, occ = 0, urg = 0;
+	int x = 0, /*w,*/ tw = 0;
+	// int boxs = m->drw->font->height / 9;
+	// int boxw = m->drw->font->height / 6 + 2;
+	// uint32_t i;
+    uint32_t occ = 0, urg = 0;
 	int32_t stride, size;
 	Client *c;
 	Buffer *buf;

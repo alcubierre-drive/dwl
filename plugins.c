@@ -8,8 +8,12 @@
 
 #include <stddef.h>
 #include <unistd.h>
+#include <stdlib.h>
+#include <string.h>
 
-/*int usleep(useconds_t usec);*/
+#ifdef USLEEP_NOT_DEFINED
+int usleep(useconds_t usec);
+#endif
 
 static void* drawbar_thread_fun( void* arg ) {
     // TODO
