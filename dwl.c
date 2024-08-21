@@ -149,6 +149,11 @@ static void setontop(Client *c, int ontop);
 static void toggleontop(const Arg* arg);
 static void plugin_restart(const Arg* arg);
 
+static struct wlr_box parse_geom( const char* gstr_, Monitor* mon ) {
+    const char* gstr = gstr_+5;
+    /* x,y,w,h */
+    mon->w.width, mon->w.height;
+}
 static void minimize(const Arg* arg);
 static void unminimize(const Arg* arg);
 static void maximize(const Arg* arg);
@@ -290,6 +295,7 @@ applyrules(Client *c)
 				if (r->monitor == i++)
 					mon = m;
 			}
+			if (!strncmp(r->title,"geom:",5)) resize(c, parse_geom(r->title, mon), 0);
 		}
 	}
 	setmon(c, mon, newtags);
