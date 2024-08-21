@@ -9,22 +9,29 @@ int drwl_init(void) {
 }
 
 static uint32_t tagwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
-static uint32_t taskbarwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
+static void tagwidget_scroll( widget_t* w, uint32_t x, int amount );
+static void tagwidget_click( widget_t* w, uint32_t x, int button );
+
 static uint32_t layoutwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
+static void layoutwidget_scroll( widget_t* w, uint32_t x, int amount );
+static void layoutwidget_click( widget_t* w, uint32_t x, int button );
+
+static uint32_t taskbarwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
+static void taskbarwidget_scroll( widget_t* w, uint32_t x, int amount );
+static void taskbarwidget_click( widget_t* w, uint32_t x, int button );
+
 static uint32_t clockwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
-static uint32_t systray_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
+static void clockwidget_click( widget_t* w, uint32_t x, int button );
+
 static uint32_t pulsewidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
+static void pulsewidget_click( widget_t* w, uint32_t x, int button );
+static void pulsewidget_scroll( widget_t* w, uint32_t x, int amount );
+
+static uint32_t systray_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
 static uint32_t statuswidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
 static uint32_t tempwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
 static uint32_t batwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
 static uint32_t ipwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
-
-static void dummy_click(widget_t* this, uint32_t x_rel, int button) {
-    printf( "%p got clicked! %u:%i\n", this, x_rel, button );
-}
-static void dummy_scroll(widget_t* this, uint32_t x_rel, int amount) {
-    printf( "%p got scrolled! %u:%i\n", this, x_rel, amount );
-}
 
 Drwl * drwl_create(Monitor* m) {
     Drwl *drwl;
@@ -36,29 +43,28 @@ Drwl * drwl_create(Monitor* m) {
     drwl->widgets_left[drwl->n_widgets_left++] = (widget_t){
         .bar = drwl,
         .draw = &tagwidget_draw,
-        .callback_click = &dummy_click,
-        .callback_scroll = &dummy_scroll,
+        .callback_click = &tagwidget_click,
+        .callback_scroll = &tagwidget_scroll,
     };
     drwl->widgets_left[drwl->n_widgets_left++] = (widget_t){
         .bar = drwl,
         .draw = &layoutwidget_draw,
-        .callback_click = &dummy_click,
-        .callback_scroll = &dummy_scroll,
+        .callback_click = &layoutwidget_click,
+        .callback_scroll = &layoutwidget_scroll,
     };
 
     drwl->center_widget = (widget_t){
         .bar = drwl,
         .draw = &taskbarwidget_draw,
-        .callback_click = &dummy_click,
-        .callback_scroll = &dummy_scroll,
+        .callback_click = &taskbarwidget_click,
+        .callback_scroll = &taskbarwidget_scroll,
     };
     drwl->has_center_widget = 1;
 
     drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
         .bar = drwl,
         .draw = &clockwidget_draw,
-        .callback_click = &dummy_click,
-        .callback_scroll = &dummy_scroll,
+        .callback_click = &clockwidget_click,
     };
     drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
         .bar = drwl,
@@ -70,38 +76,30 @@ Drwl * drwl_create(Monitor* m) {
     drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
         .bar = drwl,
         .draw = &pulsewidget_draw,
-        .callback_click = &dummy_click,
-        .callback_scroll = &dummy_scroll,
+        .callback_click = &pulsewidget_click,
+        .callback_scroll = &pulsewidget_scroll,
     };
     drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
         .bar = drwl,
         .draw = &statuswidget_draw,
         .width = 16*3,
         .free = free,
-        .callback_click = &dummy_click,
-        .callback_scroll = &dummy_scroll,
     };
     drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
         .bar = drwl,
         .draw = &tempwidget_draw,
         .width = 22,
         .free = free,
-        .callback_click = &dummy_click,
-        .callback_scroll = &dummy_scroll,
     };
     drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
         .bar = drwl,
         .draw = &batwidget_draw,
         .width = 22,
-        .callback_click = &dummy_click,
-        .callback_scroll = &dummy_scroll,
     };
     drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
         .bar = drwl,
         .draw = &ipwidget_draw,
         .width = 50,
-        .callback_click = &dummy_click,
-        .callback_scroll = &dummy_scroll,
     };
 
     return drwl;
@@ -474,7 +472,7 @@ static uint32_t taskbarwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix
                                       P->awl_colors.bg_win_min );
         x += spaces[wi];
     }
-    return 0;
+    return w->bar->center_widget_space;
 }
 
 static uint32_t layoutwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {
@@ -692,4 +690,67 @@ static uint32_t ipwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {
     uint32_t ww = TEXTW( bar->m, address );
     TEXT( ww, address, fgcolor, bgcolor );
     return ww;
+}
+
+static void tagwidget_scroll( widget_t* w, uint32_t x, int amount ) {
+    (void)w;
+    (void)x;
+    cycle_view( &(Arg){.i=amount} );
+}
+static void tagwidget_click( widget_t* w, uint32_t x, int button ) {
+    int t = (double)x / (double)w->width * NTAGS;
+    switch (button) {
+        case BTN_LEFT: view( &(Arg){.ui = (1 << t)} ); break;
+        case BTN_RIGHT: toggleview( &(Arg){.ui = (1 << t)} ); break;
+        case BTN_MIDDLE: view( &(Arg){.ui = ~0} ); break;
+        default: break;
+    }
+}
+
+static void layoutwidget_scroll( widget_t* w, uint32_t x, int amount ) {
+    (void)w; (void)x; cycle_layout( &(Arg){.i=amount} );
+}
+static void layoutwidget_click( widget_t* w, uint32_t x, int button ) {
+    (void)w; (void)x; cycle_layout( &(Arg){.i=button==BTN_LEFT?1:-1} );
+}
+
+static void taskbarwidget_scroll( widget_t* w, uint32_t x, int amount ) {
+    focusstack( &(Arg){.i=amount} );
+}
+static void taskbarwidget_click( widget_t* w, uint32_t x, int button ) {
+    if (w->bar->n_tagwindows <= 0) return;
+    drwl_window_t* windows = w->bar->tagwindows;
+    int win_idx = (double)x / (double)w->width * (double)w->bar->n_tagwindows;
+    if (win_idx >= w->bar->n_tagwindows || win_idx < 0) return;
+
+    if (!windows[win_idx].visible) {
+        windows[win_idx].c->isvisible = 1;
+        focusclient(windows[win_idx].c, 1);
+        goto arrange;
+    }
+    if (!windows[win_idx].focused) {
+        focusclient(windows[win_idx].c, 1);
+        goto arrange;
+    }
+    windows[win_idx].c->isvisible = 0;
+arrange:
+    arrange(windows[win_idx].c->mon);
+}
+
+static void pulsewidget_click( widget_t* w, uint32_t x, int button ) {
+    (void)w; (void)x; (void)button;
+    spawn( &(Arg){.v=(const char*[]){"pavucontrol", NULL}} );
+}
+static void pulsewidget_scroll( widget_t* w, uint32_t x, int amount ) {
+    (void)w; (void)x;
+    if (amount < 0) {
+        spawn( &(Arg){.v=(const char*[]){"pactl", "set-sink-volume", "@DEFAULT_SINK@", "+2.5%", NULL }} );
+    } else {
+        spawn( &(Arg){.v=(const char*[]){"pactl", "set-sink-volume", "@DEFAULT_SINK@", "-2.5%", NULL }} );
+    }
+}
+
+static void clockwidget_click( widget_t* w, uint32_t x, int button ) {
+    (void)w; (void)x; (void)button;
+    spawn( &(Arg){.v=(const char*[]){"gnome-calendar", NULL}} );
 }

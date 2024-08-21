@@ -26,6 +26,7 @@ static uint32_t colors[][3]                = {
 };
 
 /* tagging - TAGCOUNT must be no greater than 31 */
+#define NTAGS 9
 static char *tags[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9" };
 
 /* logging */
@@ -37,6 +38,17 @@ static const Rule rules[] = {
 	/* examples: */
 	{ "Gimp_EXAMPLE",     NULL,       0,            1,           -1 }, /* Start on currently visible tags floating, not tiled */
 	{ "firefox_EXAMPLE",  NULL,       1 << 8,       0,           -1 }, /* Start on ONLY tag "9" */
+    { "org.gnome.Calendar",NULL,      1 << 8,       1,           -1 },
+};
+
+static const char* Autostarts[][8] = {
+    { "dunst", NULL },
+    /*{ "nm-applet", NULL },*/
+    /*{ "blueman-applet", NULL },*/
+    /*{ "system-config-printer-applet", NULL },*/
+    /*{ "telegram-desktop", NULL },*/
+    /*{ "evolution", NULL },*/
+    /*{ "systemd-lock-handler", "--", "swaylock", "-c", "0x000000", NULL },*/
 };
 
 /* layout(s) */

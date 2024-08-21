@@ -10,7 +10,7 @@ static void drawroot_setter( wallpaper_func_t f ) { wallpaper = f; }
 /* function declarations */
 static void applybounds(Client *c, struct wlr_box *bbox);
 static void applyrules(Client *c);
-static void arrange(Monitor *m);
+/*static void arrange(Monitor *m);*/
 static void arrangelayer(Monitor *m, struct wl_list *list,
 		struct wlr_box *usable_area, int exclusive);
 static void arrangelayers(Monitor *m);
@@ -72,9 +72,9 @@ static int drawbars_timer_fire( void* data ) {
     return 0;
 }
 
-static void focusclient(Client *c, int lift);
+/*static void focusclient(Client *c, int lift);*/
 static void focusmon(const Arg *arg);
-static void focusstack(const Arg *arg);
+/*static void focusstack(const Arg *arg);*/
 static void movestack(const Arg *arg);
 static Client *focustop(Monitor *m);
 static void fullscreennotify(struct wl_listener *listener, void *data);
@@ -115,13 +115,12 @@ static void setcursorshape(struct wl_listener *listener, void *data);
 static void setfloating(Client *c, int floating);
 static void setfullscreen(Client *c, int fullscreen);
 static void setlayout(const Arg *arg);
-static void cycle_layout(const Arg* arg);
 static void setmfact(const Arg *arg);
 static void setmon(Client *c, Monitor *m, uint32_t newtags);
 static void setpsel(struct wl_listener *listener, void *data);
 static void setsel(struct wl_listener *listener, void *data);
 static void setup(void);
-static void spawn(const Arg *arg);
+/*static void spawn(const Arg *arg);*/
 static void startdrag(struct wl_listener *listener, void *data);
 static int status_in(int fd, unsigned int mask, void *data);
 static void tag(const Arg *arg);
@@ -131,7 +130,7 @@ static void togglebar(const Arg *arg);
 static void togglefloating(const Arg *arg);
 static void togglefullscreen(const Arg *arg);
 static void toggletag(const Arg *arg);
-static void toggleview(const Arg *arg);
+/*static void toggleview(const Arg *arg);*/
 static void unlocksession(struct wl_listener *listener, void *data);
 static void unmaplayersurfacenotify(struct wl_listener *listener, void *data);
 static void unmapnotify(struct wl_listener *listener, void *data);
@@ -139,8 +138,7 @@ static void updatemons(struct wl_listener *listener, void *data);
 static void updatebar(Monitor *m);
 static void updatetitle(struct wl_listener *listener, void *data);
 static void urgent(struct wl_listener *listener, void *data);
-static void view(const Arg *arg);
-static void cycle_view(const Arg* arg);
+/*static void view(const Arg *arg);*/
 static void virtualkeyboard(struct wl_listener *listener, void *data);
 static void virtualpointer(struct wl_listener *listener, void *data);
 static Monitor *xytomon(double x, double y);
@@ -1405,6 +1403,8 @@ drawbar(Monitor *m)
 		if (c->isurgent)
 			urg |= c->tags;
         if ( (c->tags & m->tagset[m->seltags]) && (m->drw->n_tagwindows < (int)LENGTH(m->drw->tagwindows)) ) {
+            strncpy( m->drw->tagwindows[m->drw->n_tagwindows].name, client_get_title(c),
+                    sizeof(m->drw->tagwindows[m->drw->n_tagwindows].name)-1 );
             m->drw->tagwindows[m->drw->n_tagwindows].floating = c->isfloating;
             m->drw->tagwindows[m->drw->n_tagwindows].urgent = c->isurgent;
             m->drw->tagwindows[m->drw->n_tagwindows].fullscreen = c->isfullscreen;
@@ -1412,8 +1412,7 @@ drawbar(Monitor *m)
             m->drw->tagwindows[m->drw->n_tagwindows].maximized = c->ismaximized;
             m->drw->tagwindows[m->drw->n_tagwindows].ontop = c->isontop;
             m->drw->tagwindows[m->drw->n_tagwindows].focused = (c == ct);
-            strncpy( m->drw->tagwindows[m->drw->n_tagwindows].name, client_get_title(c),
-                    sizeof(m->drw->tagwindows[m->drw->n_tagwindows].name)-1 );
+            m->drw->tagwindows[m->drw->n_tagwindows].c = c;
             m->drw->n_tagwindows++;
         }
 	}
@@ -1441,7 +1440,7 @@ drawbar(Monitor *m)
     m->drw->center_widget_space = x_end > m->drw->center_widget_start ? x_end - m->drw->center_widget_start : 0;
     if (m->drw->has_center_widget) {
         if (m->drw->center_widget.draw)
-            m->drw->center_widget.draw( &m->drw->center_widget, x, m->drw->pix );
+            m->drw->center_widget.width = m->drw->center_widget.draw( &m->drw->center_widget, x, m->drw->pix );
     }
 
 	drwl_finish_drawing(m->drw);
@@ -2366,6 +2365,21 @@ run(char *startup_cmd)
 	if (!socket)
 		die("startup: display_add_socket_auto");
 	setenv("WAYLAND_DISPLAY", socket, 1);
+    setenv("XDG_CURRENT_DESKTOP", "kde", 1 );
+    system("systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP");
+    system("dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=kde");
+    setenv("MOZ_ENABLE_WAYLAND", "1", 1);
+    setenv("QT_STYLE_OVERRIDE","kvantum",1);
+    setenv("DESKTOP_SESSION","kde",1);
+    setenv("QT_AUTO_SCREEN_SCALE_FACTOR","0",1);
+    setenv("EDITOR","nvim",1);
+    setenv("SYSTEMD_EDITOR","/usr/bin/nvim",1);
+    setenv("SSH_AUTH_SOCK","1",1);
+    setenv("NO_AT_BRIDGE","1",1);
+    char buf[256] = {0};
+    strcpy( buf, getenv("HOME") );
+    strcat( buf, "/Desktop" );
+    setenv("GRIM_DEFAULT_DIR", buf, 1);
 
 	/* Start the backend. This will enumerate outputs and inputs, become the DRM
 	 * master, etc */
@@ -3534,7 +3548,14 @@ main(int argc, char *argv[])
 	/* Wayland requires XDG_RUNTIME_DIR for creating its communications socket */
 	if (!getenv("XDG_RUNTIME_DIR"))
 		die("XDG_RUNTIME_DIR must be set");
+
 	setup();
+
+    // autostart goes in here
+    for (unsigned i=0; i<LENGTH(Autostarts); ++i) {
+        spawn( &(const Arg){.v=Autostarts[i]} );
+    }
+
 	run(startup_cmd);
 	cleanup();
 	return EXIT_SUCCESS;

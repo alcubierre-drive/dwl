@@ -111,7 +111,8 @@ typedef struct {
 } Button;
 
 typedef struct Monitor Monitor;
-typedef struct {
+typedef struct Client Client;
+struct Client {
 	/* Must keep these three elements in this order */
 	unsigned int type; /* XDGShell or X11* */
 	struct wlr_box geom; /* layout-relative, includes border */
@@ -155,7 +156,7 @@ typedef struct {
         isontop:1;
     };
 	uint32_t resize; /* configure serial of a pending resize */
-} Client;
+};
 
 typedef struct {
 	uint32_t mod;
@@ -275,6 +276,16 @@ typedef struct {
 	struct wl_listener unlock;
 	struct wl_listener destroy;
 } SessionLock;
+
+void cycle_view(const Arg* arg);
+void cycle_layout(const Arg* arg);
+void view(const Arg* arg);
+void toggleview(const Arg* arg);
+void focusstack(const Arg *arg);
+void spawn(const Arg *arg);
+
+void arrange(Monitor *m);
+void focusclient(Client *c, int lift);
 
 typedef struct awl_plugin_data_t awl_plugin_data_t;
 awl_plugin_data_t* awl_plugin_get( void );

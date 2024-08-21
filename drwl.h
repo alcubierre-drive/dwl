@@ -11,11 +11,13 @@
 #include <pixman-1/pixman.h>
 
 #define BETWEEN(X, A, B) ((A) <= (X) && (X) <= (B))
+#define NTAGS 9
 
 enum { ColFg, ColBg, ColBorder }; /* colorscheme index */
 
 typedef struct widget_t widget_t;
 typedef struct Drwl Drwl;
+typedef struct Client Client;
 
 struct widget_t {
     uint32_t width;
@@ -41,6 +43,7 @@ typedef struct drwl_window_t {
         fullscreen:1,
         ontop:1;
     };
+    Client* c;
 } drwl_window_t;
 
 struct Drwl {
