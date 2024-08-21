@@ -59,6 +59,17 @@ static void drawbar(Monitor *m);
 static void drawroot(void);
 static void WLP(const Arg* arg);
 static void drawbars(void);
+
+static struct wl_event_source* drawbars_timer = NULL;
+static int drawbars_timer_keep_updating = 1;
+static int drawbars_timer_fire( void* data ) {
+    (void)data;
+    drawbars();
+    if (drawbars_timer_keep_updating)
+        wl_event_source_timer_update(drawbars_timer, 200);
+    return 0;
+}
+
 static void focusclient(Client *c, int lift);
 static void focusmon(const Arg *arg);
 static void focusstack(const Arg *arg);
@@ -559,8 +570,10 @@ buttonpress(struct wl_listener *listener, void *data)
 		for (b = buttons; b < END(buttons); b++) {
 			if (CLEANMASK(mods) == CLEANMASK(b->mod) &&
 					event->button == b->button && b->func) {
-				if (b->click == click) b->func(&b->arg);
-				return;
+				if (b->click == click) {
+					b->func(&b->arg);
+					return;
+				}
 			}
 		}
 		break;
@@ -613,6 +626,8 @@ checkidleinhibitor(struct wlr_surface *exclude)
 void
 cleanup(void)
 {
+    drawbars_timer_keep_updating = 0;
+    wl_event_source_timer_update(drawbars_timer, 0);
     atomic_store(&plugin_data->drawbars, 0);
     awl_plugin_free(plugin_data);
 
@@ -2763,6 +2778,8 @@ setup(void)
 
     plugin_data = awl_plugin_init();
 	drwl_init();
+    drawbars_timer = wl_event_loop_add_timer(event_loop, &drawbars_timer_fire, NULL);
+    wl_event_source_timer_update(drawbars_timer, 200);
     atomic_store( &plugin_data->drawbars, (uint64_t)&drawbars );
     atomic_store( &plugin_data->drawroot_setter, (uint64_t)&drawroot_setter );
 

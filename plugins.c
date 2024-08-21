@@ -16,14 +16,13 @@ int usleep(useconds_t usec);
 #endif
 
 static void* drawbar_thread_fun( void* arg ) {
-    // TODO
     awl_plugin_data_t* p = arg;
     if (!p) return NULL;
     usleep( 0.5 * 1e6 );
     while (atomic_load(&p->drawbar_run)) {
         usleep( p->drawbar_sleep_secs * 1.e6 );
         void (*drawbars)(void) = (void(*)(void))atomic_load(&p->drawbars);
-        if (drawbars) (*drawbars)();
+        /*if (drawbars) (*drawbars)();*/ // TODO IMPLEMENT THIS WITH A TIMER IN THE EVENT LOOP
     }
     return NULL;
 }
