@@ -149,6 +149,9 @@ static void setontop(Client *c, int ontop);
 static void toggleontop(const Arg* arg);
 static void plugin_restart(const Arg* arg);
 
+static void minimize(const Arg* arg);
+static void unminimize(const Arg* arg);
+
 /* variables */
 static pid_t child_pid = -1;
 static int locked;
@@ -301,8 +304,8 @@ arrange(Monitor *m)
 
 	wl_list_for_each(c, &clients, link) {
 		if (c->mon == m) {
-			wlr_scene_node_set_enabled(&c->scene->node, VISIBLEON(c, m));
-			client_set_suspended(c, !VISIBLEON(c, m));
+			wlr_scene_node_set_enabled(&c->scene->node, VISIBLEON_ACTIVE(c, m));
+			client_set_suspended(c, !VISIBLEON_ACTIVE(c, m));
 		}
 	}
 
@@ -628,7 +631,6 @@ cleanup(void)
 {
     drawbars_timer_keep_updating = 0;
     wl_event_source_timer_update(drawbars_timer, 0);
-    atomic_store(&plugin_data->drawbars, 0);
     awl_plugin_free(plugin_data);
 
 #ifdef XWAYLAND
@@ -1033,6 +1035,7 @@ createnotify(struct wl_listener *listener, void *data)
 	c = toplevel->base->data = ecalloc(1, sizeof(*c));
 	c->surface.xdg = toplevel->base;
 	c->bw = borderpx;
+    c->isvisible = 1;
 
 	LISTEN(&toplevel->base->surface->events.commit, &c->commit, commitnotify);
 	LISTEN(&toplevel->base->surface->events.map, &c->map, mapnotify);
@@ -1552,14 +1555,14 @@ focusstack(const Arg *arg)
 		wl_list_for_each(c, &sel->link, link) {
 			if (&c->link == &clients)
 				continue; /* wrap past the sentinel node */
-			if (VISIBLEON(c, selmon))
+			if (VISIBLEON_ACTIVE(c, selmon))
 				break; /* found it */
 		}
 	} else {
 		wl_list_for_each_reverse(c, &sel->link, link) {
 			if (&c->link == &clients)
 				continue; /* wrap past the sentinel node */
-			if (VISIBLEON(c, selmon))
+			if (VISIBLEON_ACTIVE(c, selmon))
 				break; /* found it */
 		}
 	}
@@ -1612,7 +1615,7 @@ focustop(Monitor *m)
 {
 	Client *c;
 	wl_list_for_each(c, &fstack, flink) {
-		if (VISIBLEON(c, m))
+		if (VISIBLEON_ACTIVE(c, m))
 			return c;
 	}
 	return NULL;
@@ -1677,7 +1680,7 @@ gaplessgrid(Monitor *m)
 	Client *c;
 
 	wl_list_for_each(c, &clients, link)
-		if (VISIBLEON(c, m) && !c->isfloating)
+		if (VISIBLEON_ACTIVE(c, m) && !c->isfloating)
 			n++;
 	if (n == 0)
 		return;
@@ -1705,7 +1708,7 @@ gaplessgrid(Monitor *m)
 	rn = 0; /* current row number */
 	wl_list_for_each(c, &clients, link) {
 		unsigned int cx, cy;
-		if (!VISIBLEON(c, m) || c->isfloating || c->isfullscreen)
+		if (!VISIBLEON_ACTIVE(c, m) || c->isfloating || c->isfullscreen)
 			continue;
 
 		if ((i / rows + 1) > (cols - n % cols))
@@ -1981,7 +1984,7 @@ monocle(Monitor *m)
 	int n = 0;
 
 	wl_list_for_each(c, &clients, link) {
-		if (!VISIBLEON(c, m) || c->isfloating || c->isfullscreen)
+		if (!VISIBLEON_ACTIVE(c, m) || c->isfloating || c->isfullscreen)
 			continue;
 		resize(c, m->w, 0);
 		n++;
@@ -2780,7 +2783,6 @@ setup(void)
 	drwl_init();
     drawbars_timer = wl_event_loop_add_timer(event_loop, &drawbars_timer_fire, NULL);
     wl_event_source_timer_update(drawbars_timer, 200);
-    atomic_store( &plugin_data->drawbars, (uint64_t)&drawbars );
     atomic_store( &plugin_data->drawroot_setter, (uint64_t)&drawroot_setter );
 
 	status_event_source = wl_event_loop_add_fd(wl_display_get_event_loop(dpy),
@@ -2882,7 +2884,7 @@ tile(Monitor *m)
 	Client *c;
 
 	wl_list_for_each(c, &clients, link)
-		if (VISIBLEON(c, m) && !c->isfloating && !c->isfullscreen)
+		if (VISIBLEON_ACTIVE(c, m) && !c->isfloating && !c->isfullscreen)
 			n++;
 	if (n == 0)
 		return;
@@ -2893,7 +2895,7 @@ tile(Monitor *m)
 		mw = m->w.width;
 	i = my = ty = 0;
 	wl_list_for_each(c, &clients, link) {
-		if (!VISIBLEON(c, m) || c->isfloating || c->isfullscreen)
+		if (!VISIBLEON_ACTIVE(c, m) || c->isfloating || c->isfullscreen)
 			continue;
 		if (i < m->nmaster) {
 			resize(c, (struct wlr_box){.x = m->w.x, .y = m->w.y + my, .width = mw,
@@ -3225,6 +3227,33 @@ toggleontop(const Arg* arg)
 }
 
 void
+minimize(const Arg* arg)
+{
+    (void)arg;
+    Client* sel = focustop(selmon);
+    if (!sel) return;
+    sel->isvisible = 0;
+    focustop(selmon);
+    arrange(sel->mon);
+    drawbars();
+}
+
+void
+unminimize(const Arg* arg)
+{
+    Client *c;
+    wl_list_for_each(c, &fstack, flink) {
+        if (VISIBLEON(c, selmon) && !c->isvisible) {
+            c->isvisible = 1;
+            break;
+        }
+    }
+    focustop(selmon);
+    arrange(selmon);
+    drawbars();
+}
+
+void
 plugin_restart(const Arg* arg)
 {
     (void)arg;
@@ -3310,7 +3339,7 @@ zoom(const Arg *arg)
 	/* Search for the first tiled window that is not sel, marking sel as
 	 * NULL if we pass it along the way */
 	wl_list_for_each(c, &clients, link) {
-		if (VISIBLEON(c, selmon) && !c->isfloating) {
+		if (VISIBLEON_ACTIVE(c, selmon) && !c->isfloating) {
 			if (c != sel)
 				break;
 			sel = NULL;
@@ -3386,6 +3415,7 @@ createnotifyx11(struct wl_listener *listener, void *data)
 	c->surface.xwayland = xsurface;
 	c->type = X11;
 	c->bw = client_is_unmanaged(c) ? 0 : borderpx;
+    c->isvisible = 1;
 
 	/* Listen to the various events it can emit */
 	LISTEN(&xsurface->events.associate, &c->associate, associatex11);

@@ -15,18 +15,6 @@
 int usleep(useconds_t usec);
 #endif
 
-static void* drawbar_thread_fun( void* arg ) {
-    awl_plugin_data_t* p = arg;
-    if (!p) return NULL;
-    usleep( 0.5 * 1e6 );
-    while (atomic_load(&p->drawbar_run)) {
-        usleep( p->drawbar_sleep_secs * 1.e6 );
-        void (*drawbars)(void) = (void(*)(void))atomic_load(&p->drawbars);
-        /*if (drawbars) (*drawbars)();*/ // TODO IMPLEMENT THIS WITH A TIMER IN THE EVENT LOOP
-    }
-    return NULL;
-}
-
 static int wpfunc( pixman_image_t* pix ) {
     int w = pixman_image_get_width(pix),
         h = pixman_image_get_height(pix);
@@ -82,11 +70,6 @@ static void awl_plugin_start( awl_plugin_data_t* p ) {
 
     /*awl_wallpaper_data_t* wp;*/ // TODO
 
-    atomic_init( &p->drawbars, 0 );
-    atomic_init( &p->drawbar_run, 1 );
-    p->drawbar_sleep_secs = 0.2;
-    AWL_PTHREAD_CREATE( &p->drawbar_thread, NULL, &drawbar_thread_fun, p );
-
     atomic_init( &p->drawroot_setter, 0 );
     AWL_PTHREAD_CREATE( &p->drawroot_setter_thread, NULL, &drawroot_setter_thread_fun, p );
 }
@@ -105,10 +88,6 @@ static void awl_plugin_stop( awl_plugin_data_t* p ) {
     stop_date_thread(p->date);
     /*calendar_destroy(p->cal);*/
     stop_pulse_thread(p->pulse);
-
-    atomic_store( &p->drawbar_run, 0 );
-    pthread_join( p->drawbar_thread, NULL );
-    pthread_join( p->drawroot_setter_thread, NULL );
 }
 
 void awl_plugin_free( awl_plugin_data_t* p ) {
@@ -117,10 +96,8 @@ void awl_plugin_free( awl_plugin_data_t* p ) {
 }
 
 void awl_plugin_restart( awl_plugin_data_t* p ) {
-    uint64_t drw_bars = atomic_load( &p->drawbars ),
-             drw_rootset = atomic_load( &p->drawroot_setter );
+    uint64_t drw_rootset = atomic_load( &p->drawroot_setter );
     awl_plugin_stop(p);
     awl_plugin_start(p);
-    atomic_store( &p->drawbars, drw_bars );
     atomic_store( &p->drawroot_setter, drw_rootset );
 }
