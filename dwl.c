@@ -60,6 +60,7 @@ static void drawroot(void);
 static void WLP(const Arg* arg);
 static void drawbars(void);
 
+// TODO this should not be here
 static struct wl_event_source* drawbars_timer = NULL;
 static int drawbars_timer_elapse_ms = 200;
 static int drawbars_timer_keep_updating = 1;
@@ -209,7 +210,7 @@ static struct wlr_box sgeom;
 static struct wl_list mons;
 static Monitor *selmon;
 
-static char stext[256];
+static char stext[256] = "";
 static struct wl_event_source *status_event_source;
 
 static const struct wlr_buffer_impl buffer_impl = {
@@ -314,7 +315,7 @@ arrange(Monitor *m)
 	wlr_scene_node_set_enabled(&m->fullscreen_bg->node,
 			(c = focustop(m)) && c->isfullscreen);
 
-	strncpy(m->ltsymbol, m->lt[m->sellt]->symbol, LENGTH(m->ltsymbol));
+	strncpy(m->ltsymbol, m->lt[m->sellt]->symbol, LENGTH(m->ltsymbol)-1);
 
 	/* We move all clients (except fullscreen and unmanaged) to LyrTile while
 	 * in floating layout to avoid "real" floating clients be always on top */
@@ -531,28 +532,31 @@ buttonpress(struct wl_listener *listener, void *data)
         unsigned int xpos = 0;
         for (int i=0; i<selmon->drw->n_widgets_left; ++i) {
             if (cursor->x >= xpos && cursor->x < xpos + selmon->drw->widgets_left[i].width) {
-                if (selmon->drw->widgets_left[i].callback_click)
+                if (selmon->drw->widgets_left[i].callback_click) {
                     (*selmon->drw->widgets_left[i].callback_click)(&selmon->drw->widgets_left[i],
                             cursor->x - xpos, event->button);
-                return;
+                    return;
+                }
             }
             xpos += selmon->drw->widgets_left[i].width;
         }
         xpos = selmon->drw->center_widget_start;
         if (cursor->x >= xpos && cursor->x < xpos + selmon->drw->center_widget_space)
             if (selmon->drw->has_center_widget) {
-                if (selmon->drw->center_widget.callback_click)
+                if (selmon->drw->center_widget.callback_click) {
                     (*selmon->drw->center_widget.callback_click)(&selmon->drw->center_widget,
                             cursor->x - xpos, event->button);
-                return;
+                    return;
+                }
             }
         xpos += selmon->drw->center_widget_space;
         for (int i=selmon->drw->n_widgets_right-1; i>=0; --i) {
             if (cursor->x >= xpos && cursor->x < xpos + selmon->drw->widgets_right[i].width) {
-                if (selmon->drw->widgets_right[i].callback_click)
+                if (selmon->drw->widgets_right[i].callback_click) {
                     (*selmon->drw->widgets_right[i].callback_click)(&selmon->drw->widgets_right[i],
                             cursor->x - xpos, event->button);
-                return;
+                    return;
+                }
             }
             xpos += selmon->drw->widgets_right[i].width;
         }
@@ -964,7 +968,7 @@ createmon(struct wl_listener *listener, void *data)
 			m->nmaster = r->nmaster;
 			m->lt[0] = r->lt;
 			m->lt[1] = &layouts[LENGTH(layouts) > 1 && r->lt != &layouts[1]];
-			strncpy(m->ltsymbol, m->lt[m->sellt]->symbol, LENGTH(m->ltsymbol));
+			strncpy(m->ltsymbol, m->lt[m->sellt]->symbol, LENGTH(m->ltsymbol)-1);
 			wlr_output_state_set_scale(&state, r->scale);
 			wlr_output_state_set_transform(&state, r->rr);
 			break;
@@ -2486,7 +2490,7 @@ setlayout(const Arg *arg)
 		selmon->sellt ^= 1;
 	if (arg && arg->v)
 		selmon->lt[selmon->sellt] = (Layout *)arg->v;
-	strncpy(selmon->ltsymbol, selmon->lt[selmon->sellt]->symbol, LENGTH(selmon->ltsymbol));
+	strncpy(selmon->ltsymbol, selmon->lt[selmon->sellt]->symbol, LENGTH(selmon->ltsymbol)-1);
 	arrange(selmon);
 	drawbar(selmon);
 }
@@ -2511,7 +2515,7 @@ cycle_layout(const Arg* arg)
 
     selmon->lt[selmon->sellt] = &layouts[layout_idx];
 
-    strncpy(selmon->ltsymbol, selmon->lt[selmon->sellt]->symbol, LENGTH(selmon->ltsymbol));
+    strncpy(selmon->ltsymbol, selmon->lt[selmon->sellt]->symbol, LENGTH(selmon->ltsymbol)-1);
     arrange(selmon);
     drawbar(selmon);
 }
@@ -2849,7 +2853,7 @@ status_in(int fd, unsigned int mask, void *data)
 	status[n] = '\0';
 	status[strcspn(status, "\n")] = '\0';
 
-	strncpy(stext, status, sizeof(stext));
+	strncpy(stext, status, sizeof(stext)-1);
 	drawbars();
 
 	return 0;
@@ -3109,7 +3113,7 @@ updatemons(struct wl_listener *listener, void *data)
 
 	/* Update bar */
 	if (stext[0] == '\0')
-		strncpy(stext, "dwl-"VERSION, sizeof(stext));
+		strncpy(stext, "dwl-"VERSION, sizeof(stext)-1);
 	wl_list_for_each(m, &mons, link) {
 		updatebar(m);
 		drawbar(m);

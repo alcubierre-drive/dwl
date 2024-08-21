@@ -136,43 +136,70 @@ static const enum libinput_config_tap_button_map button_map = LIBINPUT_CONFIG_TA
 #define SHCMD(cmd) { .v = (const char*[]){ "/bin/sh", "-c", cmd, NULL } }
 
 /* commands */
-static const char *termcmd[] = { "kitty", NULL };
+static const char *termcmd[] = { "kitty", "-d", "$HOME", NULL };
 static const char *menucmd[] = { "fuzzel", NULL };
+static const char *hyprcopy[] = { "hyprcopy", NULL };
+static const char *brightp[] = { "backlight-tooler", "-m", "inc", "-V", "0.05", NULL };
+static const char *brightm[] = { "backlight-tooler", "-m", "dec", "-V", "0.05", NULL };
+static const char *volp[] = { "pactl", "set-sink-volume", "@DEFAULT_SINK@", "+5%", NULL };
+static const char *volm[] = { "pactl", "set-sink-volume", "@DEFAULT_SINK@", "-5%", NULL };
+static const char *volt[] = { "pactl", "set-sink-mute", "@DEFAULT_SINK@", "toggle", NULL };
+static const char *volT[] = { "pactl", "set-source-mute", "@DEFAULT_SOURCE@", "toggle", NULL };
+static const char *grimslurp[] = { "grim_slurp", NULL };
+static const char *wdisplays[] = { "wdisplays", NULL };
+static const char *swaylock[] = { "swaylock", "-c", "0x000000", NULL };
+static const char *docked_r[] = { "docked", "reset", NULL };
+static const char *docked_d[] = { "docked", "dock", NULL };
+static const char *docked_z[] = { "docked", "zoom", NULL };
 
 static void tagmonf( const Arg* arg ) { tagmon(arg); focusmon(arg); }
+static void pulsetoggle( const Arg* arg ) { pulse_thread_toggle_headphones(awl_plugin_get()->pulse); }
+
 static const Key keys[] = {
 	/* Note that Shift changes certain key codes: c -> C, 2 -> at, etc. */
 	/* modifier                  key                 function        argument */
-	{ MODKEY,                    XKB_KEY_p,          spawn,          {.v = menucmd} },
-	{ MODKEY,                    XKB_KEY_Return,     spawn,          {.v = termcmd} },
-	{ MODKEY,                    XKB_KEY_i,          togglebar,      {0} },
-	{ MODKEY,                    XKB_KEY_j,          focusstack,     {.i = +1} },
-	{ MODKEY,                    XKB_KEY_k,          focusstack,     {.i = -1} },
-    { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_J,          movestack,      {.i = +1} },
-    { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_K,          movestack,      {.i = -1} },
+	{ MODKEY,                    XKB_KEY_p,          spawn,            {.v = menucmd} },
+	{ MODKEY,                    XKB_KEY_Return,     spawn,            {.v = termcmd} },
+	{ MODKEY,                    XKB_KEY_i,          togglebar,        {0} },
+	{ MODKEY,                    XKB_KEY_j,          focusstack,       {.i = +1} },
+	{ MODKEY,                    XKB_KEY_k,          focusstack,       {.i = -1} },
+    { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_J,          movestack,        {.i = +1} },
+    { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_K,          movestack,        {.i = -1} },
 	/*{ MODKEY,                    XKB_KEY_i,          incnmaster,     {.i = +1} },*/
 	/*{ MODKEY,                    XKB_KEY_d,          incnmaster,     {.i = -1} },*/
-	{ MODKEY,                    XKB_KEY_h,          setmfact,       {.f = -0.05f} },
-	{ MODKEY,                    XKB_KEY_l,          setmfact,       {.f = +0.05f} },
-	{ MODKEY,                    XKB_KEY_Return,     zoom,           {0} },
-	{ MODKEY,                    XKB_KEY_Tab,        view,           {0} },
-	{ MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_C,          killclient,     {0} },
-	/*{ MODKEY,                    XKB_KEY_t,          setlayout,      {.v = &layouts[0]} },*/
-	/*{ MODKEY,                    XKB_KEY_f,          setlayout,      {.v = &layouts[1]} },*/
-	{ MODKEY,                    XKB_KEY_m,          maximize,       {0} },
-	/*{ MODKEY,                    XKB_KEY_g,          setlayout,      {.v = &layouts[3]} },*/
-	{ MODKEY,                    XKB_KEY_space,      cycle_layout, {.i = +1} },
-	{ MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_space,      cycle_layout, {.i = -1} },
-    { MODKEY,                    XKB_KEY_Right,      cycle_view,   {.i = +1} },
-    { MODKEY,                    XKB_KEY_Left,       cycle_view,   {.i = -1} },
+	{ MODKEY,                    XKB_KEY_h,          setmfact,         {.f = -0.05f} },
+	{ MODKEY,                    XKB_KEY_l,          setmfact,         {.f = +0.05f} },
+	{ MODKEY,                    XKB_KEY_Tab,        view,             {0} },
+	{ MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_C,          killclient,       {0} },
+	{ MODKEY,                    XKB_KEY_m,          maximize,         {0} },
+	{ MODKEY,                    XKB_KEY_space,      cycle_layout,     {.i = +1} },
+	{ MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_space,      cycle_layout,     {.i = -1} },
+    { MODKEY,                    XKB_KEY_Right,      cycle_view,       {.i = +1} },
+    { MODKEY,                    XKB_KEY_Left,       cycle_view,       {.i = -1} },
 	{ MODKEY,                    XKB_KEY_f,          togglefullscreen, {0} },
-    { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_space,      togglefloating, {0} },
-    { MODKEY,                    XKB_KEY_t,          toggleontop, {0} },
-    { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_r,          plugin_restart, {0} },
-    { MODKEY,                    XKB_KEY_w,          WLP, {0} },
+    { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_space,      togglefloating,   {0} },
+    { MODKEY,                    XKB_KEY_t,          toggleontop,      {0} },
+    { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_r,          plugin_restart,   {0} },
+    { MODKEY,                    XKB_KEY_w,          WLP,              {0} },
 
-    { MODKEY,                    XKB_KEY_n,          minimize, {0} },
-    { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_n,          unminimize, {0} },
+    { MODKEY,                    XKB_KEY_n,          minimize,         {0} },
+    { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_n,          unminimize,       {0} },
+    { MODKEY,                    XKB_KEY_c,          spawn,            {.v = hyprcopy} },
+    { 0, XKB_KEY_XF86MonBrightnessUp,  spawn, {.v=brightp} },
+    { 0, XKB_KEY_XF86MonBrightnessDown,spawn, {.v=brightm} },
+    { 0, XKB_KEY_XF86AudioRaiseVolume, spawn, {.v=volp} },
+    { 0, XKB_KEY_XF86AudioLowerVolume, spawn, {.v=volm} },
+    { 0, XKB_KEY_XF86AudioMute,        spawn, {.v=volt} },
+    { 0, XKB_KEY_XF86AudioMicMute,     spawn, {.v=volT} },
+    { 0, XKB_KEY_Print,                spawn, {.v=grimslurp} },
+    { MODKEY, XKB_KEY_F1,              pulsetoggle,      {0} },
+    { MODKEY, XKB_KEY_d,               spawn, {.v=wdisplays} },
+    { 0, XKB_KEY_XF86Display,          spawn, {.v=wdisplays} },
+    { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_G, spawn, {.v=swaylock} },
+
+    { MODKEY|WLR_MODIFIER_CTRL|WLR_MODIFIER_SHIFT,XKB_KEY_D, spawn,   {.v=docked_r} },
+    { MODKEY|WLR_MODIFIER_CTRL,     XKB_KEY_d,         spawn,         {.v=docked_d} },
+    { MODKEY|WLR_MODIFIER_SHIFT,    XKB_KEY_D,         spawn,         {.v=docked_z} },
 	/*{ MODKEY,                    XKB_KEY_0,          view,           {.ui = ~0} },*/
 	/*{ MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_parenright, tag,            {.ui = ~0} },*/
     // TODO
