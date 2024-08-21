@@ -24,6 +24,7 @@ struct widget_t {
     void (*callback_view)(widget_t* this, int32_t x_rel);
     void (*callback_click)(widget_t* this, uint32_t x_rel, int button);
     void (*callback_scroll)(widget_t* this, uint32_t x_rel, int amount);
+    double scroll_amount;
     void* userdata;
     int age;
     void (*free)( void* userdata );

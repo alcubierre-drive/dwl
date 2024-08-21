@@ -19,6 +19,13 @@ static uint32_t tempwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
 static uint32_t batwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
 static uint32_t ipwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
 
+static void dummy_click(widget_t* this, uint32_t x_rel, int button) {
+    printf( "%p got clicked! %u:%i\n", this, x_rel, button );
+}
+static void dummy_scroll(widget_t* this, uint32_t x_rel, int amount) {
+    printf( "%p got scrolled! %u:%i\n", this, x_rel, amount );
+}
+
 Drwl * drwl_create(Monitor* m) {
     Drwl *drwl;
 
@@ -29,52 +36,72 @@ Drwl * drwl_create(Monitor* m) {
     drwl->widgets_left[drwl->n_widgets_left++] = (widget_t){
         .bar = drwl,
         .draw = &tagwidget_draw,
+        .callback_click = &dummy_click,
+        .callback_scroll = &dummy_scroll,
     };
     drwl->widgets_left[drwl->n_widgets_left++] = (widget_t){
         .bar = drwl,
         .draw = &layoutwidget_draw,
+        .callback_click = &dummy_click,
+        .callback_scroll = &dummy_scroll,
     };
 
     drwl->center_widget = (widget_t){
         .bar = drwl,
         .draw = &taskbarwidget_draw,
+        .callback_click = &dummy_click,
+        .callback_scroll = &dummy_scroll,
     };
     drwl->has_center_widget = 1;
 
     drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
         .bar = drwl,
         .draw = &clockwidget_draw,
+        .callback_click = &dummy_click,
+        .callback_scroll = &dummy_scroll,
     };
     drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
         .bar = drwl,
         .draw = &systray_draw,
         .width = 64,
+        .callback_click = &dummy_click,
+        .callback_scroll = &dummy_scroll,
     };
     drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
         .bar = drwl,
         .draw = &pulsewidget_draw,
+        .callback_click = &dummy_click,
+        .callback_scroll = &dummy_scroll,
     };
     drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
         .bar = drwl,
         .draw = &statuswidget_draw,
         .width = 16*3,
         .free = free,
+        .callback_click = &dummy_click,
+        .callback_scroll = &dummy_scroll,
     };
     drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
         .bar = drwl,
         .draw = &tempwidget_draw,
         .width = 22,
         .free = free,
+        .callback_click = &dummy_click,
+        .callback_scroll = &dummy_scroll,
     };
     drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
         .bar = drwl,
         .draw = &batwidget_draw,
         .width = 22,
+        .callback_click = &dummy_click,
+        .callback_scroll = &dummy_scroll,
     };
     drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
         .bar = drwl,
         .draw = &ipwidget_draw,
         .width = 50,
+        .callback_click = &dummy_click,
+        .callback_scroll = &dummy_scroll,
     };
 
     sem_init(&drwl->draw, 0, 0);

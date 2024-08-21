@@ -385,6 +385,17 @@ arrangelayers(Monitor *m)
 	}
 }
 
+static const double SCROLL_LIMIT = 20.0;
+static void widget_wrap_scroll_callback( widget_t* w, uint32_t xrel, double delta ) {
+    if (w->callback_scroll) {
+        w->scroll_amount += delta;
+        if (fabs(w->scroll_amount) > SCROLL_LIMIT) {
+            (*w->callback_scroll)( w, xrel, (w->scroll_amount > 0) ? 1 : (w->scroll_amount < 0) ? -1 : 0 );
+            w->scroll_amount = 0;
+        }
+    }
+}
+
 void
 axisnotify(struct wl_listener *listener, void *data)
 {
@@ -392,6 +403,41 @@ axisnotify(struct wl_listener *listener, void *data)
 	 * for example when you move the scroll wheel. */
 	struct wlr_pointer_axis_event *event = data;
 	wlr_idle_notifier_v1_notify_activity(idle_notifier, seat);
+
+    Client* c = NULL;
+	struct wlr_scene_buffer *buffer;
+	struct wlr_scene_node *node;
+	xytonode(cursor->x, cursor->y, NULL, &c, NULL, NULL, NULL);
+	if (!c && !exclusive_focus &&
+		(node = wlr_scene_node_at(&layers[LyrBottom]->node, cursor->x, cursor->y, NULL, NULL)) &&
+		(buffer = wlr_scene_buffer_from_node(node)) && buffer == selmon->scene_buffer
+        && !locked) {
+		cursor->x -= selmon->m.x;
+		cursor->x *= selmon->wlr_output->scale;
+		cursor->y *= selmon->wlr_output->scale;
+        unsigned int xpos = 0;
+        for (int i=0; i<selmon->drw->n_widgets_left; ++i) {
+            if (cursor->x >= xpos && cursor->x < xpos + selmon->drw->widgets_left[i].width) {
+                widget_wrap_scroll_callback( &selmon->drw->widgets_left[i], cursor->x - xpos, event->delta );
+                return;
+            }
+            xpos += selmon->drw->widgets_left[i].width;
+        }
+        xpos = selmon->drw->center_widget_start;
+        if (cursor->x >= xpos && cursor->x < xpos + selmon->drw->center_widget_space)
+            if (selmon->drw->has_center_widget) {
+                widget_wrap_scroll_callback( &selmon->drw->center_widget, cursor->x - xpos, event->delta );
+                return;
+            }
+        xpos += selmon->drw->center_widget_space;
+        for (int i=selmon->drw->n_widgets_right-1; i>=0; --i) {
+            if (cursor->x >= xpos && cursor->x < xpos + selmon->drw->widgets_right[i].width) {
+                widget_wrap_scroll_callback( &selmon->drw->widgets_right[i], cursor->x - xpos, event->delta );
+                return;
+            }
+            xpos += selmon->drw->widgets_right[i].width;
+        }
+	}
 	/* TODO: allow usage of scroll whell for mousebindings, it can be implemented
 	 * checking the event's orientation and the delta of the event */
 	/* Notify the client with pointer focus of the axis event. */
@@ -443,43 +489,57 @@ buffer_end_data_ptr_access(struct wlr_buffer *buffer)
 void
 buttonpress(struct wl_listener *listener, void *data)
 {
-	unsigned int i = 0, x = 0;
 	unsigned int click;
 	struct wlr_pointer_button_event *event = data;
 	struct wlr_keyboard *keyboard;
 	struct wlr_scene_node *node;
 	struct wlr_scene_buffer *buffer;
 	uint32_t mods;
-	Arg arg = {0};
 	Client *c;
 	const Button *b;
 
 	wlr_idle_notifier_v1_notify_activity(idle_notifier, seat);
 
-	click = ClkRoot;
+	click = ClkRoot; // TODO we don't treat these cases
 	xytonode(cursor->x, cursor->y, NULL, &c, NULL, NULL, NULL);
 	if (c)
 		click = ClkClient;
 
 	if (!c && !exclusive_focus &&
 		(node = wlr_scene_node_at(&layers[LyrBottom]->node, cursor->x, cursor->y, NULL, NULL)) &&
-		(buffer = wlr_scene_buffer_from_node(node)) && buffer == selmon->scene_buffer) {
+		(buffer = wlr_scene_buffer_from_node(node)) && buffer == selmon->scene_buffer
+        && event->state == WL_POINTER_BUTTON_STATE_PRESSED && !locked) {
+		cursor->x -= selmon->m.x;
 		cursor->x *= selmon->wlr_output->scale;
 		cursor->y *= selmon->wlr_output->scale;
-		x = selmon->m.x;
-        // TODO add widgets to bar here
-		do
-			x += TEXTW(selmon, tags[i]);
-		while (cursor->x >= x && ++i < LENGTH(tags));
-		if (i < LENGTH(tags)) {
-			click = ClkTagBar;
-			arg.ui = 1 << i;
-		} else if (cursor->x < x + TEXTW(selmon, selmon->ltsymbol))
-			click = ClkLtSymbol;
-		else if (cursor->x > selmon->w.width - (int)TEXTW(selmon, stext))
-			click = ClkStatus;
-		else
-			click = ClkTitle;
+        unsigned int xpos = 0;
+        for (int i=0; i<selmon->drw->n_widgets_left; ++i) {
+            if (cursor->x >= xpos && cursor->x < xpos + selmon->drw->widgets_left[i].width) {
+                if (selmon->drw->widgets_left[i].callback_click)
+                    (*selmon->drw->widgets_left[i].callback_click)(&selmon->drw->widgets_left[i],
+                            cursor->x - xpos, event->button);
+                return;
+            }
+            xpos += selmon->drw->widgets_left[i].width;
+        }
+        xpos = selmon->drw->center_widget_start;
+        if (cursor->x >= xpos && cursor->x < xpos + selmon->drw->center_widget_space)
+            if (selmon->drw->has_center_widget) {
+                if (selmon->drw->center_widget.callback_click)
+                    (*selmon->drw->center_widget.callback_click)(&selmon->drw->center_widget,
+                            cursor->x - xpos, event->button);
+                return;
+            }
+        xpos += selmon->drw->center_widget_space;
+        for (int i=selmon->drw->n_widgets_right-1; i>=0; --i) {
+            if (cursor->x >= xpos && cursor->x < xpos + selmon->drw->widgets_right[i].width) {
+                if (selmon->drw->widgets_right[i].callback_click)
+                    (*selmon->drw->widgets_right[i].callback_click)(&selmon->drw->widgets_right[i],
+                            cursor->x - xpos, event->button);
+                return;
+            }
+            xpos += selmon->drw->widgets_right[i].width;
+        }
 	}
 
 	switch (event->state) {
@@ -491,14 +551,15 @@ buttonpress(struct wl_listener *listener, void *data)
 
 		/* Change focus if the button was _pressed_ over a client */
 		xytonode(cursor->x, cursor->y, NULL, &c, NULL, NULL, NULL);
-		if (click == ClkClient && (!client_is_unmanaged(c) || client_wants_focus(c)))
+		if (c && (!client_is_unmanaged(c) || client_wants_focus(c)))
 			focusclient(c, 1);
 
 		keyboard = wlr_seat_get_keyboard(seat);
 		mods = keyboard ? wlr_keyboard_get_modifiers(keyboard) : 0;
 		for (b = buttons; b < END(buttons); b++) {
-			if (CLEANMASK(mods) == CLEANMASK(b->mod) && event->button == b->button && click == b->click && b->func) {
-				b->func(click == ClkTagBar && b->arg.i == 0 ? &arg : &b->arg);
+			if (CLEANMASK(mods) == CLEANMASK(b->mod) &&
+					event->button == b->button && b->func) {
+				if (b->click == click) b->func(&b->arg);
 				return;
 			}
 		}
