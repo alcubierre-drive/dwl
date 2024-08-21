@@ -61,12 +61,13 @@ static void WLP(const Arg* arg);
 static void drawbars(void);
 
 static struct wl_event_source* drawbars_timer = NULL;
+static int drawbars_timer_elapse_ms = 200;
 static int drawbars_timer_keep_updating = 1;
 static int drawbars_timer_fire( void* data ) {
     (void)data;
     drawbars();
     if (drawbars_timer_keep_updating)
-        wl_event_source_timer_update(drawbars_timer, 200);
+        wl_event_source_timer_update(drawbars_timer, drawbars_timer_elapse_ms);
     return 0;
 }
 
@@ -151,6 +152,7 @@ static void plugin_restart(const Arg* arg);
 
 static void minimize(const Arg* arg);
 static void unminimize(const Arg* arg);
+static void maximize(const Arg* arg);
 
 /* variables */
 static pid_t child_pid = -1;
@@ -1375,7 +1377,6 @@ drawbar(Monitor *m)
 	if (!m->showbar)
 		return;
 
-    sem_wait(&m->drw->draw);
 	stride = drwl_stride(m->b.width);
 	size = stride * m->b.height;
 
@@ -1446,8 +1447,6 @@ drawbar(Monitor *m)
 		m->m.y + (topbar ? 0 : m->m.height - m->b.real_height));
 	wlr_scene_buffer_set_buffer(m->scene_buffer, &buf->base);
 	wlr_buffer_drop(&buf->base);
-
-    sem_post(&m->drw->draw);
 }
 
 void
@@ -1680,7 +1679,7 @@ gaplessgrid(Monitor *m)
 	Client *c;
 
 	wl_list_for_each(c, &clients, link)
-		if (VISIBLEON_ACTIVE(c, m) && !c->isfloating)
+		if (VISIBLEON_ACTIVE(c, m) && !c->isfloating && !c->ismaximized && !c->isfullscreen)
 			n++;
 	if (n == 0)
 		return;
@@ -1708,7 +1707,7 @@ gaplessgrid(Monitor *m)
 	rn = 0; /* current row number */
 	wl_list_for_each(c, &clients, link) {
 		unsigned int cx, cy;
-		if (!VISIBLEON_ACTIVE(c, m) || c->isfloating || c->isfullscreen)
+		if (!VISIBLEON_ACTIVE(c, m) || c->isfloating || c->ismaximized || c->isfullscreen)
 			continue;
 
 		if ((i / rows + 1) > (cols - n % cols))
@@ -1971,6 +1970,7 @@ maximizenotify(struct wl_listener *listener, void *data)
 	 * protocol version
 	 * wlr_xdg_surface_schedule_configure() is used to send an empty reply. */
 	Client *c = wl_container_of(listener, c, maximize);
+    c->ismaximized = 1;
 	if (c->surface.xdg->initialized
 			&& wl_resource_get_version(c->surface.xdg->toplevel->resource)
 					< XDG_TOPLEVEL_WM_CAPABILITIES_SINCE_VERSION)
@@ -1984,7 +1984,7 @@ monocle(Monitor *m)
 	int n = 0;
 
 	wl_list_for_each(c, &clients, link) {
-		if (!VISIBLEON_ACTIVE(c, m) || c->isfloating || c->isfullscreen)
+		if (!VISIBLEON_ACTIVE(c, m) || c->isfloating || c->isfullscreen || c->ismaximized)
 			continue;
 		resize(c, m->w, 0);
 		n++;
@@ -2782,7 +2782,7 @@ setup(void)
     plugin_data = awl_plugin_init();
 	drwl_init();
     drawbars_timer = wl_event_loop_add_timer(event_loop, &drawbars_timer_fire, NULL);
-    wl_event_source_timer_update(drawbars_timer, 200);
+    wl_event_source_timer_update(drawbars_timer, drawbars_timer_elapse_ms);
     atomic_store( &plugin_data->drawroot_setter, (uint64_t)&drawroot_setter );
 
 	status_event_source = wl_event_loop_add_fd(wl_display_get_event_loop(dpy),
@@ -2884,7 +2884,7 @@ tile(Monitor *m)
 	Client *c;
 
 	wl_list_for_each(c, &clients, link)
-		if (VISIBLEON_ACTIVE(c, m) && !c->isfloating && !c->isfullscreen)
+		if (VISIBLEON_ACTIVE(c, m) && !c->isfloating && !c->isfullscreen && !c->ismaximized)
 			n++;
 	if (n == 0)
 		return;
@@ -2895,7 +2895,7 @@ tile(Monitor *m)
 		mw = m->w.width;
 	i = my = ty = 0;
 	wl_list_for_each(c, &clients, link) {
-		if (!VISIBLEON_ACTIVE(c, m) || c->isfloating || c->isfullscreen)
+		if (!VISIBLEON_ACTIVE(c, m) || c->isfloating || c->isfullscreen || c->ismaximized)
 			continue;
 		if (i < m->nmaster) {
 			resize(c, (struct wlr_box){.x = m->w.x, .y = m->w.y + my, .width = mw,
@@ -3233,7 +3233,7 @@ minimize(const Arg* arg)
     Client* sel = focustop(selmon);
     if (!sel) return;
     sel->isvisible = 0;
-    focustop(selmon);
+    focusclient(focustop(selmon), 1);
     arrange(sel->mon);
     drawbars();
 }
@@ -3241,15 +3241,27 @@ minimize(const Arg* arg)
 void
 unminimize(const Arg* arg)
 {
-    Client *c;
+    Client *c = NULL;
     wl_list_for_each(c, &fstack, flink) {
         if (VISIBLEON(c, selmon) && !c->isvisible) {
             c->isvisible = 1;
             break;
         }
     }
-    focustop(selmon);
+    focusclient(c ? c : focustop(selmon), 1);
     arrange(selmon);
+    drawbars();
+}
+
+void
+maximize(const Arg* arg)
+{
+    Client* sel = focustop(selmon);
+    if (!sel) return;
+    sel->ismaximized = !sel->ismaximized;
+    if (sel->ismaximized)
+        sel->geom = sel->mon->w;
+    arrange(sel->mon);
     drawbars();
 }
 
@@ -3339,7 +3351,7 @@ zoom(const Arg *arg)
 	/* Search for the first tiled window that is not sel, marking sel as
 	 * NULL if we pass it along the way */
 	wl_list_for_each(c, &clients, link) {
-		if (VISIBLEON_ACTIVE(c, selmon) && !c->isfloating) {
+		if (VISIBLEON_ACTIVE(c, selmon) && !c->isfloating && !c->isfullscreen && !c->ismaximized) {
 			if (c != sel)
 				break;
 			sel = NULL;

@@ -42,10 +42,10 @@ static const Rule rules[] = {
 /* layout(s) */
 static const Layout layouts[] = {
 	/* symbol     arrange function */
-	{ "[]=",      tile },
-	{ "><>",      NULL },    /* no layout function means floating behavior */
+	{ "[T]",      tile },
+	{ "[F]",      NULL },    /* no layout function means floating behavior */
 	{ "[M]",      monocle },
-	{ "###",      gaplessgrid },
+	{ "[S]",      gaplessgrid },
 };
 static int layout_idx = 0;
 
@@ -159,7 +159,7 @@ static const Key keys[] = {
 	{ MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_C,          killclient,     {0} },
 	/*{ MODKEY,                    XKB_KEY_t,          setlayout,      {.v = &layouts[0]} },*/
 	/*{ MODKEY,                    XKB_KEY_f,          setlayout,      {.v = &layouts[1]} },*/
-	/*{ MODKEY,                    XKB_KEY_m,          setlayout,      {.v = &layouts[2]} },*/
+	{ MODKEY,                    XKB_KEY_m,          maximize,       {0} },
 	/*{ MODKEY,                    XKB_KEY_g,          setlayout,      {.v = &layouts[3]} },*/
 	{ MODKEY,                    XKB_KEY_space,      cycle_layout, {.i = +1} },
 	{ MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_space,      cycle_layout, {.i = -1} },
