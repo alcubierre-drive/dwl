@@ -295,7 +295,7 @@ applyrules(Client *c)
 				if (r->monitor == i++)
 					mon = m;
 			}
-			if (!strncmp(r->title,"geom:",5)) resize(c, parse_geom(r->title, mon), 0);
+			if (r->title && !strncmp(r->title,"geom:",5)) resize(c, parse_geom(r->title, mon), 0);
 		}
 	}
 	setmon(c, mon, newtags);
