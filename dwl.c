@@ -148,12 +148,6 @@ static void zoom(const Arg *arg);
 static void setontop(Client *c, int ontop);
 static void toggleontop(const Arg* arg);
 static void plugin_restart(const Arg* arg);
-
-static struct wlr_box parse_geom( const char* gstr_, Monitor* mon ) {
-    const char* gstr = gstr_+5;
-    /* x,y,w,h */
-    mon->w.width, mon->w.height;
-}
 static void minimize(const Arg* arg);
 static void unminimize(const Arg* arg);
 static void maximize(const Arg* arg);
@@ -284,6 +278,8 @@ applyrules(Client *c)
 	c->isfloating = client_is_float_type(c);
 	appid = client_get_appid(c);
 	title = client_get_title(c);
+	int apply_resize = 0;
+	struct wlr_box rbox;
 
 	for (r = rules; r < END(rules); r++) {
 		if ((!r->title || strstr(title, r->title))
@@ -295,10 +291,20 @@ applyrules(Client *c)
 				if (r->monitor == i++)
 					mon = m;
 			}
-			if (r->title && !strncmp(r->title,"geom:",5)) resize(c, parse_geom(r->title, mon), 0);
+			if (c->isfloating || !mon->lt[mon->sellt]->arrange) {
+				/* client is floating or in floating layout */
+				if (r->w != 0 && r->h != 0) {
+					rbox.width = r->w;
+					rbox.height = r->h;
+					rbox.x = mon->w.width - rbox.width;
+					rbox.y = mon->w.height - rbox.height;
+					apply_resize = 1;
+				}
+			}
 		}
 	}
 	setmon(c, mon, newtags);
+	if (apply_resize) resize(c, rbox, 1);
 }
 
 void

@@ -266,6 +266,7 @@ typedef struct {
 	uint32_t tags;
 	int isfloating;
 	int monitor;
+	int w, h;
 } Rule;
 
 typedef struct {

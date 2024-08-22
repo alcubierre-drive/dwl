@@ -34,11 +34,9 @@ static int log_level = WLR_ERROR;
 
 /* NOTE: ALWAYS keep a rule declared even if you don't use rules (e.g leave at least one example) */
 static const Rule rules[] = {
-	/* app_id             title       tags mask     isfloating   monitor */
+	/* app_id             title       tags mask     isfloating   monitor w h*/
 	/* examples: */
-	{ "Gimp_EXAMPLE",     NULL,       0,            1,           -1 }, /* Start on currently visible tags floating, not tiled */
-	{ "firefox_EXAMPLE",  NULL,       1 << 8,       0,           -1 }, /* Start on ONLY tag "9" */
-    { "org.gnome.Calendar",NULL,      1 << 8,       1,           -1 },
+    { "org.gnome.Calendar",NULL,      0,            1,           -1, 400, 500 },
 };
 
 static const char* Autostarts[][8] = {
