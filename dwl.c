@@ -536,35 +536,36 @@ buttonpress(struct wl_listener *listener, void *data)
 		(node = wlr_scene_node_at(&layers[LyrBottom]->node, cursor->x, cursor->y, NULL, NULL)) &&
 		(buffer = wlr_scene_buffer_from_node(node)) && buffer == selmon->scene_buffer
         && event->state == WL_POINTER_BUTTON_STATE_PRESSED && !locked) {
-		cursor->x -= selmon->m.x;
-		cursor->x *= selmon->wlr_output->scale;
-		cursor->y *= selmon->wlr_output->scale;
+        unsigned int cursor_x = cursor->x, cursor_y = cursor->y;
+		cursor_x -= selmon->m.x;
+		cursor_x *= selmon->wlr_output->scale;
+		cursor_y *= selmon->wlr_output->scale;
         unsigned int xpos = 0;
         for (int i=0; i<selmon->drw->n_widgets_left; ++i) {
-            if (cursor->x >= xpos && cursor->x < xpos + selmon->drw->widgets_left[i].width) {
+            if (cursor_x >= xpos && cursor_x < xpos + selmon->drw->widgets_left[i].width) {
                 if (selmon->drw->widgets_left[i].callback_click) {
                     (*selmon->drw->widgets_left[i].callback_click)(&selmon->drw->widgets_left[i],
-                            cursor->x - xpos, event->button);
+                            cursor_x - xpos, event->button);
                     return;
                 }
             }
             xpos += selmon->drw->widgets_left[i].width;
         }
         xpos = selmon->drw->center_widget_start;
-        if (cursor->x >= xpos && cursor->x < xpos + selmon->drw->center_widget_space)
+        if (cursor_x >= xpos && cursor_x < xpos + selmon->drw->center_widget_space)
             if (selmon->drw->has_center_widget) {
                 if (selmon->drw->center_widget.callback_click) {
                     (*selmon->drw->center_widget.callback_click)(&selmon->drw->center_widget,
-                            cursor->x - xpos, event->button);
+                            cursor_x - xpos, event->button);
                     return;
                 }
             }
         xpos += selmon->drw->center_widget_space;
         for (int i=selmon->drw->n_widgets_right-1; i>=0; --i) {
-            if (cursor->x >= xpos && cursor->x < xpos + selmon->drw->widgets_right[i].width) {
+            if (cursor_x >= xpos && cursor_x < xpos + selmon->drw->widgets_right[i].width) {
                 if (selmon->drw->widgets_right[i].callback_click) {
                     (*selmon->drw->widgets_right[i].callback_click)(&selmon->drw->widgets_right[i],
-                            cursor->x - xpos, event->button);
+                            cursor_x - xpos, event->button);
                     return;
                 }
             }
@@ -3272,13 +3273,16 @@ void
 unminimize(const Arg* arg)
 {
     Client *c = NULL;
+    int found_client = 0;
     wl_list_for_each(c, &fstack, flink) {
         if (VISIBLEON(c, selmon) && !c->isvisible) {
             c->isvisible = 1;
+            found_client = 1;
             break;
         }
     }
-    focusclient(c ? c : focustop(selmon), 1);
+    if (!found_client) return;
+    focusclient(c, 1);
     arrange(selmon);
     drawbars();
 }
