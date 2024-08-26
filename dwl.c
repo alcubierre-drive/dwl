@@ -3,9 +3,10 @@
 #include "drwl.h"
 #include "plugins.h"
 
-typedef int (*wallpaper_func_t)( pixman_image_t* pix );
-static wallpaper_func_t wallpaper = NULL;
-static void drawroot_setter( wallpaper_func_t f ) { wallpaper = f; }
+#include <sys/eventfd.h>
+
+int wp_fd = -1;
+wp_func_t wp_func = NULL;
 
 /* function declarations */
 static void applybounds(Client *c, struct wlr_box *bbox);
@@ -56,9 +57,10 @@ static void destroysessionmgr(struct wl_listener *listener, void *data);
 static void destroykeyboardgroup(struct wl_listener *listener, void *data);
 static Monitor *dirtomon(enum wlr_direction dir);
 static void drawbar(Monitor *m);
-static void drawroot(void);
-static void WLP(const Arg* arg);
 static void drawbars(void);
+
+static void drawroot(void);
+static int drawroot_in(int fd, unsigned int mask, void *data);
 
 // TODO this should not be here
 static struct wl_event_source* drawbars_timer = NULL;
@@ -209,6 +211,8 @@ static Monitor *selmon;
 
 static char stext[256] = "";
 static struct wl_event_source *status_event_source;
+
+static struct wl_event_source *wp_event_source;
 
 static const struct wlr_buffer_impl buffer_impl = {
     .destroy = buffer_destroy,
@@ -412,7 +416,7 @@ arrangelayers(Monitor *m)
 	}
 }
 
-static const double SCROLL_LIMIT = 20.0;
+static const double SCROLL_LIMIT = 10.0;
 static void widget_wrap_scroll_callback( widget_t* w, uint32_t xrel, double delta ) {
     if (w->callback_scroll) {
         w->scroll_amount += delta;
@@ -1330,11 +1334,11 @@ dirtomon(enum wlr_direction dir)
 	return selmon;
 }
 
-// TODO how do i update the wallpaper from external? only through some file
-// shit?
-static void WLP(const Arg* arg) {
-    (void)arg;
-    drawroot();
+void
+drawroot_update( wp_func_t func )
+{
+    if (wp_fd != -1)
+        write(wp_fd, &func, sizeof(func));
 }
 
 void
@@ -1364,7 +1368,7 @@ drawroot( void )
         pixman_image_set_clip_region32(pix, &clip);
         pixman_region32_fini(&clip);
 
-        int update = wallpaper ? (*wallpaper)( pix ) : 1;
+        int update = wp_func ? (*wp_func)( pix ) : 0;
         pixman_image_unref(pix);
         if (update && m->bg_buffer)
             wlr_scene_buffer_set_buffer(m->bg_buffer, &buf->base);
@@ -2814,7 +2818,10 @@ setup(void)
 	drwl_init();
     drawbars_timer = wl_event_loop_add_timer(event_loop, &drawbars_timer_fire, NULL);
     wl_event_source_timer_update(drawbars_timer, drawbars_timer_elapse_ms);
-    atomic_store( &plugin_data->drawroot_setter, (uint64_t)&drawroot_setter );
+
+    wp_fd = eventfd(0, EFD_NONBLOCK|EFD_CLOEXEC);
+    wp_event_source = wl_event_loop_add_fd(wl_display_get_event_loop(dpy),
+            wp_fd, WL_EVENT_READABLE, drawroot_in, NULL );
 
 	status_event_source = wl_event_loop_add_fd(wl_display_get_event_loop(dpy),
 		STDIN_FILENO, WL_EVENT_READABLE, status_in, NULL);
@@ -2885,6 +2892,21 @@ status_in(int fd, unsigned int mask, void *data)
 
 	return 0;
 }
+
+int
+drawroot_in(int fd, unsigned int mask, void *data)
+{
+    if (mask & WL_EVENT_ERROR) die("status in event error");
+    if (mask & WL_EVENT_HANGUP) wl_event_source_remove(wp_event_source);
+    uint64_t val = 0;
+    ssize_t nread = read(fd, &val, sizeof(val));
+    if (nread != sizeof(val)) return 0;
+
+    memcpy( &wp_func, &val, sizeof(val) );
+    drawroot();
+    return 0;
+}
+
 
 void
 tag(const Arg *arg)

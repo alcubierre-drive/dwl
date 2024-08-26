@@ -60,7 +60,7 @@ pixman_image_t * awl_png_load(FILE *fp, const char *path) {
     int height = png_get_image_height(png_ptr, info_ptr);
     png_byte color_type = png_get_color_type(png_ptr, info_ptr);
     png_byte bit_depth = png_get_bit_depth(png_ptr, info_ptr);
-    int channels = png_get_channels(png_ptr, info_ptr);
+    /*int channels = png_get_channels(png_ptr, info_ptr);*/
 
     /*P_awl_vrb_printf("%s: %dx%d@%hhubpp, %d channels", path, width, height, bit_depth, channels);*/
 

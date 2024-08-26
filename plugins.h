@@ -29,9 +29,7 @@ typedef struct awl_plugin_data_t {
 
     struct awl_colors awl_colors;
 
-    _Atomic uint64_t drawroot_setter;
-    /*void (*drawroot_setter)( wallpaper_func_t func );*/
-    pthread_t drawroot_setter_thread;
+    pthread_t wp_thread;
 } awl_plugin_data_t;
 
 awl_plugin_data_t* awl_plugin_init( void );

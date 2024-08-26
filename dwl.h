@@ -288,5 +288,8 @@ void spawn(const Arg *arg);
 void arrange(Monitor *m);
 void focusclient(Client *c, int lift);
 
+typedef int (*wp_func_t)( pixman_image_t* pix );
+void drawroot_update( wp_func_t func );
+
 typedef struct awl_plugin_data_t awl_plugin_data_t;
 awl_plugin_data_t* awl_plugin_get( void );

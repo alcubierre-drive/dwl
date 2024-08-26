@@ -1,3 +1,4 @@
+#include "dwl.h"
 #include "plugins.h"
 #include "plugins/ipaddr.h"
 #include "plugins/stats.h"
@@ -28,22 +29,14 @@ static int wpfunc( pixman_image_t* pix ) {
         cidx %= 2;
         x += 10;
     }
-    return 1;
+    return 0;
 }
 
-static void* drawroot_setter_thread_fun( void* arg ) {
-    awl_plugin_data_t* p = arg;
-    if (!p) return NULL;
-
-    typedef int (*wallpaper_func_t)( pixman_image_t* pix );
-    typedef void (*drawroot_setter_t)( wallpaper_func_t func );
-    drawroot_setter_t drawroot_setter  = NULL;
-
-    while (!(drawroot_setter = (drawroot_setter_t)atomic_load(&p->drawroot_setter))) {
-        usleep( 0.2e6 );
+static void* wp_thread( void* data ) {
+    while (1) {
+        usleep(200);
+        drawroot_update( &wpfunc );
     }
-
-    (*drawroot_setter)( &wpfunc );
     return NULL;
 }
 
@@ -65,13 +58,8 @@ static void awl_plugin_start( awl_plugin_data_t* p ) {
 
     p->bat = start_bat_thread(1);
     p->date = start_date_thread(1);
-    /*p->cal = calendar_popup();*/ // TODO
     p->pulse = start_pulse_thread();
-
-    /*awl_wallpaper_data_t* wp;*/ // TODO
-
-    atomic_init( &p->drawroot_setter, 0 );
-    AWL_PTHREAD_CREATE( &p->drawroot_setter_thread, NULL, &drawroot_setter_thread_fun, p );
+    /*AWL_PTHREAD_CREATE( &p->wp_thread, NULL, wp_thread, NULL );*/
 }
 
 awl_plugin_data_t* awl_plugin_init( void ) {
@@ -96,8 +84,6 @@ void awl_plugin_free( awl_plugin_data_t* p ) {
 }
 
 void awl_plugin_restart( awl_plugin_data_t* p ) {
-    uint64_t drw_rootset = atomic_load( &p->drawroot_setter );
     awl_plugin_stop(p);
     awl_plugin_start(p);
-    atomic_store( &p->drawroot_setter, drw_rootset );
 }
