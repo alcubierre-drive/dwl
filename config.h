@@ -56,6 +56,7 @@ static const Layout layouts[] = {
 	{ "[F]",      NULL },    /* no layout function means floating behavior */
 	{ "[M]",      monocle },
 	{ "[S]",      gaplessgrid },
+    { "[B]",      bstack },
 };
 static int layout_idx = 0;
 
@@ -212,7 +213,9 @@ static const Key keys[] = {
     { MODKEY|WLR_MODIFIER_SHIFT,    XKB_KEY_D,         spawn,         {.v=docked_z} },
 	/*{ MODKEY,                    XKB_KEY_0,          view,           {.ui = ~0} },*/
 	/*{ MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_parenright, tag,            {.ui = ~0} },*/
-    // TODO
+
+    { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_h,          incnmaster,     {.i = -1} },
+    { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_l,          incnmaster,     {.i = +1} },
 	{ MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_j,          focusmon,       {.i = WLR_DIRECTION_LEFT} },
 	{ MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_k,          focusmon,       {.i = WLR_DIRECTION_RIGHT} },
 	{ MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_O,          tagmonf,        {.i = WLR_DIRECTION_LEFT} },
