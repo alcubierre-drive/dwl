@@ -1,80 +1,57 @@
 #define _GNU_SOURCE
 #include "readdir.h"
+#include <dirent.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 
-#include <dirent.h> 
-#include <stdio.h> 
-
-static int cmpstringp(const void *p1, const void *p2) {
-    return strcmp(*(const char **) p1, *(const char **) p2);
+static int filename_sort( const void* f1_, const void* f2_ ) {
+    const Filename *f1 = f1_, *f2 = f2_;
+    if (f1->isdir && !f2->isdir) return 1;
+    if (!f1->isdir && f2->isdir) return -1;
+    return strncmp( f1->name, f2->name, 127 );
 }
 
-awl_dirent_t awl_dirent_create( const char* path ) {
-
-    awl_dirent_t res = {0};
-    for (int i=0; i<AWL_DIRENT_MAXTYPES; ++i)
-        vector_init( res._v+i, sizeof(char*) );
-
-    res._p = strdup(path);
-
-    awl_dirent_update( &res );
-    return res;
-
-}
-
-void awl_dirent_update( awl_dirent_t* pres ) {
-    // resize vectors
-    for (int i=0; i<AWL_DIRENT_MAXTYPES; ++i) {
-        vector_resize( pres->_v+i, 0 );
-    }
-
-    DIR *d = opendir(pres->_p);
+int findfiles( DesktopFiles* wp, const char* path ) {
+    Filename files[128] = {0};
+    int n_files = 0;
+    // fill files/n_files
+    DIR *d = opendir(path);
     struct dirent *dir = NULL;
     if (d) {
         while ((dir = readdir(d)) != NULL) {
             if (strlen(dir->d_name) > 0) {
                 if (strcmp(dir->d_name, ".") && strcmp(dir->d_name, "..")) {
-                    int hidden = dir->d_name[0] == '.';
-                    int broken = dir->d_type == DT_UNKNOWN;
-                    int folder = dir->d_type == DT_DIR;
-
-                    int push_idx = awl_dirent_type_f;
-                    if (broken)
-                        push_idx = hidden ? awl_dirent_type_b_h : awl_dirent_type_b;
-                    else if (folder)
-                        push_idx = hidden ? awl_dirent_type_d_h : awl_dirent_type_d;
-                    else if (hidden)
-                        push_idx = awl_dirent_type_f_h;
-
-                    char* s = strdup(dir->d_name);
-                    vector_push_back( pres->_v+push_idx, &s );
+                    files[n_files].isdir = dir->d_type == DT_DIR;
+                    files[n_files].isbroken = dir->d_type == DT_UNKNOWN;
+                    files[n_files].ishidden = dir->d_name[0] == '.';
+                    strncpy( files[n_files].name, dir->d_name, sizeof(files[n_files].name)-1 );
+                    n_files++;
+                    if ((unsigned int)n_files >= sizeof(files)/sizeof(files[0]))
+                        goto closedir;
                 }
             }
         }
+closedir:
         closedir(d);
     }
+    qsort( files, n_files, sizeof(Filename), filename_sort );
 
-    // append NULL and sort
-    char* s = NULL;
-    for (int i=0; i<AWL_DIRENT_MAXTYPES; ++i) {
-        vector_push_back( pres->_v+i, &s );
-        pres->v[i] = vector_data( pres->_v+i );
-        qsort( pres->v[i], vector_size( pres->_v+i )-1, sizeof(char*), cmpstringp );
+    // update files/n_files
+    sem_wait( &wp->sem );
+    int update = 0;
+    if (wp->n_files != n_files) {
+        update = 1;
+    } else if (memcmp(wp->files, files, sizeof(files))) {
+        update = 1;
     }
+    if (update) {
+        memcpy(wp->files, files, sizeof(files));
+        wp->n_files = n_files;
+    }
+    sem_post( &wp->sem );
+
+    return update;
 }
 
-void awl_dirent_destroy( awl_dirent_t d ) {
-    for (int i=0; i<AWL_DIRENT_MAXTYPES; ++i) {
-        for (char** A = d.v[i]; *A; A++) free(*A);
-        vector_destroy( d._v + i );
-    }
-    free( d._p );
-}
 
-/* int main() { */
-/*     awl_dirent_t D = awl_dirent_create( "Desktop/" ); */
-/*     printf( "FILES:\n" ); */
-/*     for (char** A = D.v[awl_dirent_type_f]; *A; A++) printf( "%s\n", *A ); */
-/*     printf( "DIRS:\n" ); */
-/*     for (char** A = D.v[awl_dirent_type_d]; *A; A++) printf( "%s\n", *A ); */
-/*     awl_dirent_destroy( D ); */
-/* } */

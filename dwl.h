@@ -292,8 +292,15 @@ void spawn(const Arg *arg);
 void arrange(Monitor *m);
 void focusclient(Client *c, int lift);
 
-typedef int (*wp_func_t)( pixman_image_t* pix );
-void drawroot_update( wp_func_t func );
+void drawroot_update_func( void (*func)( pixman_image_t* pix, uint64_t op ) );
+int drawroot_eventfd( void );
+#define drawroot_trigger( arg ) { \
+    int fd = drawroot_eventfd(); \
+    uint64_t val = arg; \
+    if (fd != -1) { \
+        write( fd, &val, sizeof(val) ); \
+    } \
+}
 
 typedef struct awl_plugin_data_t awl_plugin_data_t;
 awl_plugin_data_t* awl_plugin_get( void );

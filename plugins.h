@@ -24,8 +24,7 @@ typedef struct awl_plugin_data_t {
     awl_date_t* date;
     pulse_test_t* pulse;
 
-    awl_calendar_t* cal;
-    awl_wallpaper_data_t* wp;
+    /*awl_wallpaper_data_t* wp;*/
 
     struct awl_colors awl_colors;
 

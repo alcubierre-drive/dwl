@@ -4,9 +4,11 @@
 #include "plugins.h"
 
 #include <sys/eventfd.h>
+#include <pthread.h>
 
-int wp_fd = -1;
-wp_func_t wp_func = NULL;
+static pthread_mutex_t wp_mtx = PTHREAD_MUTEX_INITIALIZER;
+static int wp_fd = -1;
+static void (*wp_func)( pixman_image_t* pix, uint64_t op ) = NULL;
 
 /* function declarations */
 static void applybounds(Client *c, struct wlr_box *bbox);
@@ -59,8 +61,9 @@ static Monitor *dirtomon(enum wlr_direction dir);
 static void drawbar(Monitor *m);
 static void drawbars(void);
 
-static void drawroot(void);
+static void drawroot(uint64_t op);
 static int drawroot_in(int fd, unsigned int mask, void *data);
+static void drawroot_click(const Arg* arg);
 
 // TODO this should not be here
 static struct wl_event_source* drawbars_timer = NULL;
@@ -117,7 +120,7 @@ static void setcursor(struct wl_listener *listener, void *data);
 static void setcursorshape(struct wl_listener *listener, void *data);
 static void setfloating(Client *c, int floating);
 static void setfullscreen(Client *c, int fullscreen);
-static void setlayout(const Arg *arg);
+/*static void setlayout(const Arg *arg);*/
 static void setmfact(const Arg *arg);
 static void setmon(Client *c, Monitor *m, uint32_t newtags);
 static void setpsel(struct wl_listener *listener, void *data);
@@ -147,7 +150,7 @@ static void virtualpointer(struct wl_listener *listener, void *data);
 static Monitor *xytomon(double x, double y);
 static void xytonode(double x, double y, struct wlr_surface **psurface,
 		Client **pc, LayerSurface **pl, double *nx, double *ny);
-static void zoom(const Arg *arg);
+/*static void zoom(const Arg *arg);*/
 static void setontop(Client *c, int ontop);
 static void toggleontop(const Arg* arg);
 static void plugin_restart(const Arg* arg);
@@ -1337,14 +1340,20 @@ dirtomon(enum wlr_direction dir)
 }
 
 void
-drawroot_update( wp_func_t func )
+drawroot_update_func( void (*func)( pixman_image_t* pix, uint64_t op ) ) {
+    pthread_mutex_lock( &wp_mtx );
+    wp_func = func;
+    pthread_mutex_unlock( &wp_mtx );
+}
+
+int
+drawroot_eventfd( void )
 {
-    if (wp_fd != -1)
-        write(wp_fd, &func, sizeof(func));
+    return wp_fd;
 }
 
 void
-drawroot( void )
+drawroot( uint64_t op )
 {
     Monitor *m = NULL;
     wl_list_for_each(m, &mons, link) {
@@ -1370,7 +1379,15 @@ drawroot( void )
         pixman_image_set_clip_region32(pix, &clip);
         pixman_region32_fini(&clip);
 
-        int update = wp_func ? (*wp_func)( pix ) : 0;
+        int update = 0;
+
+        pthread_mutex_lock( &wp_mtx );
+        if (wp_func) {
+            (*wp_func)( pix, op );
+            update = 1;
+        }
+        pthread_mutex_unlock( &wp_mtx );
+
         pixman_image_unref(pix);
         if (update && m->bg_buffer)
             wlr_scene_buffer_set_buffer(m->bg_buffer, &buf->base);
@@ -2557,20 +2574,6 @@ setfullscreen(Client *c, int fullscreen)
 }
 
 void
-setlayout(const Arg *arg)
-{
-	if (!selmon)
-		return;
-	if (!arg || !arg->v || arg->v != selmon->lt[selmon->sellt])
-		selmon->sellt ^= 1;
-	if (arg && arg->v)
-		selmon->lt[selmon->sellt] = (Layout *)arg->v;
-	strncpy(selmon->ltsymbol, selmon->lt[selmon->sellt]->symbol, LENGTH(selmon->ltsymbol)-1);
-	arrange(selmon);
-	drawbar(selmon);
-}
-
-void
 cycle_layout(const Arg* arg)
 {
     if (!selmon)
@@ -2945,10 +2948,14 @@ drawroot_in(int fd, unsigned int mask, void *data)
     uint64_t val = 0;
     ssize_t nread = read(fd, &val, sizeof(val));
     if (nread != sizeof(val)) return 0;
-
-    memcpy( &wp_func, &val, sizeof(val) );
-    drawroot();
+    drawroot( val );
     return 0;
+}
+
+void
+drawroot_click(const Arg* arg)
+{
+    drawroot_trigger(arg->ui);
 }
 
 
@@ -3438,39 +3445,6 @@ xytonode(double x, double y, struct wlr_surface **psurface,
 	if (psurface) *psurface = surface;
 	if (pc) *pc = c;
 	if (pl) *pl = l;
-}
-
-void
-zoom(const Arg *arg)
-{
-	Client *c, *sel = focustop(selmon);
-
-	if (!sel || !selmon || !selmon->lt[selmon->sellt]->arrange || sel->isfloating)
-		return;
-
-	/* Search for the first tiled window that is not sel, marking sel as
-	 * NULL if we pass it along the way */
-	wl_list_for_each(c, &clients, link) {
-		if (VISIBLEON_ACTIVE(c, selmon) && !c->isfloating && !c->isfullscreen && !c->ismaximized) {
-			if (c != sel)
-				break;
-			sel = NULL;
-		}
-	}
-
-	/* Return if no other tiled window was found */
-	if (&c->link == &clients)
-		return;
-
-	/* If we passed sel, move c to the front; otherwise, move sel to the
-	 * front */
-	if (!sel)
-		sel = c;
-	wl_list_remove(&sel->link);
-	wl_list_insert(&clients, &sel->link);
-
-	focusclient(sel, 1);
-	arrange(selmon);
 }
 
 #ifdef XWAYLAND
