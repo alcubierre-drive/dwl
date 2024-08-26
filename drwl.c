@@ -70,8 +70,6 @@ Drwl * drwl_create(Monitor* m) {
         .bar = drwl,
         .draw = &systray_draw,
         .width = 64,
-        /*.callback_click = &dummy_click,*/
-        /*.callback_scroll = &dummy_scroll,*/
     };
     drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
         .bar = drwl,

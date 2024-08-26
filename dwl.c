@@ -301,8 +301,8 @@ applyrules(Client *c)
 				if (r->w != 0 && r->h != 0) {
 					rbox.width = r->w;
 					rbox.height = r->h;
-					rbox.x = mon->w.width - rbox.width;
-					rbox.y = mon->w.height - rbox.height;
+					rbox.x = mon->w.x + mon->w.width - rbox.width;
+					rbox.y = mon->w.y + mon->w.height - rbox.height;
 					apply_resize = 1;
 				}
 			}
@@ -444,27 +444,28 @@ axisnotify(struct wl_listener *listener, void *data)
 		(node = wlr_scene_node_at(&layers[LyrBottom]->node, cursor->x, cursor->y, NULL, NULL)) &&
 		(buffer = wlr_scene_buffer_from_node(node)) && buffer == selmon->scene_buffer
         && !locked) {
-		cursor->x -= selmon->m.x;
-		cursor->x *= selmon->wlr_output->scale;
-		cursor->y *= selmon->wlr_output->scale;
+        unsigned int cursor_x = cursor->x, cursor_y = cursor->y;
+		cursor_x -= selmon->m.x;
+		cursor_x *= selmon->wlr_output->scale;
+		cursor_y *= selmon->wlr_output->scale;
         unsigned int xpos = 0;
         for (int i=0; i<selmon->drw->n_widgets_left; ++i) {
-            if (cursor->x >= xpos && cursor->x < xpos + selmon->drw->widgets_left[i].width) {
-                widget_wrap_scroll_callback( &selmon->drw->widgets_left[i], cursor->x - xpos, event->delta );
+            if (cursor_x >= xpos && cursor_x < xpos + selmon->drw->widgets_left[i].width) {
+                widget_wrap_scroll_callback( &selmon->drw->widgets_left[i], cursor_x - xpos, event->delta );
                 return;
             }
             xpos += selmon->drw->widgets_left[i].width;
         }
         xpos = selmon->drw->center_widget_start;
-        if (cursor->x >= xpos && cursor->x < xpos + selmon->drw->center_widget_space)
+        if (cursor_x >= xpos && cursor_x < xpos + selmon->drw->center_widget_space)
             if (selmon->drw->has_center_widget) {
-                widget_wrap_scroll_callback( &selmon->drw->center_widget, cursor->x - xpos, event->delta );
+                widget_wrap_scroll_callback( &selmon->drw->center_widget, cursor_x - xpos, event->delta );
                 return;
             }
         xpos += selmon->drw->center_widget_space;
         for (int i=selmon->drw->n_widgets_right-1; i>=0; --i) {
-            if (cursor->x >= xpos && cursor->x < xpos + selmon->drw->widgets_right[i].width) {
-                widget_wrap_scroll_callback( &selmon->drw->widgets_right[i], cursor->x - xpos, event->delta );
+            if (cursor_x >= xpos && cursor_x < xpos + selmon->drw->widgets_right[i].width) {
+                widget_wrap_scroll_callback( &selmon->drw->widgets_right[i], cursor_x - xpos, event->delta );
                 return;
             }
             xpos += selmon->drw->widgets_right[i].width;
