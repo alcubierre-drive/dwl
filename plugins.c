@@ -75,6 +75,8 @@ static int fast_random( int max ) {
 }
 
 static void wpfunc( pixman_image_t* pix, uint64_t op ) {
+    return; // TODO
+    sem_wait( &wp.sem );
     int advance = 0;
     switch (op) {
         case BTN_LEFT: advance = 1; break;
@@ -88,8 +90,6 @@ static void wpfunc( pixman_image_t* pix, uint64_t op ) {
     int update_img = (wp.current_time >= wp.expiry_time) || (wp.img == NULL) || advance;
     if (update_img) {
         wp.current_time = 0;
-
-        sem_wait( &wp.sem );
 
         // find next image (currently no randomness!)
         if (wp.random) {
@@ -108,20 +108,16 @@ static void wpfunc( pixman_image_t* pix, uint64_t op ) {
             wp.img = awl_png_load(f, wp.files[wp.index]);
             fclose(f);
         }
-
-        sem_post( &wp.sem );
     }
     if (update || update_img) {
-        if (!sem_timedwait_nano( &wp.sem, 1e6 )) {
-            int w = pixman_image_get_width(pix),
-                h = pixman_image_get_height(pix);
-            pixman_transform_t trafo = transform_wp_to_screen( wp.img, w, h );
-            pixman_image_set_transform( wp.img, &trafo );
-            pixman_image_composite32(PIXMAN_OP_OVER, wp.img, NULL, pix, 0, 0, 0, 0, 0, 0, w, h );
-            // TODO files should be rendered here
-            sem_post( &wp.sem );
-        }
+        int w = pixman_image_get_width(pix),
+            h = pixman_image_get_height(pix);
+        pixman_transform_t trafo = transform_wp_to_screen( wp.img, w, h );
+        pixman_image_set_transform( wp.img, &trafo );
+        pixman_image_composite32(PIXMAN_OP_OVER, wp.img, NULL, pix, 0, 0, 0, 0, 0, 0, w, h );
+        // TODO files should be rendered here
     }
+    sem_post( &wp.sem );
 }
 
 static void wp_init( Wallpaper* wp ) {
@@ -177,8 +173,8 @@ static void awl_plugin_start( awl_plugin_data_t* p ) {
     p->bat = start_bat_thread(1);
     p->date = start_date_thread(1);
     p->pulse = start_pulse_thread();
-    wp_init( &wp );
-    AWL_PTHREAD_CREATE( &p->wp_thread, NULL, wp_thread, NULL );
+    /*wp_init( &wp );*/
+    /*AWL_PTHREAD_CREATE( &p->wp_thread, NULL, wp_thread, NULL );*/
 }
 
 awl_plugin_data_t* awl_plugin_init( void ) {
@@ -195,9 +191,9 @@ static void awl_plugin_stop( awl_plugin_data_t* p ) {
     stop_date_thread(p->date);
     stop_pulse_thread(p->pulse);
 
-    if (!pthread_cancel( p->wp_thread ))
-        pthread_join( p->wp_thread, NULL );
-    wp_destroy( &wp );
+    /*if (!pthread_cancel( p->wp_thread ))*/
+    /*    pthread_join( p->wp_thread, NULL );*/
+    /*wp_destroy( &wp );*/
 }
 
 void awl_plugin_free( awl_plugin_data_t* p ) {

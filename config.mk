@@ -22,7 +22,7 @@ CFLAGS = -std=c11 -Wall -Wextra -pedantic -Wno-unused-parameter
 CFLAGS += -fsanitize=address
 LDFLAGS += -fsanitize=address
 CFLAGS += -g -ggdb
-# CFLAGS += -Ofast -march=native -mtune=native -DNDEBUG -flto
-# LDFLAGS += -flto=12
+CFLAGS += -Ofast -march=native -mtune=native -DNDEBUG -flto
+LDFLAGS += -flto=12
 CFLAGS += -DUSLEEP_NOT_DEFINED \
  	  -DAWL_PULSEWIDGET_SINK=\"combine_sink\" -DAWL_PULSEWIDGET_HEAD

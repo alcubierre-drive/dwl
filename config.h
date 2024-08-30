@@ -49,14 +49,12 @@ static const Rule rules[] = {
 
 static const char* Autostarts[][8] = {
     { "dunst", NULL },
-    /*
     { "nm-applet", NULL },
     { "blueman-applet", NULL },
     { "system-config-printer-applet", NULL },
     { "telegram-desktop", NULL },
     { "evolution", NULL },
     { "systemd-lock-handler", "--", "swaylock", "-c", "0x000000", NULL },
-    */
 };
 
 /* layout(s) */
@@ -144,8 +142,8 @@ LIBINPUT_CONFIG_TAP_MAP_LMR -- 1/2/3 finger tap maps to left/middle/right
 static const enum libinput_config_tap_button_map button_map = LIBINPUT_CONFIG_TAP_MAP_LRM;
 
 /* If you want to use the windows key for MODKEY, use WLR_MODIFIER_LOGO */
-/*#define MODKEY WLR_MODIFIER_LOGO*/
-#define MODKEY WLR_MODIFIER_ALT
+#define MODKEY WLR_MODIFIER_LOGO
+/*#define MODKEY WLR_MODIFIER_ALT*/
 
 #define TAGKEYS(KEY,SKEY,TAG) \
 	{ MODKEY,                    KEY,            view,            {.ui = 1ul << TAG} }, \
@@ -255,6 +253,7 @@ static const Button buttons[] = {
     { ClkClient,   MODKEY,             BTN_LEFT,   moveresize,     {.ui = CurMove} },
     { ClkClient,   MODKEY,             BTN_MIDDLE, togglefloating, {0} },
     { ClkClient,   MODKEY,             BTN_RIGHT,  moveresize,     {.ui = CurResize} },
+    /*
     { ClkRoot,WLR_MODIFIER_CTRL|WLR_MODIFIER_SHIFT,BTN_LEFT,  drawroot_click,{.ui=300+BTN_LEFT} },
     { ClkRoot,WLR_MODIFIER_CTRL|WLR_MODIFIER_SHIFT,BTN_MIDDLE,drawroot_click,{.ui=300+BTN_MIDDLE} },
     { ClkRoot,WLR_MODIFIER_CTRL|WLR_MODIFIER_SHIFT,BTN_RIGHT, drawroot_click,{.ui=300+BTN_RIGHT} },
@@ -267,4 +266,5 @@ static const Button buttons[] = {
     { ClkRoot,     0,                  BTN_LEFT,   drawroot_click, {.ui = BTN_LEFT} },
     { ClkRoot,     0,                  BTN_MIDDLE, drawroot_click, {.ui = BTN_MIDDLE} },
     { ClkRoot,     0,                  BTN_RIGHT,  drawroot_click, {.ui = BTN_RIGHT} },
+    */
 };

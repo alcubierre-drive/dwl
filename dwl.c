@@ -6,7 +6,7 @@
 #include <sys/eventfd.h>
 #include <pthread.h>
 
-static pthread_mutex_t wp_mtx = PTHREAD_MUTEX_INITIALIZER;
+/*static pthread_mutex_t wp_mtx = PTHREAD_MUTEX_INITIALIZER;*/
 static int wp_fd = -1;
 static void (*wp_func)( pixman_image_t* pix, uint64_t op ) = NULL;
 
@@ -552,6 +552,7 @@ buttonpress(struct wl_listener *listener, void *data)
         unsigned int xpos = 0;
         for (int i=0; i<selmon->drw->n_widgets_left; ++i) {
             if (cursor_x >= xpos && cursor_x < xpos + selmon->drw->widgets_left[i].width) {
+                click = ClkTagBar;
                 if (selmon->drw->widgets_left[i].callback_click) {
                     (*selmon->drw->widgets_left[i].callback_click)(&selmon->drw->widgets_left[i],
                             cursor_x - xpos, event->button);
@@ -561,7 +562,8 @@ buttonpress(struct wl_listener *listener, void *data)
             xpos += selmon->drw->widgets_left[i].width;
         }
         xpos = selmon->drw->center_widget_start;
-        if (cursor_x >= xpos && cursor_x < xpos + selmon->drw->center_widget_space)
+        if (cursor_x >= xpos && cursor_x < xpos + selmon->drw->center_widget_space) {
+            click = ClkTagBar;
             if (selmon->drw->has_center_widget) {
                 if (selmon->drw->center_widget.callback_click) {
                     (*selmon->drw->center_widget.callback_click)(&selmon->drw->center_widget,
@@ -569,9 +571,11 @@ buttonpress(struct wl_listener *listener, void *data)
                     return;
                 }
             }
+        }
         xpos += selmon->drw->center_widget_space;
         for (int i=selmon->drw->n_widgets_right-1; i>=0; --i) {
             if (cursor_x >= xpos && cursor_x < xpos + selmon->drw->widgets_right[i].width) {
+                click = ClkTagBar;
                 if (selmon->drw->widgets_right[i].callback_click) {
                     (*selmon->drw->widgets_right[i].callback_click)(&selmon->drw->widgets_right[i],
                             cursor_x - xpos, event->button);
@@ -622,6 +626,8 @@ buttonpress(struct wl_listener *listener, void *data)
 		}
 		break;
 	}
+
+    printf( "%p %p %p\n", c, node, seat );
 	/* If the event wasn't handled by the compositor, notify the client with
 	 * pointer focus that a button press has occurred */
 	wlr_seat_pointer_notify_button(seat,
@@ -657,7 +663,6 @@ cleanup(void)
 {
     drawbars_timer_keep_updating = 0;
     wl_event_source_timer_update(drawbars_timer, 0);
-    awl_plugin_free(plugin_data);
 
 #ifdef XWAYLAND
 	wlr_xwayland_destroy(xwayland);
@@ -681,6 +686,7 @@ cleanup(void)
 	   to avoid destroying them with an invalid scene output. */
 	wlr_scene_node_destroy(&scene->tree.node);
     drwl_fini();
+    awl_plugin_free(plugin_data);
 }
 
 void
@@ -1341,9 +1347,9 @@ dirtomon(enum wlr_direction dir)
 
 void
 drawroot_update_func( void (*func)( pixman_image_t* pix, uint64_t op ) ) {
-    pthread_mutex_lock( &wp_mtx );
+    /*pthread_mutex_lock( &wp_mtx );*/
     wp_func = func;
-    pthread_mutex_unlock( &wp_mtx );
+    /*pthread_mutex_unlock( &wp_mtx );*/
 }
 
 int
@@ -1381,12 +1387,12 @@ drawroot( uint64_t op )
 
         int update = 0;
 
-        pthread_mutex_lock( &wp_mtx );
+        /*pthread_mutex_lock( &wp_mtx );*/
         if (wp_func) {
             (*wp_func)( pix, op );
             update = 1;
         }
-        pthread_mutex_unlock( &wp_mtx );
+        /*pthread_mutex_unlock( &wp_mtx );*/
 
         pixman_image_unref(pix);
         if (update && m->bg_buffer)
