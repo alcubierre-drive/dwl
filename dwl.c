@@ -2450,10 +2450,10 @@ run(char *startup_cmd)
 	if (!socket)
 		die("startup: display_add_socket_auto");
 	setenv("WAYLAND_DISPLAY", socket, 1);
-    setenv("XDG_CURRENT_DESKTOP", "gnome", 1 );
+    setenv("XDG_CURRENT_DESKTOP", "kde", 1 );
     system("systemctl --user import-environment DISPLAY WAYLAND_DISPLAY XDG_CURRENT_DESKTOP");
-    system("dbus-update-activation-environment");
-    system("dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP");
+    /*system("dbus-update-activation-environment");*/
+    /*system("dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=wlr");*/
     setenv("MOZ_ENABLE_WAYLAND", "1", 1);
     setenv("QT_STYLE_OVERRIDE","kvantum",1);
     setenv("DESKTOP_SESSION","kde",1);
