@@ -624,7 +624,8 @@ buttonpress(struct wl_listener *listener, void *data)
 		break;
 	}
 
-    printf( "%p %p %p\n", c, node, seat );
+    // TODO
+    // printf( "%p %p %p\n", c, node, seat );
 	/* If the event wasn't handled by the compositor, notify the client with
 	 * pointer focus that a button press has occurred */
 	wlr_seat_pointer_notify_button(seat,
