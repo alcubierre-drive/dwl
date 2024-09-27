@@ -286,6 +286,8 @@ applyrules(Client *c)
 	c->isfloating = client_is_float_type(c);
 	appid = client_get_appid(c);
 	title = client_get_title(c);
+    // TODO
+    // printf( "SPAWN APPID '%s' @TITLE '%s'\n", appid, title );
 	int apply_resize = 0;
 	struct wlr_box rbox;
 
@@ -624,8 +626,6 @@ buttonpress(struct wl_listener *listener, void *data)
 		break;
 	}
 
-    // TODO
-    // printf( "%p %p %p\n", c, node, seat );
 	/* If the event wasn't handled by the compositor, notify the client with
 	 * pointer focus that a button press has occurred */
 	wlr_seat_pointer_notify_button(seat,

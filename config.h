@@ -36,6 +36,8 @@ static int log_level = WLR_ERROR;
 static const Rule rules[] = {
 	/* app_id             title       tags mask     isfloating   monitor w h*/
 	/* examples: */
+    { "org.gnome.Evolution",NULL,     1<<8,         0,           -1,   0,   0 },
+    { "org.gnome.Calendar",NULL,      0,            1,           -1, 400, 500 },
     { "evolution",        NULL,       1<<8,         0,           -1,   0,   0 },
     { "telegram",         NULL,       1<<7,         0,           -1,   0,   0 },
     { "python3",          "Figure",   0,            1,           -1,   0,   0 },
@@ -43,8 +45,7 @@ static const Rule rules[] = {
     { "blueman-manager",  NULL,       0,            1,           -1,   0,   0 },
     { "zoom",             NULL,       0,            1,           -1,   0,   0 },
     { "Zoom",             NULL,       0,            1,           -1,   0,   0 },
-    { "evolution-alarm-notify", NULL, 1<<8,         1,           -1,   0,   0 },
-    { "org.gnome.Calendar", NULL,     0,            1,           -1, 400, 500 },
+    /*{ "evolution-alarm-notify", NULL, 1<<8,         1,           -1,   0,   0 },*/
 };
 
 static const char* Autostarts[][8] = {
