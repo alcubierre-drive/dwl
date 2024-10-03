@@ -19,8 +19,8 @@ CC = gcc
 
 CFLAGS = -std=c11 -Wall -Wextra -pedantic -Wno-unused-parameter
 
-# CFLAGS += -fsanitize=address -fsanitize=leak
-# LDFLAGS += -fsanitize=address -fsanitize=leak
+CFLAGS += -fsanitize=address -fsanitize=leak
+LDFLAGS += -fsanitize=address -fsanitize=leak
 CFLAGS += -O3 -g -ggdb
 # CFLAGS += -O3 -march=native -mtune=native -DNDEBUG -flto
 # LDFLAGS += -O3 -march=native -mtune=native -DNDEBUG -flto=12

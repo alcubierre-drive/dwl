@@ -2450,7 +2450,7 @@ run(char *startup_cmd)
 	if (!socket)
 		die("startup: display_add_socket_auto");
 	setenv("WAYLAND_DISPLAY", socket, 1);
-    setenv("XDG_CURRENT_DESKTOP", "KDE", 1 );
+    setenv("XDG_CURRENT_DESKTOP", "wlroots", 1 );
     system("systemctl --user import-environment DISPLAY WAYLAND_DISPLAY XDG_CURRENT_DESKTOP");
     /*system("dbus-update-activation-environment");*/
     /*system("dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=wlr");*/
