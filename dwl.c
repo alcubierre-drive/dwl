@@ -63,7 +63,7 @@ static void drawbars(void);
 
 static void drawroot(uint64_t op);
 static int drawroot_in(int fd, unsigned int mask, void *data);
-static void drawroot_click(const Arg* arg);
+// static void drawroot_click(const Arg* arg);
 
 // TODO this should not be here
 static struct wl_event_source* drawbars_timer = NULL;
@@ -2960,11 +2960,13 @@ drawroot_in(int fd, unsigned int mask, void *data)
     return 0;
 }
 
+/*
 void
 drawroot_click(const Arg* arg)
 {
     drawroot_trigger(arg->ui);
 }
+*/
 
 
 void

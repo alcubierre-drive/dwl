@@ -17,8 +17,6 @@
 int usleep(useconds_t usec);
 #endif
 
-static void wpfunc( pixman_image_t* pix, uint64_t op );
-
 #include "plugins/readdir.h"
 #include <glob.h>
 
@@ -43,6 +41,7 @@ typedef struct {
     pixman_image_t* img;
 } Wallpaper;
 
+/*
 static Wallpaper wp = {0};
 
 static pixman_transform_t transform_wp_to_screen( pixman_image_t* img, int w, int h ) {
@@ -124,7 +123,7 @@ static void wp_init( Wallpaper* wp ) {
     sem_init( &wp->df.sem, 0, 0 );
     sem_init( &wp->sem, 0, 0 );
 
-    glob( "/home/lennart/Wallpapers/*.png", 0, NULL, &wp->gl );
+    glob( "/home/lennart/Wallpapers/""*.png", 0, NULL, &wp->gl );
     wp->files = wp->gl.gl_pathv;
     wp->n_files = wp->gl.gl_pathc;
     wp->show = 1; // everything else 0
@@ -153,6 +152,7 @@ static void* wp_thread( void* data ) {
     }
     return NULL;
 }
+*/
 
 static void awl_plugin_start( awl_plugin_data_t* p ) {
     p->awl_colors = awl_colors();
