@@ -19,9 +19,9 @@ CC = gcc
 
 CFLAGS = -std=c11 -Wall -Wextra -pedantic -Wno-unused-parameter
 
-#CFLAGS += -fsanitize=address -fsanitize=leak
-#LDFLAGS += -fsanitize=address -fsanitize=leak
-#CFLAGS += -O3 -g -ggdb
+CFLAGS += -fsanitize=address -fsanitize=leak
+LDFLAGS += -fsanitize=address -fsanitize=leak
+CFLAGS += -g -ggdb
 CFLAGS += -Ofast -march=native -mtune=native -DNDEBUG -flto
 LDFLAGS += -Ofast -march=native -mtune=native -DNDEBUG -flto=12
 CFLAGS += -DUSLEEP_NOT_DEFINED \

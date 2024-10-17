@@ -69,7 +69,7 @@ Drwl * drwl_create(Monitor* m) {
     drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
         .bar = drwl,
         .draw = &systray_draw,
-        .width = 64,
+        .width = 64 * m->wlr_output->scale,
     };
     drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
         .bar = drwl,
@@ -80,7 +80,7 @@ Drwl * drwl_create(Monitor* m) {
     drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
         .bar = drwl,
         .draw = &statuswidget_draw,
-        .width = 16*3,
+        .width = 16*3 * m->wlr_output->scale,
         .free = free,
     };
     drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
@@ -545,7 +545,6 @@ static uint32_t statuswidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix 
         w->age++;
     }
 
-    uint32_t widget_width = st->ncpu + st->nmem + st->nswp;
     const int ncpu = st->ncpu,
               nmem = st->nmem,
               nswp = st->nswp;
@@ -559,29 +558,32 @@ static uint32_t statuswidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix 
     pixman_box32_t *b_bg_run = b_bg;
 
     int bar_height = w->bar->m->b.height;
-    int xx=x;
+    float xx=x;
     if (icpu) {
         for (int i=0; i<ncpu; ++i) {
             int ydiv = bar_height - icpu[st->dir ? ncpu-i : i] * bar_height;
-            *b_bg_run++ = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=0, .y2=ydiv};
-            b_cpu[i] = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=ydiv,.y2=bar_height};
-            xx++;
+            float next_x = xx + w->bar->m->wlr_output->scale;
+            *b_bg_run++ = (pixman_box32_t){.x1=xx,.x2=next_x,.y1=0, .y2=ydiv};
+            b_cpu[i] = (pixman_box32_t){.x1=xx,.x2=next_x,.y1=ydiv,.y2=bar_height};
+            xx = next_x;
         }
     }
     if (imem) {
         for (int i=0; i<nmem; ++i) {
             int ydiv = bar_height - imem[st->dir ? ncpu-i : i] * bar_height;
-            *b_bg_run++ = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=0, .y2=ydiv};
-            b_mem[i] = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=ydiv,.y2=bar_height};
-            xx++;
+            float next_x = xx + w->bar->m->wlr_output->scale;
+            *b_bg_run++ = (pixman_box32_t){.x1=xx,.x2=next_x,.y1=0, .y2=ydiv};
+            b_mem[i] = (pixman_box32_t){.x1=xx,.x2=next_x,.y1=ydiv,.y2=bar_height};
+            xx = next_x;
         }
     }
     if (iswp) {
         for (int i=0; i<nswp; ++i) {
             int ydiv = bar_height - iswp[st->dir ? ncpu-i : i] * bar_height;
-            *b_bg_run++ = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=0, .y2=ydiv};
-            b_swp[i] = (pixman_box32_t){.x1=xx,.x2=xx+1,.y1=ydiv,.y2=bar_height};
-            xx++;
+            float next_x = xx + w->bar->m->wlr_output->scale;
+            *b_bg_run++ = (pixman_box32_t){.x1=xx,.x2=next_x,.y1=0, .y2=ydiv};
+            b_swp[i] = (pixman_box32_t){.x1=xx,.x2=next_x,.y1=ydiv,.y2=bar_height};
+            xx = next_x;
         }
     }
 
@@ -593,7 +595,7 @@ static uint32_t statuswidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix 
     pixman_image_fill_boxes(PIXMAN_OP_SRC, pix, &P->awl_colors.fg_stats_mem, nmem, b_mem);
     pixman_image_fill_boxes(PIXMAN_OP_SRC, pix, &P->awl_colors.fg_stats_swp, nswp, b_swp);
 
-    return widget_width;
+    return xx - x;
 }
 
 static uint32_t tempwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {

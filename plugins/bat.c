@@ -26,14 +26,14 @@ static void* bat( void* arg ) {
         float charge = 0.0;
         int charging = 0;
         strcpy( bat_file, bat_prefix );
-        strcat( bat_file, "charge_now" );
+        strcat( bat_file, "energy_now" );
         if ((f = fopen( bat_file, "r" ))) {
             if (fscanf(f, "%lu", &u)) charge = u;
             fclose(f);
             set++;
         }
         strcpy( bat_file, bat_prefix );
-        strcat( bat_file, "charge_full" );
+        strcat( bat_file, "energy_full" );
         if ((f = fopen( bat_file, "r" ))) {
             if (fscanf(f, "%lu", &u)) charge /= (u > 0) ? (float)u : 1.0;
             fclose(f);
