@@ -628,7 +628,7 @@ static uint32_t tempwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) 
         if (*T->f_labels[T->idx[i]])
             snprintf( text, 127, "%s:%.0f°C", T->f_labels[T->idx[i]], T->temps[i] );
         else
-            snprintf( text, 127, "%.0f°C", T->temps[i] );
+            snprintf( text, 127, "%3.0f°C", T->temps[i] );
         pixman_color_t fgcolor = color_8bit_to_16bit(
                 P->temp_color( T->temps[i], T->f_t_min[T->idx[i]], T->f_t_max[T->idx[i]] ) );
         uint32_t ww = TEXTW(bar->m, text);
