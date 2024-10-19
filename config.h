@@ -175,7 +175,6 @@ static const char *docked_d[] = { "docked", "dock", NULL };
 static const char *docked_z[] = { "docked", "zoom", NULL };
 
 static void tagmonf( const Arg* arg ) { tagmon(arg); focusmon(arg); }
-static void pulsetoggle( const Arg* arg ) { pulse_thread_toggle_headphones(awl_plugin_get()->pulse); }
 
 static const Key keys[] = {
 	/* Note that Shift changes certain key codes: c -> C, 2 -> at, etc. */
@@ -214,7 +213,6 @@ static const Key keys[] = {
     { 0, XKB_KEY_XF86AudioMute,        spawn, {.v=volt} },
     { 0, XKB_KEY_XF86AudioMicMute,     spawn, {.v=volT} },
     { 0, XKB_KEY_Print,                spawn, {.v=grimslurp} },
-    { MODKEY, XKB_KEY_F1,              pulsetoggle,      {0} },
     { MODKEY, XKB_KEY_d,               spawn, {.v=wdisplays} },
     { 0, XKB_KEY_XF86Display,          spawn, {.v=wdisplays} },
     { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_G, spawn, {.v=swaylock} },

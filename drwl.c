@@ -512,10 +512,8 @@ static uint32_t pulsewidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix )
                    _molokai_orange = color_8bit_to_16bit(molokai_orange);
     float val = atomic_load( &P->pulse->value );
     int muted = atomic_load( &P->pulse->muted );
-    int headphones = atomic_load( &P->pulse->headphones ) > 0;
-    /*const char headphones_str[] = "🎧";*/
     /*const char speakers_str[] = "🔈";*/
-    sprintf( string, "%s%3.0f%%", headphones ? "H" : "S", val * 100.0f );
+    sprintf( string, "♫%3.0f%%", val * 100.0f );
     int ww = TEXTW( w->bar->m, "V___%" );
     pixman_color_t fg = (muted?_molokai_orange : lround(val*100.0)>100?_molokai_red : P->awl_colors.fg_lay);
     TEXT( ww, string, fg, P->awl_colors.bg_lay );
@@ -739,7 +737,7 @@ arrange:
 
 static void pulsewidget_click( widget_t* w, uint32_t x, int button ) {
     (void)w; (void)x; (void)button;
-    spawn( &(Arg){.v=(const char*[]){"pavucontrol", NULL}} );
+    spawn( &(Arg){.v=(const char*[]){"pwvucontrol", NULL}} );
 }
 static void pulsewidget_scroll( widget_t* w, uint32_t x, int amount ) {
     (void)w; (void)x;

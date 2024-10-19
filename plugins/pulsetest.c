@@ -67,19 +67,6 @@ void stop_pulse_thread( pulse_test_t* p ) {
     }
 }
 
-void pulse_thread_toggle_headphones( pulse_test_t* p ) {
-    if (p && p->h && p->h->PA._context) {
-        sem_wait( &p->sem );
-        if (p->n_ports > 0) {
-            p->port++;
-            p->port %= p->n_ports;
-            pa_context_set_sink_port_by_name( p->h->PA._context, p->name, p->ports[p->port], NULL, NULL );
-            /*P_awl_log_printf( "Pulse toggle '%s' ('%s') :: %i/%i", p->name, p->ports[p->port], p->port+1, p->n_ports );*/
-        }
-        sem_post( &p->sem );
-    }
-}
-
 // main()
 static void* pulse_thread_fun( void* arg ) {
     pulse_test_t* p = (pulse_test_t*)arg;
@@ -100,6 +87,7 @@ static void exit_signal_callback(pa_mainloop_api *m, pa_signal_event *e, int sig
 static void context_state_callback(pa_context *c, void *userdata) {
     assert(c && userdata);
     PulseAudio* pa = (PulseAudio*)userdata;
+    pa_operation* op = NULL;
     switch (pa_context_get_state(c)) {
         case PA_CONTEXT_CONNECTING:
         case PA_CONTEXT_AUTHORIZING:
@@ -107,9 +95,11 @@ static void context_state_callback(pa_context *c, void *userdata) {
             break;
         case PA_CONTEXT_READY:
             /*P_awl_log_printf( "pulse connection established.." );*/
-            pa_context_get_server_info(c, server_info_callback, userdata);
+            op = pa_context_get_server_info(c, server_info_callback, userdata);
+               if (op) pa_operation_unref(op);
             pa_context_set_subscribe_callback(c, subscribe_callback, userdata);
-            pa_context_subscribe(c, PA_SUBSCRIPTION_MASK_SINK, NULL, NULL);
+            op = pa_context_subscribe(c, PA_SUBSCRIPTION_MASK_SINK, NULL, NULL);
+               if (op) pa_operation_unref(op);
             break;
         case PA_CONTEXT_TERMINATED:
             PulseAudio_quit(pa, 0);
@@ -129,14 +119,13 @@ static void subscribe_callback(pa_context *c, pa_subscription_event_type_t type,
     pa_operation *op = NULL;
     switch (facility) {
         case PA_SUBSCRIPTION_EVENT_SINK:
-            pa_context_get_sink_info_by_index(c, idx, sink_info_callback, userdata);
+            op = pa_context_get_sink_info_by_index(c, idx, sink_info_callback, userdata);
             break;
         default:
             assert(0); // Got event we aren't expecting.
             break;
     }
-    if (op)
-        pa_operation_unref(op);
+    if (op) pa_operation_unref(op);
 }
 
 static void sink_info_callback(pa_context *c, const pa_sink_info *i, int eol, void *userdata) {
@@ -144,63 +133,20 @@ static void sink_info_callback(pa_context *c, const pa_sink_info *i, int eol, vo
     (void)eol;
 
     pulse_test_t* t = ((PulseAudio*)userdata)->t;
-    if (i && t) {
-        int active_sink = 1;
-        int headphone_sink = 0;
-
-        #ifdef AWL_PULSEWIDGET_SINK
-        active_sink = !strcmp(i->name, AWL_PULSEWIDGET_SINK);
-        #endif // AWL_PULSEWIDGET_SINK
-
-        #ifdef AWL_PULSEWIDGET_HEAD
-        if (i->n_ports > 1 && i->active_port) {
-            if (!strcmp( i->active_port->name, "analog-output-headphones" ))
-                headphone_sink = 1;
-            else
-                headphone_sink = -1;
-        }
-        #endif // AWL_PULSEWIDGET_HEAD
-
-        if (active_sink) {
-            atomic_store( &t->value, (float)pa_cvolume_avg(&(i->volume)) / (float)PA_VOLUME_NORM );
-            atomic_store( &t->muted, i->mute );
-        }
-
-        if (headphone_sink) {
-            atomic_store( &t->headphones, headphone_sink );
-        }
-
-    }
-}
-
-static void sink_info_list_create_cb(pa_context* c, const pa_sink_info *i, int eol, void *userdata) {
-    (void)c;
-    (void)eol;
-
-    pulse_test_t* t = ((PulseAudio*)userdata)->t;
-    if (i && i->n_ports > 1) {
-        sem_wait( &t->sem );
-        for (uint32_t p=0; p<i->n_ports; ++p) {
-            strcpy( t->ports[p], i->ports[p]->name );
-            if (i->active_port && !strcmp(i->active_port->name, i->ports[p]->name))
-                t->port = p;
-            #ifdef AWL_PULSEWIDGET_HEAD
-            if (i->active_port && !strcmp(i->active_port->name, "analog-output-headphones"))
-                atomic_store( &t->headphones, 1 );
-            else
-                atomic_store( &t->headphones, -1 );
-            #endif
-        }
-        t->n_ports = i->n_ports;
-        strcpy( t->name, i->name );
-        sem_post( &t->sem );
+    if ((i && t) && (!strcmp(i->name, t->name))) {
+        atomic_store( &t->value, (float)pa_cvolume_avg(&(i->volume)) / (float)PA_VOLUME_NORM );
+        atomic_store( &t->muted, i->mute );
     }
 }
 
 static void server_info_callback(pa_context *c, const pa_server_info *i, void *userdata) {
     /*P_awl_log_printf( "pulse sink name = %s", i->default_sink_name );*/
-    pa_context_get_sink_info_by_name(c, i->default_sink_name, sink_info_callback, userdata);
-    pa_context_get_sink_info_list(c, sink_info_list_create_cb, userdata);
+    PulseAudio* pa = userdata;
+    sem_wait(&pa->t->sem);
+    strcpy(pa->t->name, i->default_sink_name);
+    sem_post(&pa->t->sem);
+    pa_operation* op = pa_context_get_sink_info_by_name(c, i->default_sink_name, sink_info_callback, userdata);
+    if (op) pa_operation_unref(op);
 }
 
 static int PulseAudio_initialize( PulseAudio* p ) {

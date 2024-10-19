@@ -19,10 +19,9 @@ CC = gcc
 
 CFLAGS = -std=c11 -Wall -Wextra -pedantic -Wno-unused-parameter
 
-CFLAGS += -fsanitize=address -fsanitize=leak
-LDFLAGS += -fsanitize=address -fsanitize=leak
-CFLAGS += -g -ggdb
+# CFLAGS += -fsanitize=address -fsanitize=leak
+# LDFLAGS += -fsanitize=address -fsanitize=leak
+# CFLAGS += -g -ggdb
 CFLAGS += -Ofast -march=native -mtune=native -DNDEBUG -flto
 LDFLAGS += -Ofast -march=native -mtune=native -DNDEBUG -flto=12
-CFLAGS += -DUSLEEP_NOT_DEFINED \
- 	  -DAWL_PULSEWIDGET_SINK=\"combine_sink\" -DAWL_PULSEWIDGET_HEAD
+CFLAGS += -DUSLEEP_NOT_DEFINED
