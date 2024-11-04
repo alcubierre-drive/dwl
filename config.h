@@ -83,6 +83,7 @@ static const MonitorRule monrules[] = {
 	*/
 	/* defaults */
 	{ "eDP-1",    0.5f,  1,    1.5,    &layouts[0], WL_OUTPUT_TRANSFORM_NORMAL,   -1,  -1 },
+	/* { "HDMI-A-1", 0.5f,  1,      1,    &layouts[0], WL_OUTPUT_TRANSFORM_90,       -1,  -1 }, */
 	{ NULL,       0.5f,  1,      1,    &layouts[0], WL_OUTPUT_TRANSFORM_NORMAL,   -1,  -1 },
 };
 

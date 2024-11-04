@@ -11,8 +11,6 @@
 #include <stdatomic.h>
 
 #include "ipaddr.h"
-/*#include "init.h"*/
-/*#include "../awl_log.h"*/
 #include "pthread_wrap.h"
 
 static int is_not_in_exclude_list( const char* name, char exclude_list[4][16], int nexclude );
@@ -83,6 +81,7 @@ awl_ipaddr_t* start_ip_thread( int update_sec ) {
     ip->sleep_sec = update_sec;
     strcpy( ip->exclude_list[ip->n_exclude_list++], "lo" );
     strcpy( ip->exclude_list[ip->n_exclude_list++], "virbr0" );
+    strcpy( ip->exclude_list[ip->n_exclude_list++], "docker0" );
     sem_init( &ip->sem, 0, 1 );
 
     /*P_awl_log_printf( "create ip_thread" );*/
