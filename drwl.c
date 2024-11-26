@@ -737,7 +737,7 @@ arrange:
 
 static void pulsewidget_click( widget_t* w, uint32_t x, int button ) {
     (void)w; (void)x; (void)button;
-    spawn( &(Arg){.v=(const char*[]){"pwvucontrol", NULL}} );
+    spawn( &(Arg){.v=(const char*[]){"pavucontrol", NULL}} );
 }
 static void pulsewidget_scroll( widget_t* w, uint32_t x, int amount ) {
     (void)w; (void)x;
