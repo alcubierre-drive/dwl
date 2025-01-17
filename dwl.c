@@ -243,11 +243,9 @@ static void associatex11(struct wl_listener *listener, void *data);
 static void configurex11(struct wl_listener *listener, void *data);
 static void createnotifyx11(struct wl_listener *listener, void *data);
 static void dissociatex11(struct wl_listener *listener, void *data);
-static xcb_atom_t getatom(xcb_connection_t *xc, const char *name);
 static void sethints(struct wl_listener *listener, void *data);
 static void xwaylandready(struct wl_listener *listener, void *data);
 static struct wlr_xwayland *xwayland;
-static xcb_atom_t netatom[NetLast];
 #endif
 
 /* configuration, allows nested code to access above variables */
@@ -1699,22 +1697,10 @@ gpureset(struct wl_listener *listener, void *data)
 void
 handlesig(int signo)
 {
-	if (signo == SIGCHLD) {
-#ifdef XWAYLAND
-		siginfo_t in;
-		/* wlroots expects to reap the XWayland process itself, so we
-		 * use WNOWAIT to keep the child waitable until we know it's not
-		 * XWayland.
-		 */
-		while (!waitid(P_ALL, 0, &in, WEXITED|WNOHANG|WNOWAIT) && in.si_pid
-				&& (!xwayland || in.si_pid != xwayland->server->pid))
-			waitpid(in.si_pid, NULL, 0);
-#else
+	if (signo == SIGCHLD)
 		while (waitpid(-1, NULL, WNOHANG) > 0);
-#endif
-	} else if (signo == SIGINT || signo == SIGTERM) {
+	else if (signo == SIGINT || signo == SIGTERM)
 		quit(NULL);
-	}
 }
 
 void
@@ -3540,19 +3526,6 @@ dissociatex11(struct wl_listener *listener, void *data)
 	wl_list_remove(&c->unmap.link);
 }
 
-xcb_atom_t
-getatom(xcb_connection_t *xc, const char *name)
-{
-	xcb_atom_t atom = 0;
-	xcb_intern_atom_reply_t *reply;
-	xcb_intern_atom_cookie_t cookie = xcb_intern_atom(xc, 0, strlen(name), name);
-	if ((reply = xcb_intern_atom_reply(xc, cookie, NULL)))
-		atom = reply->atom;
-	free(reply);
-
-	return atom;
-}
-
 void
 sethints(struct wl_listener *listener, void *data)
 {
@@ -3572,19 +3545,6 @@ void
 xwaylandready(struct wl_listener *listener, void *data)
 {
 	struct wlr_xcursor *xcursor;
-	xcb_connection_t *xc = xcb_connect(xwayland->display_name, NULL);
-	int err = xcb_connection_has_error(xc);
-	if (err) {
-		fprintf(stderr, "xcb_connect to X server failed with code %d\n. Continuing with degraded functionality.\n", err);
-		return;
-	}
-
-	/* Collect atoms we are interested in. If getatom returns 0, we will
-	 * not detect that window type. */
-	netatom[NetWMWindowTypeDialog] = getatom(xc, "_NET_WM_WINDOW_TYPE_DIALOG");
-	netatom[NetWMWindowTypeSplash] = getatom(xc, "_NET_WM_WINDOW_TYPE_SPLASH");
-	netatom[NetWMWindowTypeToolbar] = getatom(xc, "_NET_WM_WINDOW_TYPE_TOOLBAR");
-	netatom[NetWMWindowTypeUtility] = getatom(xc, "_NET_WM_WINDOW_TYPE_UTILITY");
 
 	/* assign the one and only seat */
 	wlr_xwayland_set_seat(xwayland, seat);
@@ -3595,8 +3555,6 @@ xwaylandready(struct wl_listener *listener, void *data)
 				xcursor->images[0]->buffer, xcursor->images[0]->width * 4,
 				xcursor->images[0]->width, xcursor->images[0]->height,
 				xcursor->images[0]->hotspot_x, xcursor->images[0]->hotspot_y);
-
-	xcb_disconnect(xc);
 }
 #endif
 
