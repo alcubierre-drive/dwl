@@ -160,6 +160,7 @@ static const enum libinput_config_tap_button_map button_map = LIBINPUT_CONFIG_TA
 
 /* commands */
 static const char *termcmd[] = { "kitty", "-d", "$HOME", NULL };
+/* static const char *termcmd[] = { "xfce4-terminal", "--working-directory=$HOME", NULL }; */
 static const char *menucmd[] = { "fuzzel", NULL };
 static const char *hyprcopy[] = { "hyprcopy", NULL };
 static const char *brightp[] = { "backlight-tooler", "-v5", NULL };
