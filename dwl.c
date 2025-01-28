@@ -3,13 +3,6 @@
 #include "drwl.h"
 #include "plugins.h"
 
-#include <sys/eventfd.h>
-#include <pthread.h>
-
-/*static pthread_mutex_t wp_mtx = PTHREAD_MUTEX_INITIALIZER;*/
-static int wp_fd = -1;
-static void (*wp_func)( pixman_image_t* pix, uint64_t op ) = NULL;
-
 /* function declarations */
 static void applybounds(Client *c, struct wlr_box *bbox);
 static void applyrules(Client *c);
@@ -20,7 +13,6 @@ static void arrangelayers(Monitor *m);
 static void axisnotify(struct wl_listener *listener, void *data);
 static bool bar_accepts_input(struct wlr_scene_buffer *buffer, double *sx, double *sy);
 static void buffer_destroy(struct wlr_buffer *buffer);
-static void bg_buffer_destroy(struct wlr_buffer *buffer);
 static bool buffer_begin_data_ptr_access(struct wlr_buffer *buffer, uint32_t flags, void **data, uint32_t *format, size_t *stride);
 static void buffer_end_data_ptr_access(struct wlr_buffer *buffer);
 static void buttonpress(struct wl_listener *listener, void *data);
@@ -60,10 +52,6 @@ static void destroykeyboardgroup(struct wl_listener *listener, void *data);
 static Monitor *dirtomon(enum wlr_direction dir);
 static void drawbar(Monitor *m);
 static void drawbars(void);
-
-static void drawroot(uint64_t op);
-static int drawroot_in(int fd, unsigned int mask, void *data);
-// static void drawroot_click(const Arg* arg);
 
 // TODO this should not be here
 static struct wl_event_source* drawbars_timer = NULL;
@@ -128,7 +116,6 @@ static void setsel(struct wl_listener *listener, void *data);
 static void setup(void);
 /*static void spawn(const Arg *arg);*/
 static void startdrag(struct wl_listener *listener, void *data);
-static int status_in(int fd, unsigned int mask, void *data);
 static void tag(const Arg *arg);
 static void tagmon(const Arg *arg);
 static void tile(Monitor *m);
@@ -213,19 +200,8 @@ static struct wlr_box sgeom;
 static struct wl_list mons;
 static Monitor *selmon;
 
-static char stext[256] = "";
-static struct wl_event_source *status_event_source;
-
-static struct wl_event_source *wp_event_source;
-
 static const struct wlr_buffer_impl buffer_impl = {
     .destroy = buffer_destroy,
-    .begin_data_ptr_access = buffer_begin_data_ptr_access,
-    .end_data_ptr_access = buffer_end_data_ptr_access
-};
-
-static const struct wlr_buffer_impl bg_buffer_impl = {
-    .destroy = bg_buffer_destroy,
     .begin_data_ptr_access = buffer_begin_data_ptr_access,
     .end_data_ptr_access = buffer_end_data_ptr_access
 };
@@ -523,11 +499,6 @@ buffer_destroy(struct wlr_buffer *wlr_buffer)
 	Buffer *buf;
 	buf = wl_container_of(wlr_buffer, buf, base);
 	free(buf);
-}
-
-void
-bg_buffer_destroy(struct wlr_buffer *wlr_buffer)
-{
 }
 
 bool
@@ -1024,8 +995,7 @@ createlocksurface(struct wl_listener *listener, void *data)
 	wlr_scene_node_set_position(&scene_tree->node, m->m.x, m->m.y);
 	wlr_session_lock_surface_v1_configure(lock_surface, m->m.width, m->m.height);
 
-    /// XXX why do we need to delete this one?
-	/* LISTEN(&lock_surface->events.destroy, &m->destroy_lock_surface, destroylocksurface); */
+	LISTEN(&lock_surface->events.destroy, &m->destroy_lock_surface, destroylocksurface);
 
 	if (m == selmon)
 		client_notify_enter(lock_surface->surface, wlr_seat_get_keyboard(seat));
@@ -1407,62 +1377,6 @@ dirtomon(enum wlr_direction dir)
 }
 
 void
-drawroot_update_func( void (*func)( pixman_image_t* pix, uint64_t op ) ) {
-    /*pthread_mutex_lock( &wp_mtx );*/
-    wp_func = func;
-    /*pthread_mutex_unlock( &wp_mtx );*/
-}
-
-int
-drawroot_eventfd( void )
-{
-    return wp_fd;
-}
-
-void
-drawroot( uint64_t op )
-{
-    Monitor *m = NULL;
-    wl_list_for_each(m, &mons, link) {
-        Buffer* buf = m->bg_buffer_handle;
-        int32_t stride = drwl_stride(m->m.width);
-        int32_t size = stride * m->m.height;
-
-        if (!buf)
-            buf = m->bg_buffer_handle = ecalloc(1, sizeof(Buffer) + size);
-
-        buf->stride = stride;
-        buf->w = m->m.width;
-        buf->h = m->m.height;
-
-        wlr_buffer_init(&buf->base, &bg_buffer_impl, m->m.width, m->m.height);
-        wlr_scene_buffer_set_dest_size(m->bg_buffer, m->m.width, m->m.height);
-        wlr_scene_node_set_position(&m->bg_buffer->node, 0, 0);
-
-        pixman_region32_t clip;
-        pixman_image_t* pix = pixman_image_create_bits_no_clear( PIXMAN_a8r8g8b8,
-                m->m.width, m->m.height, buf->data, buf->stride);
-        pixman_region32_init_rect(&clip, 0, 0, m->m.width, m->m.height);
-        pixman_image_set_clip_region32(pix, &clip);
-        pixman_region32_fini(&clip);
-
-        int update = 0;
-
-        /*pthread_mutex_lock( &wp_mtx );*/
-        if (wp_func) {
-            (*wp_func)( pix, op );
-            update = 1;
-        }
-        /*pthread_mutex_unlock( &wp_mtx );*/
-
-        pixman_image_unref(pix);
-        if (update && m->bg_buffer)
-            wlr_scene_buffer_set_buffer(m->bg_buffer, &buf->base);
-        wlr_buffer_drop(&buf->base);
-    }
-}
-
-void
 drawbar(Monitor *m)
 {
 	int x = 0, /*w,*/ tw = 0;
@@ -1494,7 +1408,7 @@ drawbar(Monitor *m)
 	/*draw status first so it can be overdrawn by tags later*/
 	if (m == selmon) { // status is only drawn on selected monitor
 		drwl_setscheme(m->drw, colors[SchemeNorm]);
-		tw = 0; // TEXTW(m, stext) - m->lrpad + 2; // 2px right padding
+		tw = 0;
 		drwl_text(m->drw, m->b.width - tw, 0, tw, m->b.height, 0, "", 0);
 	}
 
@@ -2932,13 +2846,6 @@ setup(void)
     drawbars_timer = wl_event_loop_add_timer(event_loop, &drawbars_timer_fire, NULL);
     wl_event_source_timer_update(drawbars_timer, drawbars_timer_elapse_ms);
 
-    wp_fd = eventfd(0, EFD_NONBLOCK|EFD_CLOEXEC);
-    wp_event_source = wl_event_loop_add_fd(wl_display_get_event_loop(dpy),
-            wp_fd, WL_EVENT_READABLE, drawroot_in, NULL );
-
-	status_event_source = wl_event_loop_add_fd(wl_display_get_event_loop(dpy),
-		STDIN_FILENO, WL_EVENT_READABLE, status_in, NULL);
-
 	/* Make sure XWayland clients don't connect to the parent X server,
 	 * e.g when running in the x11 backend or the wayland backend and the
 	 * compositor has Xwayland support */
@@ -2981,51 +2888,6 @@ startdrag(struct wl_listener *listener, void *data)
 	drag->icon->data = &wlr_scene_drag_icon_create(drag_icon, drag->icon)->node;
 	LISTEN_STATIC(&drag->icon->events.destroy, destroydragicon);
 }
-
-int
-status_in(int fd, unsigned int mask, void *data)
-{
-	char status[1024];
-	ssize_t n;
-
-	if (mask & WL_EVENT_ERROR)
-		die("status in event error");
-	if (mask & WL_EVENT_HANGUP)
-		wl_event_source_remove(status_event_source);
-
-	n = read(fd, status, sizeof(status) - 1);
-	if (n < 0 && errno != EWOULDBLOCK)
-		die("read:");
-
-	status[n] = '\0';
-	status[strcspn(status, "\n")] = '\0';
-
-	strncpy(stext, status, sizeof(stext)-1);
-	drawbars();
-
-	return 0;
-}
-
-int
-drawroot_in(int fd, unsigned int mask, void *data)
-{
-    if (mask & WL_EVENT_ERROR) die("status in event error");
-    if (mask & WL_EVENT_HANGUP) wl_event_source_remove(wp_event_source);
-    uint64_t val = 0;
-    ssize_t nread = read(fd, &val, sizeof(val));
-    if (nread != sizeof(val)) return 0;
-    drawroot( val );
-    return 0;
-}
-
-/*
-void
-drawroot_click(const Arg* arg)
-{
-    drawroot_trigger(arg->ui);
-}
-*/
-
 
 void
 tag(const Arg *arg)
@@ -3279,9 +3141,6 @@ updatemons(struct wl_listener *listener, void *data)
 		}
 	}
 
-	/* Update bar */
-	if (stext[0] == '\0')
-		strncpy(stext, "dwl-"VERSION, sizeof(stext)-1);
 	wl_list_for_each(m, &mons, link) {
 		updatebar(m);
 		drawbar(m);
