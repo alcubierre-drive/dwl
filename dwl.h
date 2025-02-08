@@ -213,8 +213,6 @@ struct Monitor {
 	struct wlr_output *wlr_output;
 	struct wlr_scene_output *scene_output;
 	struct wlr_scene_buffer *scene_buffer; /* bar buffer */
-	struct wlr_scene_buffer *bg_buffer; /* bg buffer */ // TODO
-    Buffer* bg_buffer_handle;
 	struct wlr_scene_rect *fullscreen_bg; /* See createmon() for info */
 	struct wl_listener frame;
 	struct wl_listener destroy;

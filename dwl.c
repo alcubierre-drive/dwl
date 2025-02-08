@@ -19,6 +19,7 @@ static void buttonpress(struct wl_listener *listener, void *data);
 static void chvt(const Arg *arg);
 static void checkidleinhibitor(struct wlr_surface *exclude);
 static void cleanup(void);
+static int in_cleanupmon = 0;
 static void cleanupmon(struct wl_listener *listener, void *data);
 static void cleanuplisteners(void);
 static void closemon(Monitor *m);
@@ -691,7 +692,9 @@ cleanup(void)
 void
 cleanupmon(struct wl_listener *listener, void *data)
 {
+    in_cleanupmon = 1;
 	Monitor *m = wl_container_of(listener, m, destroy);
+    printf( "cleanup monitor %p\n", m );
 	LayerSurface *l, *tmp;
 	size_t i;
 
@@ -700,8 +703,6 @@ cleanupmon(struct wl_listener *listener, void *data)
 		wl_list_for_each_safe(l, tmp, &m->layers[i], link)
 			wlr_layer_surface_v1_destroy(l->layer_surface);
 	}
-
-	drwl_destroy(m->drw);
 
 	wl_list_remove(&m->destroy.link);
 	wl_list_remove(&m->frame.link);
@@ -714,8 +715,9 @@ cleanupmon(struct wl_listener *listener, void *data)
 	closemon(m);
 	wlr_scene_node_destroy(&m->fullscreen_bg->node);
 
-    if (m->bg_buffer_handle) free(m->bg_buffer_handle);
+	drwl_destroy(m->drw);
 	free(m);
+    in_cleanupmon = 0;
 }
 
 void
@@ -1060,14 +1062,11 @@ createmon(struct wl_listener *listener, void *data)
 	m->scene_buffer = wlr_scene_buffer_create(layers[LyrBottom], NULL);
 	m->scene_buffer->point_accepts_input = bar_accepts_input;
 
-    m->bg_buffer = wlr_scene_buffer_create(layers[LyrBg], NULL);
-    wlr_scene_node_set_enabled(&m->bg_buffer->node, 1);
-
 	m->showbar = showbar;
 	updatebar(m);
+    drawbar(m);
 
 	wl_list_insert(&mons, &m->link);
-	drawbars();
 
 	/* The xdg-protocol specifies:
 	 *
@@ -1379,6 +1378,9 @@ dirtomon(enum wlr_direction dir)
 void
 drawbar(Monitor *m)
 {
+    if (in_cleanupmon) return;
+    if (!m) return;
+    if (!m->drw) return;
 	int x = 0, /*w,*/ tw = 0;
 	// int boxs = m->drw->font->height / 9;
 	// int boxw = m->drw->font->height / 6 + 2;
@@ -1472,10 +1474,12 @@ drawbar(Monitor *m)
 void
 drawbars(void)
 {
+    if (in_cleanupmon) return;
 	Monitor *m = NULL;
 
-	wl_list_for_each(m, &mons, link)
-		drawbar(m);
+	wl_list_for_each(m, &mons, link) {
+        if (m->wlr_output->enabled) drawbar(m);
+    }
 }
 
 void
@@ -3142,8 +3146,8 @@ updatemons(struct wl_listener *listener, void *data)
 	}
 
 	wl_list_for_each(m, &mons, link) {
-		updatebar(m);
-		drawbar(m);
+		if (!m->wlr_output->enabled) continue;
+		updatebar(m), drawbar(m);
 	}
 
 	/* FIXME: figure out why the cursor image is at 0,0 after turning all

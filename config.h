@@ -55,8 +55,10 @@ static const char* Autostarts[][8] = {
     { "nm-applet", NULL },
     { "blueman-applet", NULL },
     { "system-config-printer-applet", NULL },
+    /*
     { "telegram-desktop", NULL },
     { "evolution", NULL },
+    */
     { "systemd-lock-handler", "--", "swaylock", "-c", "0x000000", NULL },
 };
 
