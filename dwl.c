@@ -694,7 +694,7 @@ cleanupmon(struct wl_listener *listener, void *data)
 {
     in_cleanupmon = 1;
 	Monitor *m = wl_container_of(listener, m, destroy);
-    printf( "cleanup monitor %p\n", m );
+    printf( "cleanup monitor %p\n", (void*)m );
 	LayerSurface *l, *tmp;
 	size_t i;
 
@@ -881,6 +881,7 @@ commitpopup(struct wl_listener *listener, void *data)
 	box.y -= (type == LayerShell ? l->scene->node.y : c->geom.y);
 	wlr_xdg_popup_unconstrain_from_box(popup, &box);
 	wl_list_remove(&listener->link);
+	free(listener);
 }
 
 void
@@ -1231,6 +1232,7 @@ destroydragicon(struct wl_listener *listener, void *data)
 	focusclient(focustop(selmon), 1);
 	motionnotify(0, NULL, 0, 0, 0, 0);
 	wl_list_remove(&listener->link);
+	free(listener);
 }
 
 void
@@ -1240,6 +1242,7 @@ destroyidleinhibitor(struct wl_listener *listener, void *data)
 	 * at this point the idle inhibitor is still in the list of the manager */
 	checkidleinhibitor(wlr_surface_get_root_surface(data));
 	wl_list_remove(&listener->link);
+	free(listener);
 }
 
 void
