@@ -694,7 +694,6 @@ cleanupmon(struct wl_listener *listener, void *data)
 {
     in_cleanupmon = 1;
 	Monitor *m = wl_container_of(listener, m, destroy);
-    printf( "cleanup monitor %p\n", (void*)m );
 	LayerSurface *l, *tmp;
 	size_t i;
 
@@ -703,6 +702,7 @@ cleanupmon(struct wl_listener *listener, void *data)
 		wl_list_for_each_safe(l, tmp, &m->layers[i], link)
 			wlr_layer_surface_v1_destroy(l->layer_surface);
 	}
+	drwl_destroy(m->drw);
 
 	wl_list_remove(&m->destroy.link);
 	wl_list_remove(&m->frame.link);
@@ -714,8 +714,7 @@ cleanupmon(struct wl_listener *listener, void *data)
 
 	closemon(m);
 	wlr_scene_node_destroy(&m->fullscreen_bg->node);
-
-	drwl_destroy(m->drw);
+	wlr_scene_node_destroy(&m->scene_buffer->node);
 	free(m);
     in_cleanupmon = 0;
 }
