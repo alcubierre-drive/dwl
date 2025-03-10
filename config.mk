@@ -21,7 +21,7 @@ CFLAGS = -std=c11 -Wall -Wextra -pedantic -Wno-unused-parameter
 
 CFLAGS += -fsanitize=address -fsanitize=leak
 LDFLAGS += -fsanitize=address -fsanitize=leak
-# CFLAGS += -g -ggdb
+# CFLAGS += -ggdb
 # CFLAGS += -O0
 CFLAGS += -Ofast -march=native -flto
 LDFLAGS += -flto=14

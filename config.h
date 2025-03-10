@@ -51,7 +51,7 @@ static const Rule rules[] = {
 };
 
 static const char* Autostarts[][8] = {
-    { "dunst", NULL },
+    { "fnott", NULL },
     { "nm-applet", NULL },
     { "blueman-applet", NULL },
     { "system-config-printer-applet", NULL },
