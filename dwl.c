@@ -373,6 +373,9 @@ arrangelayer(Monitor *m, struct wl_list *list, struct wlr_box *usable_area, int 
 	wl_list_for_each(l, list, link) {
 		struct wlr_layer_surface_v1 *layer_surface = l->layer_surface;
 
+		if (!layer_surface->initialized)
+			continue;
+
 		if (exclusive != (layer_surface->current.exclusive_zone > 0))
 			continue;
 
@@ -3462,7 +3465,7 @@ sethints(struct wl_listener *listener, void *data)
 {
 	Client *c = wl_container_of(listener, c, set_hints);
 	struct wlr_surface *surface = client_surface(c);
-	if (c == focustop(selmon))
+	if (c == focustop(selmon) || !c->surface.xwayland->hints)
 		return;
 
 	c->isurgent = xcb_icccm_wm_hints_get_urgency(c->surface.xwayland->hints);
