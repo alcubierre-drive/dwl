@@ -71,7 +71,7 @@ struct awl_colors awl_colors( void ) {
     c.bg_win = alpha_blend_16( color_8bit_to_16bit(molokai_dark_gray), c16 );
     c16.alpha = 0x9999;
     c.bg_win_act = alpha_blend_16( color_8bit_to_16bit(molokai_dark_gray), c16 );
-    c.bg_win_urg = c.bg_tags_occ;
+    c.bg_win_urg = color_8bit_to_16bit(molokai_red);
     c.bg_win_min = c.bg_tags;
     c.fg_win = c.fg_tags;
 

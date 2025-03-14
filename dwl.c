@@ -3492,6 +3492,7 @@ xwaylandready(struct wl_listener *listener, void *data)
 int
 main(int argc, char *argv[])
 {
+    char default_startup_cmd[] = "swww-daemon";
 	char *startup_cmd = NULL;
 	int c;
 
@@ -3519,6 +3520,7 @@ main(int argc, char *argv[])
         spawn( &(const Arg){.v=Autostarts[i]} );
     }
 
+    if (!startup_cmd) startup_cmd = default_startup_cmd;
 	run(startup_cmd);
 	cleanup();
 	return EXIT_SUCCESS;

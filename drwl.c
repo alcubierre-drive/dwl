@@ -4,7 +4,6 @@
 #include "plugins/colors.h"
 
 int drwl_init(void) {
-    fcft_set_scaling_filter(FCFT_SCALING_FILTER_LANCZOS3);
     return fcft_init(FCFT_LOG_COLORIZE_AUTO, 0, FCFT_LOG_CLASS_ERROR);
 }
 

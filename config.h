@@ -55,6 +55,7 @@ static const char* Autostarts[][8] = {
     { "nm-applet", NULL },
     { "blueman-applet", NULL },
     { "system-config-printer-applet", NULL },
+    { "random_wallpaper.sh", NULL },
     /*
     { "telegram-desktop", NULL },
     { "evolution", NULL },
@@ -177,6 +178,7 @@ static const char *swaylock[] = { "swaylock", "-c", "0x000000", NULL };
 static const char *docked_r[] = { "docked", "reset", NULL };
 static const char *docked_d[] = { "docked", "dock", NULL };
 static const char *docked_z[] = { "docked", "zoom", NULL };
+static const char *next_wallpaper_cmd[] = { "random_wallpaper.sh", "next", NULL };
 
 static void tagmonf( const Arg* arg ) { tagmon(arg); focusmon(arg); }
 
@@ -205,7 +207,7 @@ static const Key keys[] = {
     { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_space,      togglefloating,   {0} },
     { MODKEY,                    XKB_KEY_t,          toggleontop,      {0} },
     { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_r,          plugin_restart,   {0} },
-    /*{ MODKEY,                    XKB_KEY_w,          WLP,              {0} },*/
+    { MODKEY,                    XKB_KEY_w,          spawn,            {.v = next_wallpaper_cmd} },
 
     { MODKEY,                    XKB_KEY_n,          minimize,         {0} },
     { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_n,          unminimize,       {0} },
