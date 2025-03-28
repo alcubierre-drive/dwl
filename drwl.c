@@ -431,7 +431,7 @@ static uint32_t taskbarwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix
 
     int n_windows = w->bar->n_tagwindows;
     if (n_windows <= 0) {
-        TEXT( space, "", P->awl_colors.fg_win, P->awl_colors.bg_win_min );
+        TEXT( space, "", P->awl_colors.fg_win, (pixman_color_t){0} );
         return 0;
     }
 
