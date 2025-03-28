@@ -14,7 +14,8 @@ class TrayWindow : public Gtk::Window {
             /* gtk_layer_set_exk */
             gtk_layer_set_exclusive_zone(this->gobj(), 0);
             gtk_layer_set_margin(this->gobj(), GTK_LAYER_SHELL_EDGE_BOTTOM, -21);
-            gtk_layer_set_margin(this->gobj(), GTK_LAYER_SHELL_EDGE_RIGHT, 66);
+            gtk_layer_set_margin(this->gobj(), GTK_LAYER_SHELL_EDGE_RIGHT, 57);
+            /*gtk_layer_set_margin(this->gobj(), GTK_LAYER_SHELL_EDGE_RIGHT, 66);*/
             this->set_size_request(64,20);
             Gdk::RGBA C("#859394");
             this->override_background_color(C);

@@ -78,7 +78,8 @@ static const uint32_t vertical_padding = 2;
 static const uint32_t buffer_scale = 2;
 static const char fontstr[] = "monospace:size=10";
 static char default_layout_name[] = "[T]";
-static const char* tags_names[] = { "1", "2", "3", "4", "5", "6", "7", "✉ 8", "✉ 9" };
+// ✉
+static const char* tags_names[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9" };
 static const uint32_t n_tags_names = 9;
 
 awlb_color_t barcolors = {
