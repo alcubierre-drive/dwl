@@ -39,8 +39,8 @@ static const Rule rules[] = {
     { "python3",          "Figure",   0,            1,           -1,   0,   0 },
     { "wdisplays",        NULL,       0,            1,           -1,   0,   0 },
 
-    /*{ "zoom",             NULL,       0,            1,           -1,   0,   0 },*/
-    /*{ "Zoom",             NULL,       0,            1,           -1,   0,   0 },*/
+    { "zoom",             NULL,       0,            1,           -1,   0,   0 },
+    { "Zoom",             NULL,       0,            1,           -1,   0,   0 },
 
     { "org.gnome.Calendar",NULL,      0,            1,           -1, 400, 500 },
 
