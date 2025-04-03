@@ -120,6 +120,7 @@ static void startdrag(struct wl_listener *listener, void *data);
 static void tag(const Arg *arg);
 static void tagmon(const Arg *arg);
 static void tile(Monitor *m);
+static void togglebar_mon(Monitor* m);
 static void togglebar(const Arg *arg);
 static void togglefloating(const Arg *arg);
 static void togglefullscreen(const Arg *arg);
@@ -762,6 +763,7 @@ cleanuplisteners(void)
 void
 closemon(Monitor *m)
 {
+    if (m && m->drw && m->showbar) { togglebar_mon(m); m->closedbar=1; }
 	/* update selmon if needed and
 	 * move closed monitor's clients to the focused one */
 	Client *c;
@@ -2952,12 +2954,11 @@ tile(Monitor *m)
 	}
 }
 
-void
-togglebar(const Arg *arg)
-{
-	selmon->showbar = !selmon->showbar;
-	wlr_scene_node_set_enabled(&selmon->scene_buffer->node, selmon->showbar);
-	arrangelayers(selmon);
+void togglebar(const Arg *arg) { togglebar_mon(selmon); }
+void togglebar_mon(Monitor* m) {
+    m->showbar = !m->showbar;
+    wlr_scene_node_set_enabled(&m->scene_buffer->node, m->showbar);
+    arrangelayers(m);
 }
 
 void
@@ -3151,6 +3152,11 @@ updatemons(struct wl_listener *listener, void *data)
 
 	wl_list_for_each(m, &mons, link) {
 		if (!m->wlr_output->enabled) continue;
+        if (m->closedbar) {
+            m->showbar = 0;
+            m->closedbar = 0;
+            togglebar_mon(m);
+        }
 		updatebar(m), drawbar(m);
 	}
 

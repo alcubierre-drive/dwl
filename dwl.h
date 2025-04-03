@@ -234,7 +234,8 @@ struct Monitor {
 	float mfact;
 	int gamma_lut_changed;
 	int nmaster;
-	int showbar;
+	uint8_t showbar:1;
+    uint8_t closedbar:1;
 	char ltsymbol[16];
 	int asleep;
 	Drwl *drw;

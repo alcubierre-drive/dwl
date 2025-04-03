@@ -55,7 +55,7 @@ static const char* Autostarts[][8] = {
     { "nm-applet", NULL },
     { "blueman-applet", NULL },
     { "system-config-printer-applet", NULL },
-    { "random_wallpaper.sh", NULL },
+    { "random_wallpaper.sh", "-s", NULL },
     /*
     { "telegram-desktop", NULL },
     { "evolution", NULL },
@@ -172,13 +172,15 @@ static const char *volp[] = { "pactl", "set-sink-volume", "@DEFAULT_SINK@", "+5%
 static const char *volm[] = { "pactl", "set-sink-volume", "@DEFAULT_SINK@", "-5%", NULL };
 static const char *volt[] = { "pactl", "set-sink-mute", "@DEFAULT_SINK@", "toggle", NULL };
 static const char *volT[] = { "pactl", "set-source-mute", "@DEFAULT_SOURCE@", "toggle", NULL };
+static const char *speakerT[] = { "pulse_port_switch", NULL };
 static const char *grimslurp[] = { "grim_slurp", NULL };
 static const char *wdisplays[] = { "wdisplays", NULL };
 static const char *swaylock[] = { "swaylock", "-c", "0x000000", NULL };
 static const char *docked_r[] = { "docked", "reset", NULL };
 static const char *docked_d[] = { "docked", "dock", NULL };
 static const char *docked_z[] = { "docked", "zoom", NULL };
-static const char *next_wallpaper_cmd[] = { "random_wallpaper.sh", "next", NULL };
+static const char *rand_wallpaper_cmd[] = { "random_wallpaper.sh", "-r", NULL };
+static const char *next_wallpaper_cmd[] = { "random_wallpaper.sh", "-n", NULL };
 
 static void tagmonf( const Arg* arg ) { tagmon(arg); focusmon(arg); }
 
@@ -207,7 +209,8 @@ static const Key keys[] = {
     { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_space,      togglefloating,   {0} },
     { MODKEY,                    XKB_KEY_t,          toggleontop,      {0} },
     { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_r,          plugin_restart,   {0} },
-    { MODKEY,                    XKB_KEY_w,          spawn,            {.v = next_wallpaper_cmd} },
+    { MODKEY,                    XKB_KEY_w,          spawn,            {.v = rand_wallpaper_cmd} },
+    { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_W,          spawn,            {.v = next_wallpaper_cmd} },
 
     { MODKEY,                    XKB_KEY_n,          minimize,         {0} },
     { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_n,          unminimize,       {0} },
@@ -218,6 +221,7 @@ static const Key keys[] = {
     { 0, XKB_KEY_XF86AudioLowerVolume, spawn, {.v=volm} },
     { 0, XKB_KEY_XF86AudioMute,        spawn, {.v=volt} },
     { 0, XKB_KEY_XF86AudioMicMute,     spawn, {.v=volT} },
+    { MODKEY,                    XKB_KEY_F1,         spawn,            {.v = speakerT} },
     { 0, XKB_KEY_Print,                spawn, {.v=grimslurp} },
     { MODKEY, XKB_KEY_d,               spawn, {.v=wdisplays} },
     { 0, XKB_KEY_XF86Display,          spawn, {.v=wdisplays} },
