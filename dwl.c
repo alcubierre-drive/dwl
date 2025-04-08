@@ -50,7 +50,8 @@ static void destroynotify(struct wl_listener *listener, void *data);
 static void destroypointerconstraint(struct wl_listener *listener, void *data);
 static void destroysessionlock(struct wl_listener *listener, void *data);
 static void destroykeyboardgroup(struct wl_listener *listener, void *data);
-static Monitor *dirtomon(enum wlr_direction dir);
+// static Monitor *dirtomon(enum wlr_direction dir);
+static Monitor *nextmon(int add);
 static void drawbar(Monitor *m);
 static void drawbars(void);
 
@@ -1366,21 +1367,21 @@ destroykeyboardgroup(struct wl_listener *listener, void *data)
 	free(group);
 }
 
-Monitor *
-dirtomon(enum wlr_direction dir)
-{
-	struct wlr_output *next;
-	if (!wlr_output_layout_get(output_layout, selmon->wlr_output))
-		return selmon;
-	if ((next = wlr_output_layout_adjacent_output(output_layout,
-			dir, selmon->wlr_output, selmon->m.x, selmon->m.y)))
-		return next->data;
-	if ((next = wlr_output_layout_farthest_output(output_layout,
-			dir ^ (WLR_DIRECTION_LEFT|WLR_DIRECTION_RIGHT),
-			selmon->wlr_output, selmon->m.x, selmon->m.y)))
-		return next->data;
-	return selmon;
-}
+// Monitor *
+// dirtomon(enum wlr_direction dir)
+// {
+// 	struct wlr_output *next;
+// 	if (!wlr_output_layout_get(output_layout, selmon->wlr_output))
+// 		return selmon;
+// 	if ((next = wlr_output_layout_adjacent_output(output_layout,
+// 			dir, selmon->wlr_output, selmon->m.x, selmon->m.y)))
+// 		return next->data;
+// 	if ((next = wlr_output_layout_farthest_output(output_layout,
+// 			dir ^ (WLR_DIRECTION_LEFT|WLR_DIRECTION_RIGHT),
+// 			selmon->wlr_output, selmon->m.x, selmon->m.y)))
+// 		return next->data;
+// 	return selmon;
+// }
 
 void
 drawbar(Monitor *m)
@@ -1562,16 +1563,36 @@ focusclient(Client *c, int lift)
 	client_activate_surface(client_surface(c), 1);
 }
 
+Monitor *
+nextmon(int add) {
+    int i = 0, i_sel = 1;
+
+    int nmons = wl_list_length(&mons);
+    Monitor* pmons[MAX(nmons,1)];
+
+    Monitor* m = NULL;
+    wl_list_for_each(m, &mons, link) {
+        if (m->wlr_output->enabled) {
+            pmons[i] = m;
+            if (m == selmon) i_sel = i;
+            i++;
+        }
+    }
+
+    if (!i) return NULL;
+    return pmons[(i_sel + add + i)%i];
+}
+
 void
 focusmon(const Arg *arg)
 {
-	int i = 0, nmons = wl_list_length(&mons);
-	if (nmons) {
-		do /* don't switch to disabled mons */
-			selmon = dirtomon(arg->i);
-		while (!selmon->wlr_output->enabled && i++ < nmons);
-	}
-	focusclient(focustop(selmon), 1);
+	// int i = 0, nmons = wl_list_length(&mons);
+	// if (nmons) {
+	// 	do /* don't switch to disabled mons */
+	// 		selmon = dirtomon(arg->i);
+	// 	while (!selmon->wlr_output->enabled && i++ < nmons);
+	// }
+	focusclient(focustop(selmon = nextmon(arg->i)), 1);
 }
 
 void
@@ -2917,7 +2938,8 @@ tagmon(const Arg *arg)
 {
 	Client *sel = focustop(selmon);
 	if (sel)
-		setmon(sel, dirtomon(arg->i), 0);
+		// setmon(sel, dirtomon(arg->i), 0);
+		setmon(sel, nextmon(arg->i), 0);
 }
 
 void
