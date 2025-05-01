@@ -60,8 +60,8 @@ static const char* Autostarts[][8] = {
     { "telegram-desktop", NULL },
     { "evolution", NULL },
     */
-    { "systemd-lock-handler", "--", "swaylock", "-c", "0x000000", NULL },
 };
+static const char* ScreenLockService[] = { "systemd-lock-handler", "--", "swaylock", "-c", "0x000000", NULL };
 
 /* layout(s) */
 static const Layout layouts[] = {
@@ -181,6 +181,8 @@ static const char *docked_d[] = { "docked", "dock", NULL };
 static const char *docked_z[] = { "docked", "zoom", NULL };
 static const char *rand_wallpaper_cmd[] = { "random_wallpaper.sh", "-r", NULL };
 static const char *next_wallpaper_cmd[] = { "random_wallpaper.sh", "-n", NULL };
+static const char *notification_action[] = { "fnottctl", "actions", NULL };
+static const char *garfield[] = { "garfield", NULL };
 
 static void tagmonf( const Arg* arg ) { tagmon(arg); focusmon(arg); }
 
@@ -211,6 +213,8 @@ static const Key keys[] = {
     { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_r,          plugin_restart,   {0} },
     { MODKEY,                    XKB_KEY_w,          spawn,            {.v = rand_wallpaper_cmd} },
     { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_W,          spawn,            {.v = next_wallpaper_cmd} },
+    { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_N,          spawn,            {.v = notification_action} },
+    { MODKEY,                    XKB_KEY_g,          spawn,            {.v = garfield} },
 
     { MODKEY,                    XKB_KEY_n,          minimize,         {0} },
     { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_n,          unminimize,       {0} },

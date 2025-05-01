@@ -2481,6 +2481,11 @@ run(char *startup_cmd)
 		}
 	}
 
+    // autostart goes in here
+    for (unsigned i=0; i<LENGTH(Autostarts); ++i) {
+        spawn( &(const Arg){.v=Autostarts[i]} );
+    }
+
 	/* Mark stdout as non-blocking to avoid people who does not close stdin
 	 * nor consumes it in their startup script getting dwl frozen */
 	if (fd_set_nonblock(STDOUT_FILENO) < 0)
@@ -3544,11 +3549,7 @@ main(int argc, char *argv[])
 		die("XDG_RUNTIME_DIR must be set");
 
 	setup();
-
-    // autostart goes in here
-    for (unsigned i=0; i<LENGTH(Autostarts); ++i) {
-        spawn( &(const Arg){.v=Autostarts[i]} );
-    }
+    spawn( &(const Arg){.v=ScreenLockService} );
 
     if (!startup_cmd) startup_cmd = default_startup_cmd;
 	run(startup_cmd);
