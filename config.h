@@ -35,7 +35,7 @@ static int log_level = WLR_ERROR;
 /* NOTE: ALWAYS keep a rule declared even if you don't use rules (e.g leave at least one example) */
 static const Rule rules[] = {
 	/* app_id             title       tags mask     isfloating   monitor w h*/
-	/* examples: */
+    { NULL,               "nomacs_garfield", 0,     1,           -1,   0,   0 },
     { "python3",          "Figure",   0,            1,           -1,   0,   0 },
     { "wdisplays",        NULL,       0,            1,           -1,   0,   0 },
 
@@ -66,11 +66,11 @@ static const char* ScreenLockService[] = { "systemd-lock-handler", "--", "swaylo
 /* layout(s) */
 static const Layout layouts[] = {
 	/* symbol     arrange function */
-	{ "[T]",      tile },
-	{ "[F]",      NULL },    /* no layout function means floating behavior */
+	{ "[|]",      tile },
+	{ "[·]",      NULL },    /* no layout function means floating behavior */
 	{ "[M]",      monocle },
-	{ "[S]",      gaplessgrid },
-    { "[B]",      bstack },
+	{ "[×]",      gaplessgrid },
+    { "[–]",      bstack },
 };
 static int layout_idx = 0;
 
