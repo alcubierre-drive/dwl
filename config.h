@@ -55,11 +55,9 @@ static const char* Autostarts[][8] = {
     { "nm-applet", NULL },
     { "blueman-applet", NULL },
     { "system-config-printer-applet", NULL },
-    { "random_wallpaper.sh", "-s", NULL },
-    /*
-    { "telegram-desktop", NULL },
-    { "evolution", NULL },
-    */
+    // { "random_wallpaper.sh", "-s", NULL },
+    // { "telegram-desktop", NULL },
+    // { "evolution", NULL },
 };
 static const char* ScreenLockService[] = { "systemd-lock-handler", "--", "swaylock", "-c", "0x000000", NULL };
 
