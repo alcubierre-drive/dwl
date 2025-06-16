@@ -291,7 +291,6 @@ applyrules(Client *c)
 	const Rule *r;
 	Monitor *mon = selmon, *m;
 
-	c->isfloating = client_is_float_type(c);
 	appid = client_get_appid(c);
 	title = client_get_title(c);
     // TODO
@@ -321,6 +320,8 @@ applyrules(Client *c)
 			}
 		}
 	}
+
+	c->isfloating |= client_is_float_type(c);
 	setmon(c, mon, newtags);
 	if (apply_resize) resize(c, rbox, 1);
 }
@@ -682,8 +683,8 @@ cleanup(void)
 
 	destroykeyboardgroup(&kb_group->destroy, NULL);
 
-	/* If it's not destroyed manually it will cause a use-after-free of wlr_seat.
-	 * Destroy it until it's fixed in the wlroots side */
+	/* If it's not destroyed manually, it will cause a use-after-free of wlr_seat.
+	 * Destroy it until it's fixed on the wlroots side */
 	wlr_backend_destroy(backend);
 
 	wl_display_destroy(dpy);
@@ -713,6 +714,8 @@ cleanupmon(struct wl_listener *listener, void *data)
 	wl_list_remove(&m->frame.link);
 	wl_list_remove(&m->link);
 	wl_list_remove(&m->request_state.link);
+	if (m->lock_surface)
+		destroylocksurface(&m->destroy_lock_surface, NULL);
 	m->wlr_output->data = NULL;
 	wlr_output_layout_remove(output_layout, m->wlr_output);
 	wlr_scene_output_destroy(m->scene_output);
@@ -835,7 +838,7 @@ commitnotify(struct wl_listener *listener, void *data)
 		/*
 		 * Get the monitor this client will be rendered on
 		 * Note that if the user set a rule in which the client is placed on
-		 * a different monitor based on its title this will likely select
+		 * a different monitor based on its title, this will likely select
 		 * a wrong monitor.
 		 */
 		applyrules(c);
@@ -1199,7 +1202,7 @@ cursorconstrain(struct wlr_pointer_constraint_v1 *constraint)
 void
 cursorframe(struct wl_listener *listener, void *data)
 {
-	/* This event is forwarded by the cursor when a pointer emits an frame
+	/* This event is forwarded by the cursor when a pointer emits a frame
 	 * event. Frame events are sent after regular pointer events to group
 	 * multiple events together. For instance, two axis events may happen at the
 	 * same time, in which case a frame event won't be sent in between. */
@@ -2025,8 +2028,8 @@ mapnotify(struct wl_listener *listener, void *data)
 
 	/* Set initial monitor, tags, floating status, and focus:
 	 * we always consider floating, clients that have parent and thus
-	 * we set the same tags and monitor than its parent, if not
-	 * try to apply rules for them */
+	 * we set the same tags and monitor as its parent.
+	 * If there is no parent, apply rules */
 	if ((p = client_get_parent(c))) {
 		c->isfloating = 1;
 		setmon(c, p->mon, p->tags);
@@ -2086,8 +2089,7 @@ motionabsolute(struct wl_listener *listener, void *data)
 	 * motion event, from 0..1 on each axis. This happens, for example, when
 	 * wlroots is running under a Wayland window rather than KMS+DRM, and you
 	 * move the mouse over the window. You could enter the window from any edge,
-	 * so we have to warp the mouse there. There is also some hardware which
-	 * emits these events. */
+	 * so we have to warp the mouse there. Also, some hardware emits these events. */
 	struct wlr_pointer_motion_absolute_event *event = data;
 	double lx, ly, dx, dy;
 
@@ -2209,7 +2211,7 @@ moveresize(const Arg *arg)
 	case CurMove:
 		grabcx = (int)round(cursor->x) - grabc->geom.x;
 		grabcy = (int)round(cursor->y) - grabc->geom.y;
-		wlr_cursor_set_xcursor(cursor, cursor_mgr, "fleur");
+		wlr_cursor_set_xcursor(cursor, cursor_mgr, "all-scroll");
 		break;
 	case CurResize:
 		/* Doesn't work for X11 output - the next absolute motion event
@@ -2272,9 +2274,9 @@ apply_or_test:
 		ok &= test ? wlr_output_test_state(wlr_output, &state)
 				: wlr_output_commit_state(wlr_output, &state);
 
-		/* Don't move monitors if position wouldn't change, this to avoid
-		* wlroots marking the output as manually configured.
-		* wlr_output_layout_add does not like disabled outputs */
+		/* Don't move monitors if position wouldn't change. This avoids
+		 * wlroots marking the output as manually configured.
+		 * wlr_output_layout_add does not like disabled outputs */
 		if (!test && wlr_output->enabled && (m->m.x != config_head->state.x || m->m.y != config_head->state.y))
 			wlr_output_layout_add(output_layout, wlr_output,
 					config_head->state.x, config_head->state.y);
@@ -2486,8 +2488,10 @@ run(char *startup_cmd)
         spawn( &(const Arg){.v=Autostarts[i]} );
     }
 
-	/* Mark stdout as non-blocking to avoid people who does not close stdin
-	 * nor consumes it in their startup script getting dwl frozen */
+	/* Mark stdout as non-blocking to avoid the startup script
+	 * causing dwl to freeze when a user neither closes stdin
+	 * nor consumes standard input in his startup script */
+
 	if (fd_set_nonblock(STDOUT_FILENO) < 0)
 		close(STDOUT_FILENO);
 
@@ -2498,7 +2502,7 @@ run(char *startup_cmd)
 	selmon = xytomon(cursor->x, cursor->y);
 
 	/* TODO hack to get cursor to display in its initial location (100, 100)
-	 * instead of (0, 0) and then jumping. still may not be fully
+	 * instead of (0, 0) and then jumping. Still may not be fully
 	 * initialized, as the image/coordinates are not transformed for the
 	 * monitor when displayed here */
 	wlr_cursor_warp_closest(cursor, NULL, cursor->x, cursor->y);
@@ -2523,7 +2527,7 @@ setcursor(struct wl_listener *listener, void *data)
 	 * event, which will result in the client requesting set the cursor surface */
 	if (cursor_mode != CurNormal && cursor_mode != CurPressed)
 		return;
-	/* This can be sent by any client, so we check to make sure this one is
+	/* This can be sent by any client, so we check to make sure this one
 	 * actually has pointer focus first. If so, we can tell the cursor to
 	 * use the provided surface as the cursor image. It will set the
 	 * hardware cursor on the output that it's currently on and continue to
@@ -2539,7 +2543,7 @@ setcursorshape(struct wl_listener *listener, void *data)
 	struct wlr_cursor_shape_manager_v1_request_set_shape_event *event = data;
 	if (cursor_mode != CurNormal && cursor_mode != CurPressed)
 		return;
-	/* This can be sent by any client, so we check to make sure this one is
+	/* This can be sent by any client, so we check to make sure this one
 	 * actually has pointer focus first. If so, we can tell the cursor to
 	 * use the provided cursor shape. */
 	if (event->seat_client == seat->pointer_state.focused_client)
@@ -2653,7 +2657,7 @@ setpsel(struct wl_listener *listener, void *data)
 {
 	/* This event is raised by the seat when a client wants to set the selection,
 	 * usually when the user copies something. wlroots allows compositors to
-	 * ignore such requests if they so choose, but in dwl we always honor
+	 * ignore such requests if they so choose, but in dwl we always honor them
 	 */
 	struct wlr_seat_request_set_primary_selection_event *event = data;
 	wlr_seat_set_primary_selection(seat, event->source, event->serial);
@@ -2664,7 +2668,7 @@ setsel(struct wl_listener *listener, void *data)
 {
 	/* This event is raised by the seat when a client wants to set the selection,
 	 * usually when the user copies something. wlroots allows compositors to
-	 * ignore such requests if they so choose, but in dwl we always honor
+	 * ignore such requests if they so choose, but in dwl we always honor them
 	 */
 	struct wlr_seat_request_set_selection_event *event = data;
 	wlr_seat_set_selection(seat, event->source, event->serial);
@@ -2712,9 +2716,9 @@ setup(void)
 	wl_signal_add(&drw->events.lost, &gpu_reset);
 
 	/* Create shm, drm and linux_dmabuf interfaces by ourselves.
-	 * The simplest way is call:
+	 * The simplest way is to call:
 	 *      wlr_renderer_init_wl_display(drw);
-	 * but we need to create manually the linux_dmabuf interface to integrate it
+	 * but we need to create the linux_dmabuf interface manually to integrate it
 	 * with wlr_scene. */
 	wlr_renderer_init_wl_shm(drw, dpy);
 
@@ -2763,7 +2767,7 @@ setup(void)
 	power_mgr = wlr_output_power_manager_v1_create(dpy);
 	wl_signal_add(&power_mgr->events.set_mode, &output_power_mgr_set_mode);
 
-	/* Creates an output layout, which a wlroots utility for working with an
+	/* Creates an output layout, which is a wlroots utility for working with an
 	 * arrangement of screens in a physical layout. */
 	output_layout = wlr_output_layout_create(dpy);
 	wl_signal_add(&output_layout->events.change, &layout_change);
