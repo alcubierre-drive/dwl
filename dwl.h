@@ -72,6 +72,9 @@
 #include <xcb/xcb_icccm.h>
 #endif
 
+// stupid SINCE_VERSION
+#include "xdg-shell-protocol.h"
+
 /* macros */
 #ifndef MAX
 #define MAX(A, B)               ((A) > (B) ? (A) : (B))
