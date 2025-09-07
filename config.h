@@ -11,7 +11,7 @@ static const int showbar                   = 1; /* 0 means no bar */
 static const int topbar                    = 0; /* 0 means bottom bar */
 static const char *fonts[]                 = {"monospace:size=10"};
 static const float rootcolor[]             = COLOR(0x000000ff);
-static const float locked_color[]          = {0.2f, 0.15f, 0.15f, 0.9f};
+static const float locked_color[]          = {0.18f, 0.14f, 0.13f, 0.9f};
 /* This conforms to the xdg-protocol. Set the alpha to zero to restore the old behavior */
 static const float fullscreen_bg[]         = {0.1f, 0.1f, 0.1f, 1.0f}; /* You can also use glsl colors */
 
