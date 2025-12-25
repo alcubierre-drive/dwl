@@ -20,8 +20,9 @@ PLUGINS_SRC := $(wildcard plugins/*.c)
 PLUGINS_OBJ := $(patsubst %.c,%.o,$(PLUGINS_SRC))
 
 all: dwl
-dwl: dwl.o util.o drwl.o plugins.o $(PLUGINS_OBJ)
-	$(CC) dwl.o util.o drwl.o plugins.o $(PLUGINS_OBJ) $(DWLCFLAGS) $(LDFLAGS) $(LDLIBS) -o $@
+dwl: dwl.o dwl-log.o util.o drwl.o plugins.o $(PLUGINS_OBJ)
+	rm -f $@
+	$(CC) dwl.o dwl-log.o util.o drwl.o plugins.o $(PLUGINS_OBJ) $(DWLCFLAGS) $(LDFLAGS) $(LDLIBS) -o $@
 dwl.o: dwl.c client.h config.h drwl.h config.mk cursor-shape-v1-protocol.h \
 	pointer-constraints-unstable-v1-protocol.h wlr-layer-shell-unstable-v1-protocol.h \
 	wlr-output-power-management-unstable-v1-protocol.h xdg-shell-protocol.h

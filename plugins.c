@@ -161,12 +161,12 @@ static void awl_plugin_start( awl_plugin_data_t* p ) {
     p->stats = start_stats_thread( 16, 16, 16, 1 );
 
     p->temp = calloc(1,sizeof(awl_temperature_t));
-        // setup of first thermal zone
-        strcpy( p->temp->f_files[p->temp->f_ntemps], "/sys/class/thermal/thermal_zone9/temp" );
-        strcpy( p->temp->f_labels[p->temp->f_ntemps], "" );
-        p->temp->f_t_max[p->temp->f_ntemps] = 80;
-        p->temp->f_t_min[p->temp->f_ntemps++] = 40;
-        // here could go another thermal zone
+    // setup of first thermal zone
+    strcpy( p->temp->f_files[p->temp->f_ntemps], "/sys/class/thermal/thermal_zone0/temp" );
+    strcpy( p->temp->f_labels[p->temp->f_ntemps], "" );
+    p->temp->f_t_max[p->temp->f_ntemps] = 90;
+    p->temp->f_t_min[p->temp->f_ntemps++] = 40;
+    // here could go another thermal zone
     start_temp_thread(p->temp, 1);
     p->temp_color = &temp_color;
 

@@ -1,4 +1,5 @@
 #include "dwl.h"
+#include "dwl-log.h"
 #include "util.h"
 #include "drwl.h"
 #include "plugins.h"
@@ -123,6 +124,7 @@ static void tagmon(const Arg *arg);
 static void tile(Monitor *m);
 static void togglebar_mon(Monitor* m);
 static void togglebar(const Arg *arg);
+static void togglebw(const Arg *arg);
 static void togglefloating(const Arg *arg);
 static void togglefullscreen(const Arg *arg);
 static void toggletag(const Arg *arg);
@@ -150,13 +152,18 @@ static void maximize(const Arg* arg);
 
 /* variables */
 static pid_t child_pid = -1;
-static int locked;
+
+static pid_t Autostarted_pids[256] = {0};
+static int Autostarted_pids_sz = 0;
+
+static int locked = 0;
 static void *exclusive_focus;
 static struct wl_display *dpy;
 static struct wl_event_loop *event_loop;
 static struct wlr_backend *backend;
 static struct wlr_scene *scene;
 static struct wlr_scene_tree *layers[NUM_LAYERS];
+static struct wlr_scene_optimized_blur *blur;
 static struct wlr_scene_tree *drag_icon;
 /* Map from ZWLR_LAYER_SHELL_* constants to Lyr* enum */
 static const int layermap[] = { LyrBg, LyrBottom, LyrTop, LyrOverlay };
@@ -293,8 +300,7 @@ applyrules(Client *c)
 
 	appid = client_get_appid(c);
 	title = client_get_title(c);
-    // TODO
-    // printf( "SPAWN APPID '%s' @TITLE '%s'\n", appid, title );
+    logprintf( "SPAWN APPID '%s' @TITLE '%s'\n", appid, title );
 	int apply_resize = 0;
 	struct wlr_box rbox;
 
@@ -384,6 +390,10 @@ arrangelayer(Monitor *m, struct wl_list *list, struct wlr_box *usable_area, int 
 
 		wlr_scene_layer_surface_v1_configure(l->scene_layer, &full_area, usable_area);
 		wlr_scene_node_set_position(&l->popups->node, l->scene->node.x, l->scene->node.y);
+        if (l->is_notification) {
+            // TODO
+            logprintf( "in arrangelayer of a notification… (%p)\n", l->popups );
+        }
 	}
 }
 
@@ -976,6 +986,7 @@ createlayersurface(struct wl_listener *listener, void *data)
 	}
 
 	l = layer_surface->data = ecalloc(1, sizeof(*l));
+    l->is_notification = !strcmp(layer_surface->namespace, "notifications");
 	l->type = LayerShell;
 	LISTEN(&surface->events.commit, &l->surface_commit, commitlayersurfacenotify);
 	LISTEN(&surface->events.unmap, &l->unmap, unmaplayersurfacenotify);
@@ -985,6 +996,7 @@ createlayersurface(struct wl_listener *listener, void *data)
 	l->mon = layer_surface->output->data;
 	l->scene_layer = wlr_scene_layer_surface_v1_create(scene_layer, layer_surface);
 	l->scene = l->scene_layer->tree;
+
 	l->popups = surface->data = wlr_scene_tree_create(layer_surface->current.layer
 			< ZWLR_LAYER_SHELL_V1_LAYER_TOP ? layers[LyrTop] : scene_layer);
 	l->scene->node.data = l->popups->node.data = l;
@@ -2485,7 +2497,7 @@ run(char *startup_cmd)
 
     // autostart goes in here
     for (unsigned i=0; i<LENGTH(Autostarts); ++i) {
-        spawn( &(const Arg){.v=Autostarts[i]} );
+        Autostarted_pids[Autostarted_pids_sz++] = spawn_pid( &(const Arg){.v=Autostarts[i]} );
     }
 
 	/* Mark stdout as non-blocking to avoid the startup script
@@ -2702,8 +2714,10 @@ setup(void)
 	/* Initialize the scene graph used to lay out windows */
 	scene = wlr_scene_create();
 	root_bg = wlr_scene_rect_create(&scene->tree, 0, 0, rootcolor);
-	for (i = 0; i < NUM_LAYERS; i++)
+	for (i = 0; i < NUM_LAYERS; i++) {
 		layers[i] = wlr_scene_tree_create(&scene->tree);
+        if (i == LyrBg) blur = wlr_scene_optimized_blur_create(&scene->tree, 0, 0);
+    }
 	drag_icon = wlr_scene_tree_create(&scene->tree);
 	wlr_scene_node_place_below(&drag_icon->node, &layers[LyrBlock]->node);
 
@@ -2711,7 +2725,10 @@ setup(void)
 	 * can also specify a renderer using the WLR_RENDERER env var.
 	 * The renderer is responsible for defining the various pixel formats it
 	 * supports for shared memory, this configures that for clients. */
-	if (!(drw = wlr_renderer_autocreate(backend)))
+
+    // TODO this is for scenefx
+	// if (!(drw = wlr_renderer_autocreate(backend)))
+	if (!(drw = fx_renderer_create(backend)))
 		die("couldn't create renderer");
 	wl_signal_add(&drw->events.lost, &gpu_reset);
 
@@ -2804,6 +2821,13 @@ setup(void)
 	session_lock_mgr = wlr_session_lock_manager_v1_create(dpy);
 	wl_signal_add(&session_lock_mgr->events.new_lock, &new_session_lock);
 	locked_bg = wlr_scene_rect_create(layers[LyrBlock], sgeom.width, sgeom.height, locked_color);
+	wlr_scene_optimized_blur_set_size(blur, sgeom.width, sgeom.height);
+    if (locked_blur) {
+        wlr_scene_rect_set_backdrop_blur( locked_bg, 1 );
+        wlr_scene_rect_set_backdrop_blur_optimized( locked_bg, 0 );
+        wlr_scene_rect_set_backdrop_blur_strength( locked_bg, locked_blur_config[0] );
+        wlr_scene_rect_set_backdrop_blur_alpha( locked_bg, locked_blur_config[1] );
+    }
 	wlr_scene_node_set_enabled(&locked_bg->node, 0);
 
 	/* Use decoration protocols to negotiate server-side decorations */
@@ -2906,17 +2930,23 @@ setup(void)
 #endif
 }
 
-void
-spawn(const Arg *arg)
+pid_t
+spawn_pid(const Arg *arg)
 {
-	if (fork() == 0) {
+    pid_t pid = fork();
+	if (pid == 0) {
 		close(STDIN_FILENO);
 		dup2(STDERR_FILENO, STDOUT_FILENO);
 		setsid();
 		execvp(((char **)arg->v)[0], (char **)arg->v);
 		die("dwl: execvp %s failed:", ((char **)arg->v)[0]);
+		return 0;
+	} else {
+		return pid;
 	}
 }
+
+void spawn(const Arg *arg) { spawn_pid(arg); }
 
 void
 startdrag(struct wl_listener *listener, void *data)
@@ -2990,6 +3020,16 @@ void togglebar_mon(Monitor* m) {
     m->showbar = !m->showbar;
     wlr_scene_node_set_enabled(&m->scene_buffer->node, m->showbar);
     arrangelayers(m);
+}
+
+void
+togglebw(const Arg *arg)
+{
+    Client* sel = focustop(selmon);
+    if (sel && !sel->isfullscreen) {
+        sel->bw = sel->bw ? 0 : borderpx;
+        arrange(selmon);
+    }
 }
 
 void
@@ -3128,6 +3168,7 @@ updatemons(struct wl_listener *listener, void *data)
 	/* Make sure the clients are hidden when dwl is locked */
 	wlr_scene_node_set_position(&locked_bg->node, sgeom.x, sgeom.y);
 	wlr_scene_rect_set_size(locked_bg, sgeom.width, sgeom.height);
+	wlr_scene_optimized_blur_set_size(blur, sgeom.width, sgeom.height);
 
 	wl_list_for_each(m, &mons, link) {
 		if (!m->wlr_output->enabled)
@@ -3553,11 +3594,16 @@ main(int argc, char *argv[])
 		die("XDG_RUNTIME_DIR must be set");
 
 	setup();
-    spawn( &(const Arg){.v=ScreenLockService} );
+    if (ScreenLockServiceAtStart)
+        Autostarted_pids[Autostarted_pids_sz++] = spawn_pid( &(const Arg){.v=ScreenLockService} );
 
-    if (!startup_cmd) startup_cmd = default_startup_cmd;
+    if (SwwwAtStart && !startup_cmd) startup_cmd = default_startup_cmd;
 	run(startup_cmd);
 	cleanup();
+    for (int i=0; i<Autostarted_pids_sz; ++i) {
+        kill(-Autostarted_pids[i], SIGTERM);
+		waitpid(Autostarted_pids[i], NULL, 0);
+    }
 	return EXIT_SUCCESS;
 
 usage:

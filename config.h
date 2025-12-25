@@ -6,12 +6,14 @@
 /* appearance */
 static const int sloppyfocus               = 1;  /* focus follows mouse */
 static const int bypass_surface_visibility = 0;  /* 1 means idle inhibitors will disable idle tracking even if it's surface isn't visible  */
-static const unsigned int borderpx         = 2;  /* border pixel of windows */
+static const int borderpx                  = 2; /* border pixel of windows */
 static const int showbar                   = 1; /* 0 means no bar */
 static const int topbar                    = 0; /* 0 means bottom bar */
 static const char *fonts[]                 = {"monospace:size=10"};
 static const float rootcolor[]             = COLOR(0x000000ff);
-static const float locked_color[]          = {0.18f, 0.14f, 0.13f, 0.9f};
+static const float locked_color[]          = {0.05f, 0.05f, 0.05f, 0.3f};
+static const bool locked_blur              = true;
+static const float locked_blur_config[]    = {1.0 /*strength*/, 1.0 /*alpha*/};
 /* This conforms to the xdg-protocol. Set the alpha to zero to restore the old behavior */
 static const float fullscreen_bg[]         = {0.1f, 0.1f, 0.1f, 1.0f}; /* You can also use glsl colors */
 
@@ -56,11 +58,14 @@ static const char* Autostarts[][8] = {
     { "nm-applet", NULL },
     { "blueman-applet", NULL },
     { "system-config-printer-applet", NULL },
-    // { "random_wallpaper.sh", "-s", NULL },
-    // { "telegram-desktop", NULL },
-    // { "evolution", NULL },
+    { "random_wallpaper.sh", "-s", NULL },
+    { "Telegram", NULL },
+    { "evolution", NULL },
 };
-static const char* ScreenLockService[] = { "systemd-lock-handler", "--", "swaylock", "-c", "0x000000", NULL };
+static const int ScreenLockServiceAtStart = 1;
+static const int SwwwAtStart = 1;
+// static const char* ScreenLockService[] = { "systemd-lock-handler", "--", "hyprlock", NULL };
+static const char* ScreenLockService[] = { "systemd-lock-handler", "--", "swaylock", "-c", "00000000", NULL };
 
 /* layout(s) */
 static const Layout layouts[] = {
@@ -149,7 +154,7 @@ static const enum libinput_config_tap_button_map button_map = LIBINPUT_CONFIG_TA
 
 /* If you want to use the windows key for MODKEY, use WLR_MODIFIER_LOGO */
 #define MODKEY WLR_MODIFIER_LOGO
-/*#define MODKEY WLR_MODIFIER_ALT*/
+// #define MODKEY WLR_MODIFIER_ALT
 
 #define TAGKEYS(KEY,SKEY,TAG) \
 	{ MODKEY,                    KEY,            view,            {.ui = 1ul << TAG} }, \
@@ -174,7 +179,8 @@ static const char *volT[] = { "pactl", "set-source-mute", "@DEFAULT_SOURCE@", "t
 static const char *speakerT[] = { "pulse_port_switch", NULL };
 static const char *grimslurp[] = { "grim_slurp", NULL };
 static const char *wdisplays[] = { "wdisplays", NULL };
-static const char *swaylock[] = { "swaylock", "-c", "0x000000", NULL };
+// static const char *swaylock[] = { "hyprlock", NULL };
+static const char* swaylock[] = { "swaylock", "-c", "00000000", NULL };
 static const char *docked_r[] = { "docked", "reset", NULL };
 static const char *docked_d[] = { "docked", "dock", NULL };
 static const char *docked_z[] = { "docked", "zoom", NULL };
@@ -214,6 +220,7 @@ static const Key keys[] = {
     { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_W,          spawn,            {.v = next_wallpaper_cmd} },
     { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_N,          spawn,            {.v = notification_action} },
     { MODKEY,                    XKB_KEY_g,          spawn,            {.v = garfield} },
+    { MODKEY,                    XKB_KEY_b,          togglebw,         {0} },
 
     { MODKEY,                    XKB_KEY_n,          minimize,         {0} },
     { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_n,          unminimize,       {0} },

@@ -45,3 +45,7 @@ CFLAGS += -Ofast -march=native -flto
 LDFLAGS += -flto=14
 
 CFLAGS += -DUSLEEP_NOT_DEFINED
+
+DWL_LIBS := $(HOME)/Desktop/dwl-libs
+CFLAGS += -I$(DWL_LIBS)/include/scenefx-0.4
+LDFLAGS += -L$(DWL_LIBS)/lib -Wl,-rpath=$(DWL_LIBS)/lib -lscenefx-0.4

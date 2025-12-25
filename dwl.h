@@ -14,10 +14,15 @@
 #include <time.h>
 #include <unistd.h>
 #include <wayland-server-core.h>
+
+#include <scenefx/render/fx_renderer/fx_renderer.h>
+#include <scenefx/types/fx/clipped_region.h>
+#include <scenefx/types/fx/corner_location.h>
+#include <scenefx/types/wlr_scene.h>
+
 #include <wlr/backend.h>
 #include <wlr/backend/libinput.h>
 #include <wlr/render/allocator.h>
-#include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_alpha_modifier_v1.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
@@ -47,7 +52,7 @@
 #include <wlr/types/wlr_primary_selection.h>
 #include <wlr/types/wlr_primary_selection_v1.h>
 #include <wlr/types/wlr_relative_pointer_v1.h>
-#include <wlr/types/wlr_scene.h>
+#include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_screencopy_v1.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_server_decoration.h>
@@ -196,7 +201,7 @@ typedef struct {
 	struct wlr_scene_tree *popups;
 	struct wlr_scene_layer_surface_v1 *scene_layer;
 	struct wl_list link;
-	int mapped;
+	short mapped, is_notification;
 	struct wlr_layer_surface_v1 *layer_surface;
 
 	struct wl_listener destroy;
@@ -290,6 +295,7 @@ void cycle_layout(const Arg* arg);
 void view(const Arg* arg);
 void toggleview(const Arg* arg);
 void focusstack(const Arg *arg);
+pid_t spawn_pid(const Arg *arg);
 void spawn(const Arg *arg);
 
 void arrange(Monitor *m);
