@@ -173,6 +173,7 @@ static void awl_plugin_start( awl_plugin_data_t* p ) {
     p->bat = start_bat_thread(1);
     p->date = start_date_thread(1);
     p->pulse = start_pulse_thread();
+    p->backlight = start_backlight_thread(1.0);
     /*wp_init( &wp );*/
     /*AWL_PTHREAD_CREATE( &p->wp_thread, NULL, wp_thread, NULL );*/
 }
@@ -190,6 +191,7 @@ static void awl_plugin_stop( awl_plugin_data_t* p ) {
     stop_bat_thread(p->bat);
     stop_date_thread(p->date);
     stop_pulse_thread(p->pulse);
+    stop_backlight_thread(p->backlight);
 
     /*if (!pthread_cancel( p->wp_thread ))*/
     /*    pthread_join( p->wp_thread, NULL );*/

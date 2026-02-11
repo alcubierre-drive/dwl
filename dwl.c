@@ -125,6 +125,7 @@ static void tile(Monitor *m);
 static void togglebar_mon(Monitor* m);
 static void togglebar(const Arg *arg);
 static void togglebw(const Arg *arg);
+static void changebw(const Arg *arg);
 static void togglefloating(const Arg *arg);
 static void togglefullscreen(const Arg *arg);
 static void toggletag(const Arg *arg);
@@ -3033,6 +3034,16 @@ togglebw(const Arg *arg)
 }
 
 void
+changebw(const Arg *arg)
+{
+    Client* sel = focustop(selmon);
+    if (sel && !sel->isfullscreen) {
+        sel->bw += arg->i;
+        arrange(selmon);
+    }
+}
+
+void
 togglefloating(const Arg *arg)
 {
 	Client *sel = focustop(selmon);
@@ -3562,9 +3573,7 @@ xwaylandready(struct wl_listener *listener, void *data)
 
 	/* Set the default XWayland cursor to match the rest of dwl. */
 	if ((xcursor = wlr_xcursor_manager_get_xcursor(cursor_mgr, "default", 1)))
-		wlr_xwayland_set_cursor(xwayland,
-				xcursor->images[0]->buffer, xcursor->images[0]->width * 4,
-				xcursor->images[0]->width, xcursor->images[0]->height,
+		wlr_xwayland_set_cursor(xwayland, wlr_xcursor_image_get_buffer(xcursor->images[0]),
 				xcursor->images[0]->hotspot_x, xcursor->images[0]->hotspot_y);
 }
 #endif

@@ -188,6 +188,8 @@ static const char *rand_wallpaper_cmd[] = { "random_wallpaper.sh", "-r", NULL };
 static const char *next_wallpaper_cmd[] = { "random_wallpaper.sh", "-n", NULL };
 static const char *notification_action[] = { "fnottctl", "actions", NULL };
 static const char *garfield[] = { "garfield", NULL };
+static const char *backlight_tooler_disable_cmd[] = {"systemctl", "--user", "stop", "backlight-tooler.timer", NULL};
+static const char *backlight_tooler_enable_cmd[] = {"systemctl", "--user", "start", "backlight-tooler.timer", NULL};
 
 static void tagmonf( const Arg* arg ) { tagmon(arg); focusmon(arg); }
 
@@ -196,6 +198,8 @@ static const Key keys[] = {
 	/* modifier                  key                 function        argument */
 	{ MODKEY,                    XKB_KEY_p,          spawn,            {.v = menucmd} },
 	{ MODKEY,                    XKB_KEY_Return,     spawn,            {.v = termcmd} },
+    { MODKEY,                    XKB_KEY_y,          spawn,            {.v = backlight_tooler_disable_cmd } },
+    { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_Y,          spawn,            {.v = backlight_tooler_enable_cmd } },
 	{ MODKEY,                    XKB_KEY_i,          togglebar,        {0} },
 	{ MODKEY,                    XKB_KEY_j,          focusstack,       {.i = +1} },
 	{ MODKEY,                    XKB_KEY_k,          focusstack,       {.i = -1} },
@@ -221,6 +225,8 @@ static const Key keys[] = {
     { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_N,          spawn,            {.v = notification_action} },
     { MODKEY,                    XKB_KEY_g,          spawn,            {.v = garfield} },
     { MODKEY,                    XKB_KEY_b,          togglebw,         {0} },
+    { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_B,          changebw,         {.i=+1} },
+    { MODKEY|WLR_MODIFIER_SHIFT|WLR_MODIFIER_CTRL,XKB_KEY_B, changebw, {.i=-1} },
 
     { MODKEY,                    XKB_KEY_n,          minimize,         {0} },
     { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_n,          unminimize,       {0} },

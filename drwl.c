@@ -32,6 +32,9 @@ static uint32_t tempwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
 static uint32_t batwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
 static uint32_t ipwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
 
+static uint32_t backlightwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
+static void backlightwidget_click( widget_t* w, uint32_t x, int button );
+
 Drwl * drwl_create(Monitor* m) {
     Drwl *drwl;
 
@@ -97,6 +100,12 @@ Drwl * drwl_create(Monitor* m) {
         .bar = drwl,
         .draw = &ipwidget_draw,
         .width = 50,
+    };
+    drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
+        .bar = drwl,
+        .draw = &backlightwidget_draw,
+        .callback_click = &backlightwidget_click,
+        .width = 14,
     };
 
     return drwl;
@@ -750,4 +759,26 @@ static void pulsewidget_scroll( widget_t* w, uint32_t x, int amount ) {
 static void clockwidget_click( widget_t* w, uint32_t x, int button ) {
     (void)w; (void)x; (void)button;
     spawn( &(Arg){.v=(const char*[]){"gnome-calendar", NULL}} );
+}
+
+static uint32_t backlightwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {
+    Drwl* bar = w->bar;
+    awl_plugin_data_t* P = awl_plugin_get();
+    if (!P) return 0;
+    if (!P->backlight) return 0;
+
+    const int enabled = atomic_load( &P->backlight->enabled );
+    char text[8] = {0};
+    strcpy( text, enabled?"BR":"DK" );
+    uint32_t ww = TEXTW( bar->m, text );
+    TEXT( ww, text, enabled?P->awl_colors.fg_status:color_8bit_to_16bit(molokai_orange), P->awl_colors.bg_status );
+    return ww;
+}
+
+static void backlightwidget_click( widget_t* w, uint32_t x, int button ) {
+    (void)w; (void)x;
+    if (button == BTN_LEFT)
+        spawn( &(Arg){.v=(const char*[]){"systemctl", "--user", "start", "backlight-tooler.timer", NULL}} );
+    else
+        spawn( &(Arg){.v=(const char*[]){"systemctl", "--user", "stop",  "backlight-tooler.timer", NULL}} );
 }

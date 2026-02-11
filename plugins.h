@@ -4,6 +4,7 @@
 #include "plugins/stats.h"
 #include "plugins/temp.h"
 #include "plugins/bat.h"
+#include "plugins/backlight.h"
 #include "plugins/date.h"
 #include "plugins/pulsetest.h"
 
@@ -23,6 +24,7 @@ typedef struct awl_plugin_data_t {
     awl_battery_t* bat;
     awl_date_t* date;
     pulse_test_t* pulse;
+    awl_backlight_t* backlight;
 
     /*awl_wallpaper_data_t* wp;*/
 
