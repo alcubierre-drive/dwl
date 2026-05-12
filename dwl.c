@@ -164,7 +164,6 @@ static struct wl_event_loop *event_loop;
 static struct wlr_backend *backend;
 static struct wlr_scene *scene;
 static struct wlr_scene_tree *layers[NUM_LAYERS];
-static struct wlr_scene_optimized_blur *blur;
 static struct wlr_scene_tree *drag_icon;
 /* Map from ZWLR_LAYER_SHELL_* constants to Lyr* enum */
 static const int layermap[] = { LyrBg, LyrBottom, LyrTop, LyrOverlay };
@@ -197,7 +196,7 @@ static struct wlr_xcursor_manager *cursor_mgr;
 
 static struct wlr_scene_rect *root_bg;
 static struct wlr_session_lock_manager_v1 *session_lock_mgr;
-static struct wlr_scene_rect *locked_bg;
+static struct wlr_scene_blur *locked_bg_blur = NULL;
 static struct wlr_session_lock_v1 *cur_lock;
 
 static struct wlr_seat *seat;
@@ -1287,7 +1286,7 @@ destroylock(SessionLock *lock, int unlock)
 	if ((locked = !unlock))
 		goto destroy;
 
-	wlr_scene_node_set_enabled(&locked_bg->node, 0);
+	if (locked_bg_blur) wlr_scene_node_set_enabled(&locked_bg_blur->node, 0);
 
 	focusclient(focustop(selmon), 0);
 	motionnotify(0, NULL, 0, 0, 0, 0);
@@ -1972,7 +1971,7 @@ locksession(struct wl_listener *listener, void *data)
 {
 	struct wlr_session_lock_v1 *session_lock = data;
 	SessionLock *lock;
-	wlr_scene_node_set_enabled(&locked_bg->node, 1);
+	if (locked_bg_blur) wlr_scene_node_set_enabled(&locked_bg_blur->node, 1);
 	if (cur_lock) {
 		wlr_session_lock_v1_destroy(session_lock);
 		return;
@@ -2717,7 +2716,6 @@ setup(void)
 	root_bg = wlr_scene_rect_create(&scene->tree, 0, 0, rootcolor);
 	for (i = 0; i < NUM_LAYERS; i++) {
 		layers[i] = wlr_scene_tree_create(&scene->tree);
-        if (i == LyrBg) blur = wlr_scene_optimized_blur_create(&scene->tree, 0, 0);
     }
 	drag_icon = wlr_scene_tree_create(&scene->tree);
 	wlr_scene_node_place_below(&drag_icon->node, &layers[LyrBlock]->node);
@@ -2821,15 +2819,16 @@ setup(void)
 	keyboard_shortcuts_inhibit_mgr = wlr_keyboard_shortcuts_inhibit_v1_create(dpy);
 	session_lock_mgr = wlr_session_lock_manager_v1_create(dpy);
 	wl_signal_add(&session_lock_mgr->events.new_lock, &new_session_lock);
-	locked_bg = wlr_scene_rect_create(layers[LyrBlock], sgeom.width, sgeom.height, locked_color);
-	wlr_scene_optimized_blur_set_size(blur, sgeom.width, sgeom.height);
     if (locked_blur) {
-        wlr_scene_rect_set_backdrop_blur( locked_bg, 1 );
-        wlr_scene_rect_set_backdrop_blur_optimized( locked_bg, 0 );
-        wlr_scene_rect_set_backdrop_blur_strength( locked_bg, locked_blur_config[0] );
-        wlr_scene_rect_set_backdrop_blur_alpha( locked_bg, locked_blur_config[1] );
+        locked_bg_blur = wlr_scene_blur_create( layers[LyrBlock], sgeom.width, sgeom.height );
+        wlr_scene_node_set_position(&locked_bg_blur->node, sgeom.x, sgeom.y);
+        wlr_scene_blur_set_size(locked_bg_blur, sgeom.width, sgeom.height);
+        wlr_scene_blur_set_strength( locked_bg_blur, locked_blur_config[0] );
+        wlr_scene_blur_set_alpha( locked_bg_blur, locked_blur_config[1] );
+        wlr_scene_blur_set_should_only_blur_bottom_layer( locked_bg_blur, 0 );
+        wlr_scene_node_set_enabled(&locked_bg_blur->node, 0);
+        wlr_scene_node_lower_to_bottom(&locked_bg_blur->node);
     }
-	wlr_scene_node_set_enabled(&locked_bg->node, 0);
 
 	/* Use decoration protocols to negotiate server-side decorations */
 	wlr_server_decoration_manager_set_default_mode(
@@ -3177,9 +3176,10 @@ updatemons(struct wl_listener *listener, void *data)
 	wlr_scene_rect_set_size(root_bg, sgeom.width, sgeom.height);
 
 	/* Make sure the clients are hidden when dwl is locked */
-	wlr_scene_node_set_position(&locked_bg->node, sgeom.x, sgeom.y);
-	wlr_scene_rect_set_size(locked_bg, sgeom.width, sgeom.height);
-	wlr_scene_optimized_blur_set_size(blur, sgeom.width, sgeom.height);
+    if (locked_bg_blur) {
+        wlr_scene_node_set_position(&locked_bg_blur->node, sgeom.x, sgeom.y);
+        wlr_scene_blur_set_size(locked_bg_blur, sgeom.width, sgeom.height);
+    }
 
 	wl_list_for_each(m, &mons, link) {
 		if (!m->wlr_output->enabled)
@@ -3267,8 +3267,11 @@ updatebar(Monitor *m)
 		return;
 
 	drwl_destroy_font(m->drw->font);
-	snprintf(fontattrs, sizeof(fontattrs), "dpi=%.2f", 96. * m->wlr_output->scale);
-	if (!(drwl_load_font(m->drw, LENGTH(fonts), fonts, fontattrs)))
+	snprintf(fontattrs, sizeof(fontattrs), "dpi=%.2f", 96. * 2. * m->wlr_output->scale);
+    char _font[128] = {0};
+    sprintf( _font, "%s%.0f", font, (float)fontsize*m->wlr_output->scale );
+    const char* _pfont = _font;
+	if (!(drwl_load_font(m->drw, 1, &_pfont, fontattrs)))
 		die("Could not load font");
 
 	m->b.scale = m->wlr_output->scale;
@@ -3581,7 +3584,7 @@ xwaylandready(struct wl_listener *listener, void *data)
 int
 main(int argc, char *argv[])
 {
-    char default_startup_cmd[] = "swww-daemon";
+    char default_startup_cmd[] = "awww-daemon";
 	char *startup_cmd = NULL;
 	int c;
 

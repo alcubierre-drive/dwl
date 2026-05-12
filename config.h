@@ -9,7 +9,8 @@ static const int bypass_surface_visibility = 0;  /* 1 means idle inhibitors will
 static const int borderpx                  = 2; /* border pixel of windows */
 static const int showbar                   = 1; /* 0 means no bar */
 static const int topbar                    = 0; /* 0 means bottom bar */
-static const char *fonts[]                 = {"monospace:size=10"};
+static const char font[]                   = "monospace:size=";
+static const int fontsize                  = 10;
 static const float rootcolor[]             = COLOR(0x000000ff);
 static const float locked_color[]          = {0.05f, 0.05f, 0.05f, 0.3f};
 static const bool locked_blur              = true;
