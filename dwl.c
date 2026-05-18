@@ -7,6 +7,8 @@
 /* function declarations */
 static void applybounds(Client *c, struct wlr_box *bbox);
 static void applyrules(Client *c);
+static void attachblur(Client *c);
+static void scenebuffersetopacity(struct wlr_scene_buffer *buffer, int sx, int sy, void *data);
 /*static void arrange(Monitor *m);*/
 static void arrangelayer(Monitor *m, struct wl_list *list,
 		struct wlr_box *usable_area, int exclusive);
@@ -289,6 +291,29 @@ applybounds(Client *c, struct wlr_box *bbox)
 }
 
 void
+scenebuffersetopacity(struct wlr_scene_buffer *buffer, int sx, int sy, void *data)
+{
+    return;
+    // TODO
+    Client *c = data;
+    if (c->one_minus_alpha != 0) {
+        float opacity = 1. - c->one_minus_alpha;
+        struct wlr_scene_surface *scene_surface = wlr_scene_surface_try_from_buffer(buffer);
+        if (!scene_surface) return;
+
+        struct wlr_xdg_surface *xdg_surface = wlr_xdg_surface_try_from_wlr_surface(scene_surface->surface);
+        if (xdg_surface && xdg_surface->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
+            wlr_scene_buffer_set_opacity(buffer, opacity);
+
+            if (!wlr_subsurface_try_from_wlr_surface(xdg_surface->surface) && c->blur)
+                wlr_scene_blur_set_transparency_mask_source(c->blur, buffer);
+
+            logprintf("%s:%s -> scenebuffersetopacity (%p->%.2f)\n", client_get_appid(c), client_get_title(c), c, opacity);
+        }
+    }
+}
+
+void
 applyrules(Client *c)
 {
 	/* rule matching */
@@ -324,12 +349,31 @@ applyrules(Client *c)
 					apply_resize = 1;
 				}
 			}
+            if (r->blur && !c->blur) attachblur(c);
+            c->one_minus_alpha = r->one_minus_alpha;
 		}
 	}
 
 	c->isfloating |= client_is_float_type(c);
+	if (c->scene_surface && c->one_minus_alpha != 0)
+		wlr_scene_node_for_each_buffer(&c->scene_surface->node, scenebuffersetopacity, c);
 	setmon(c, mon, newtags);
 	if (apply_resize) resize(c, rbox, 1);
+}
+
+void
+attachblur(Client *c)
+{
+    if (!c || !c->scene) return;
+    if (!c->blur) {
+        c->blur = wlr_scene_blur_create(c->scene, c->scene->node.x, c->scene->node.y);
+        wlr_scene_blur_set_size(c->blur, c->geom.width, c->geom.height);
+        wlr_scene_blur_set_strength(c->blur, locked_blur_config[0]);
+        wlr_scene_blur_set_alpha(c->blur, locked_blur_config[1]);
+        wlr_scene_blur_set_should_only_blur_bottom_layer(c->blur, 0);
+        wlr_scene_node_lower_to_bottom(&c->blur->node);
+        wlr_scene_node_set_enabled(&c->blur->node, 1);
+    }
 }
 
 void
@@ -390,10 +434,6 @@ arrangelayer(Monitor *m, struct wl_list *list, struct wlr_box *usable_area, int 
 
 		wlr_scene_layer_surface_v1_configure(l->scene_layer, &full_area, usable_area);
 		wlr_scene_node_set_position(&l->popups->node, l->scene->node.x, l->scene->node.y);
-        if (l->is_notification) {
-            // TODO
-            logprintf( "in arrangelayer of a notification… (%p)\n", l->popups );
-        }
 	}
 }
 
@@ -431,6 +471,10 @@ arrangelayers(Monitor *m)
 	/* Find topmost keyboard interactive layer, if such a layer exists */
 	for (i = 0; i < (int)LENGTH(layers_above_shell); i++) {
 		wl_list_for_each_reverse(l, &m->layers[layers_above_shell[i]], link) {
+            if (l->is_notification && l->blur && l->layer_surface) {
+                wlr_scene_blur_set_size(l->blur, l->layer_surface->current.desired_width,
+                        l->layer_surface->current.desired_height);
+            }
 			if (locked || !l->layer_surface->current.keyboard_interactive || !l->mapped)
 				continue;
 			/* Deactivate the focused client. */
@@ -777,6 +821,7 @@ cleanuplisteners(void)
 void
 closemon(Monitor *m)
 {
+    if (m->tray_pid) kill(m->tray_pid, SIGKILL);
     if (m && m->drw && m->showbar) { togglebar_mon(m); m->closedbar=1; }
 	/* update selmon if needed and
 	 * move closed monitor's clients to the focused one */
@@ -864,6 +909,10 @@ commitnotify(struct wl_listener *listener, void *data)
 		wlr_xdg_toplevel_set_size(c->surface.xdg->toplevel, 0, 0);
 		return;
 	}
+
+    if (c->scene_surface && c->one_minus_alpha != 0) {
+        wlr_scene_node_for_each_buffer(&c->scene_surface->node, scenebuffersetopacity, c);
+    }
 
 	resize(c, c->geom, (c->isfloating && !c->isfullscreen));
 
@@ -996,6 +1045,15 @@ createlayersurface(struct wl_listener *listener, void *data)
 	l->mon = layer_surface->output->data;
 	l->scene_layer = wlr_scene_layer_surface_v1_create(scene_layer, layer_surface);
 	l->scene = l->scene_layer->tree;
+    if (l->is_notification) {
+        l->blur = wlr_scene_blur_create(l->scene, l->scene->node.x, l->scene->node.y);
+        wlr_scene_blur_set_size(l->blur, l->layer_surface->current.desired_width, l->layer_surface->current.desired_height);
+        wlr_scene_blur_set_strength(l->blur, locked_blur_config[0]);
+        wlr_scene_blur_set_alpha(l->blur, locked_blur_config[1]);
+        wlr_scene_blur_set_should_only_blur_bottom_layer(l->blur, 0);
+        wlr_scene_node_set_enabled(&l->blur->node, 1);
+        wlr_scene_node_lower_to_bottom(&l->blur->node);
+    }
 
 	l->popups = surface->data = wlr_scene_tree_create(layer_surface->current.layer
 			< ZWLR_LAYER_SHELL_V1_LAYER_TOP ? layers[LyrTop] : scene_layer);
@@ -1112,6 +1170,8 @@ createmon(struct wl_listener *listener, void *data)
 		wlr_output_layout_add_auto(output_layout, wlr_output);
 	else
 		wlr_output_layout_add(output_layout, wlr_output, m->m.x, m->m.y);
+
+    m->tray_pid = spawn_pid( &(const Arg){.v=tray_cmd} );
 }
 
 void
@@ -2438,6 +2498,9 @@ resize(Client *c, struct wlr_box geo, int interact)
 	/* Update scene-graph, including borders */
 	wlr_scene_node_set_position(&c->scene->node, c->geom.x, c->geom.y);
 	wlr_scene_node_set_position(&c->scene_surface->node, c->bw, c->bw);
+    if (c->blur) {
+        wlr_scene_blur_set_size(c->blur, c->geom.width, c->geom.height);
+    }
 	wlr_scene_rect_set_size(c->border[0], c->geom.width, c->bw);
 	wlr_scene_rect_set_size(c->border[1], c->geom.width, c->bw);
 	wlr_scene_rect_set_size(c->border[2], c->bw, c->geom.height - 2 * c->bw);
@@ -2597,6 +2660,9 @@ setfullscreen(Client *c, int fullscreen)
 		 * client positions are set by the user and cannot be recalculated */
 		resize(c, c->prev, 0);
 	}
+    if (c->scene_surface && c->one_minus_alpha != 0) {
+	    wlr_scene_node_for_each_buffer(&c->scene_surface->node, scenebuffersetopacity, c);
+    }
 	arrange(c->mon);
 	drawbars();
 }

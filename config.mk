@@ -41,8 +41,7 @@ CFLAGS += -fsanitize=address -fsanitize=leak
 LDFLAGS += -fsanitize=address -fsanitize=leak
 # CFLAGS += -ggdb
 # CFLAGS += -O0
-CFLAGS += -Ofast -march=native -flto
-LDFLAGS += -flto=14
+CFLAGS += -Ofast -march=native -mtune=native
 
 CFLAGS += -DUSLEEP_NOT_DEFINED
 

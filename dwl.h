@@ -131,6 +131,8 @@ struct Client {
 	Monitor *mon;
 	struct wlr_scene_tree *scene;
 	struct wlr_scene_rect *border[4]; /* top, bottom, left, right */
+    struct wlr_scene_blur *blur;
+    float one_minus_alpha;
 	struct wlr_scene_tree *scene_surface;
 	struct wl_list link;
 	struct wl_list flink;
@@ -206,6 +208,8 @@ typedef struct {
 	struct wl_listener destroy;
 	struct wl_listener unmap;
 	struct wl_listener surface_commit;
+
+    struct wlr_scene_blur* blur;
 } LayerSurface;
 
 typedef struct {
@@ -247,6 +251,7 @@ struct Monitor {
 	int asleep;
 	Drwl *drw;
 	int lrpad;
+    pid_t tray_pid;
 };
 
 struct Buffer {
@@ -275,9 +280,11 @@ typedef struct {
 	const char *id;
 	const char *title;
 	uint32_t tags;
-	int isfloating;
-	int monitor;
+	short isfloating;
+	short monitor;
 	int w, h;
+    int blur;
+    float one_minus_alpha;
 } Rule;
 
 typedef struct {

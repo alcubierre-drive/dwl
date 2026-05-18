@@ -12,11 +12,10 @@ static const int topbar                    = 0; /* 0 means bottom bar */
 static const char font[]                   = "monospace:size=";
 static const int fontsize                  = 10;
 static const float rootcolor[]             = COLOR(0x000000ff);
-static const float locked_color[]          = {0.05f, 0.05f, 0.05f, 0.3f};
 static const bool locked_blur              = true;
 static const float locked_blur_config[]    = {1.0 /*strength*/, 1.0 /*alpha*/};
-/* This conforms to the xdg-protocol. Set the alpha to zero to restore the old behavior */
 static const float fullscreen_bg[]         = {0.1f, 0.1f, 0.1f, 1.0f}; /* You can also use glsl colors */
+static const char* tray_cmd[]              = {"awl_tray", NULL};
 
 /*static const uint32_t molokai_blue = 0x66d9efff;*/
 /*static const uint32_t molokai_orange = 0xfd971fff;*/
@@ -37,21 +36,22 @@ static int log_level = WLR_ERROR;
 
 /* NOTE: ALWAYS keep a rule declared even if you don't use rules (e.g leave at least one example) */
 static const Rule rules[] = {
-	/* app_id             title       tags mask     isfloating   monitor w h*/
-    { NULL,               "nomacs_garfield", 0,     1,           -1,   0,   0 },
-    { "python3",          "Figure",   0,            1,           -1,   0,   0 },
-    { "wdisplays",        NULL,       0,            1,           -1,   0,   0 },
+	/* app_id             title       tags mask     isfloating   monitor w h blur 1-alpha*/
+    { NULL,               "nomacs_garfield", 0,     1,           -1,   0,   0, 0, 0 },
+    { "python3",          "Figure",   0,            1,           -1,   0,   0, 0, 0 },
+    { "wdisplays",        NULL,       0,            1,           -1,   0,   0, 0, 0 },
 
-    { "zoom",             NULL,       0,            1,           -1,   0,   0 },
-    { "Zoom",             NULL,       0,            1,           -1,   0,   0 },
+    { "zoom",             NULL,       0,            1,           -1,   0,   0, 0, 0 },
+    { "Zoom",             NULL,       0,            1,           -1,   0,   0, 0, 0 },
 
-    { "org.gnome.Calendar",NULL,      0,            1,           -1, 400, 500 },
+    { "org.gnome.Calendar",NULL,      0,            1,           -1, 400, 500, 0, 0 },
 
-    { "telegram",         NULL,       1<<7,         0,           -1,   0,   0 },
-    { "signal",           "Signal",   1<<7,         0,           -1,   0,   0 },
+    { "telegram",         NULL,       1<<7,         0,           -1,   0,   0, 0, 0 },
+    { "signal",           "Signal",   1<<7,         0,           -1,   0,   0, 0, 0 },
 
-    { "org.gnome.Evolution",NULL,     1<<8,         0,           -1,   0,   0 },
-    { "evolution-alarm-notify", NULL, 1<<8,         1,           -1,   0,   0 },
+    { "org.gnome.Evolution",NULL,     1<<8,         0,           -1,   0,   0, 0, 0 },
+    { "evolution-alarm-notify", NULL, 1<<8,         1,           -1,   0,   0, 0, 0 },
+    { "kitty",            NULL,       0,            0,           -1,   0,   0, 1, 0 },
 };
 
 static const char* Autostarts[][8] = {
@@ -65,7 +65,6 @@ static const char* Autostarts[][8] = {
 };
 static const int ScreenLockServiceAtStart = 1;
 static const int SwwwAtStart = 1;
-// static const char* ScreenLockService[] = { "systemd-lock-handler", "--", "hyprlock", NULL };
 static const char* ScreenLockService[] = { "systemd-lock-handler", "--", "swaylock", "-c", "00000000", NULL };
 
 /* layout(s) */
