@@ -293,10 +293,8 @@ applybounds(Client *c, struct wlr_box *bbox)
 void
 scenebuffersetopacity(struct wlr_scene_buffer *buffer, int sx, int sy, void *data)
 {
-    return;
-    // TODO
     Client *c = data;
-    if (c->one_minus_alpha != 0) {
+    if (c && c->one_minus_alpha != 0) {
         float opacity = 1. - c->one_minus_alpha;
         struct wlr_scene_surface *scene_surface = wlr_scene_surface_try_from_buffer(buffer);
         if (!scene_surface) return;
@@ -305,10 +303,9 @@ scenebuffersetopacity(struct wlr_scene_buffer *buffer, int sx, int sy, void *dat
         if (xdg_surface && xdg_surface->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
             wlr_scene_buffer_set_opacity(buffer, opacity);
 
-            if (!wlr_subsurface_try_from_wlr_surface(xdg_surface->surface) && c->blur)
+            if (!wlr_subsurface_try_from_wlr_surface(xdg_surface->surface) && c->blur) {
                 wlr_scene_blur_set_transparency_mask_source(c->blur, buffer);
-
-            logprintf("%s:%s -> scenebuffersetopacity (%p->%.2f)\n", client_get_appid(c), client_get_title(c), c, opacity);
+            }
         }
     }
 }
@@ -349,14 +346,12 @@ applyrules(Client *c)
 					apply_resize = 1;
 				}
 			}
-            if (r->blur && !c->blur) attachblur(c);
             c->one_minus_alpha = r->one_minus_alpha;
+            if (r->blur && !c->blur) attachblur(c);
 		}
 	}
 
 	c->isfloating |= client_is_float_type(c);
-	if (c->scene_surface && c->one_minus_alpha != 0)
-		wlr_scene_node_for_each_buffer(&c->scene_surface->node, scenebuffersetopacity, c);
 	setmon(c, mon, newtags);
 	if (apply_resize) resize(c, rbox, 1);
 }
@@ -364,9 +359,11 @@ applyrules(Client *c)
 void
 attachblur(Client *c)
 {
-    if (!c || !c->scene) return;
+    if (!c) return;
+    struct wlr_scene_tree* tree = c->one_minus_alpha == 0 ? c->scene : c->scene_surface;
+    if (!tree) return;
     if (!c->blur) {
-        c->blur = wlr_scene_blur_create(c->scene, c->scene->node.x, c->scene->node.y);
+        c->blur = wlr_scene_blur_create(tree, 0, 0);
         wlr_scene_blur_set_size(c->blur, c->geom.width, c->geom.height);
         wlr_scene_blur_set_strength(c->blur, locked_blur_config[0]);
         wlr_scene_blur_set_alpha(c->blur, locked_blur_config[1]);
@@ -910,10 +907,6 @@ commitnotify(struct wl_listener *listener, void *data)
 		return;
 	}
 
-    if (c->scene_surface && c->one_minus_alpha != 0) {
-        wlr_scene_node_for_each_buffer(&c->scene_surface->node, scenebuffersetopacity, c);
-    }
-
 	resize(c, c->geom, (c->isfloating && !c->isfullscreen));
 
 	/* mark a pending resize as completed */
@@ -1171,7 +1164,7 @@ createmon(struct wl_listener *listener, void *data)
 	else
 		wlr_output_layout_add(output_layout, wlr_output, m->m.x, m->m.y);
 
-    m->tray_pid = spawn_pid( &(const Arg){.v=tray_cmd} );
+    if (AutostartTray) m->tray_pid = spawn_pid( &(const Arg){.v=tray_cmd} );
 }
 
 void
@@ -2442,6 +2435,12 @@ rendermon(struct wl_listener *listener, void *data)
 			goto skip;
 	}
 
+    /* make clients transparent before the commit; they change it back again otherwise */
+    wl_list_for_each(c, &clients, link) {
+        if (c->scene_surface && c->one_minus_alpha != 0) {
+            wlr_scene_node_for_each_buffer(&c->scene_surface->node, scenebuffersetopacity, c);
+        }
+    }
 	wlr_scene_output_commit(m->scene_output, NULL);
 
 skip:
@@ -2660,9 +2659,6 @@ setfullscreen(Client *c, int fullscreen)
 		 * client positions are set by the user and cannot be recalculated */
 		resize(c, c->prev, 0);
 	}
-    if (c->scene_surface && c->one_minus_alpha != 0) {
-	    wlr_scene_node_for_each_buffer(&c->scene_surface->node, scenebuffersetopacity, c);
-    }
 	arrange(c->mon);
 	drawbars();
 }
