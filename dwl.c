@@ -468,7 +468,7 @@ arrangelayers(Monitor *m)
 	/* Find topmost keyboard interactive layer, if such a layer exists */
 	for (i = 0; i < (int)LENGTH(layers_above_shell); i++) {
 		wl_list_for_each_reverse(l, &m->layers[layers_above_shell[i]], link) {
-            if (l->is_notification && l->blur && l->layer_surface) {
+            if ((l->is_notification || l->is_launcher) && l->blur && l->layer_surface) {
                 wlr_scene_blur_set_size(l->blur, l->layer_surface->current.desired_width,
                         l->layer_surface->current.desired_height);
             }
@@ -1028,7 +1028,8 @@ createlayersurface(struct wl_listener *listener, void *data)
 	}
 
 	l = layer_surface->data = ecalloc(1, sizeof(*l));
-    l->is_notification = !strcmp(layer_surface->namespace, "notifications");
+    l->is_notification = blur_notifications && !strcmp(layer_surface->namespace, "notifications");
+    l->is_launcher = blur_launcher && !strcmp(layer_surface->namespace, "launcher");
 	l->type = LayerShell;
 	LISTEN(&surface->events.commit, &l->surface_commit, commitlayersurfacenotify);
 	LISTEN(&surface->events.unmap, &l->unmap, unmaplayersurfacenotify);
@@ -1038,8 +1039,9 @@ createlayersurface(struct wl_listener *listener, void *data)
 	l->mon = layer_surface->output->data;
 	l->scene_layer = wlr_scene_layer_surface_v1_create(scene_layer, layer_surface);
 	l->scene = l->scene_layer->tree;
-    if (l->is_notification) {
+    if (l->is_notification || l->is_launcher) {
         l->blur = wlr_scene_blur_create(l->scene, l->scene->node.x, l->scene->node.y);
+        if (l->is_launcher) wlr_scene_blur_set_corner_radius(l->blur, blur_launcher_radius);
         wlr_scene_blur_set_size(l->blur, l->layer_surface->current.desired_width, l->layer_surface->current.desired_height);
         wlr_scene_blur_set_strength(l->blur, locked_blur_config[0]);
         wlr_scene_blur_set_alpha(l->blur, locked_blur_config[1]);

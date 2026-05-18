@@ -202,7 +202,7 @@ typedef struct {
 	struct wlr_scene_tree *popups;
 	struct wlr_scene_layer_surface_v1 *scene_layer;
 	struct wl_list link;
-	short mapped, is_notification;
+	short mapped, is_notification, is_launcher;
 	struct wlr_layer_surface_v1 *layer_surface;
 
 	struct wl_listener destroy;

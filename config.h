@@ -16,6 +16,9 @@ static const bool locked_blur              = true;
 static const float locked_blur_config[]    = {1.0 /*strength*/, 1.0 /*alpha*/};
 static const float fullscreen_bg[]         = {0.1f, 0.1f, 0.1f, 1.0f}; /* You can also use glsl colors */
 static const char* tray_cmd[]              = {"awl_tray", NULL};
+static const int blur_notifications        = 1,
+                 blur_launcher             = 1,
+                 blur_launcher_radius      = 15;
 
 /*static const uint32_t molokai_blue = 0x66d9efff;*/
 /*static const uint32_t molokai_orange = 0xfd971fff;*/
