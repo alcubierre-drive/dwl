@@ -294,7 +294,7 @@ void
 scenebuffersetopacity(struct wlr_scene_buffer *buffer, int sx, int sy, void *data)
 {
     Client *c = data;
-    if (c && c->one_minus_alpha != 0) {
+    if (c && c->one_minus_alpha != 0 && c->blur) {
         float opacity = 1. - c->one_minus_alpha;
         struct wlr_scene_surface *scene_surface = wlr_scene_surface_try_from_buffer(buffer);
         if (!scene_surface) return;
@@ -303,9 +303,9 @@ scenebuffersetopacity(struct wlr_scene_buffer *buffer, int sx, int sy, void *dat
         if (xdg_surface && xdg_surface->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
             wlr_scene_buffer_set_opacity(buffer, opacity);
 
-            if (!wlr_subsurface_try_from_wlr_surface(xdg_surface->surface) && c->blur) {
-                wlr_scene_blur_set_transparency_mask_source(c->blur, buffer);
-            }
+            // if (!wlr_subsurface_try_from_wlr_surface(xdg_surface->surface) && c->blur) {
+            //     wlr_scene_blur_set_transparency_mask_source(c->blur, buffer);
+            // }
         }
     }
 }
@@ -514,6 +514,7 @@ axisnotify(struct wl_listener *listener, void *data)
 		cursor_x -= selmon->m.x;
 		cursor_x *= selmon->wlr_output->scale;
 		cursor_y *= selmon->wlr_output->scale;
+        (void)cursor_y;
         unsigned int xpos = 0;
         for (int i=0; i<selmon->drw->n_widgets_left; ++i) {
             if (cursor_x >= xpos && cursor_x < xpos + selmon->drw->widgets_left[i].width) {
@@ -607,6 +608,7 @@ buttonpress(struct wl_listener *listener, void *data)
 		cursor_x -= selmon->m.x;
 		cursor_x *= selmon->wlr_output->scale;
 		cursor_y *= selmon->wlr_output->scale;
+        (void)cursor_y;
         unsigned int xpos = 0;
         for (int i=0; i<selmon->drw->n_widgets_left; ++i) {
             if (cursor_x >= xpos && cursor_x < xpos + selmon->drw->widgets_left[i].width) {
@@ -930,6 +932,7 @@ commitpopup(struct wl_listener *listener, void *data)
 	type = toplevel_from_wlr_surface(popup->base->surface, &c, &l);
 	if (!popup->parent || type < 0)
 		return;
+    // logprintf( "commitpopup client %s:%s<-%p\n", client_get_appid(c), client_get_title(c), client_get_parent(c) );
 	popup->base->surface->data = wlr_scene_xdg_surface_create(
 			popup->parent->data, popup->base);
 	if ((l && !l->mon) || (c && !c->mon)) {
@@ -1042,6 +1045,7 @@ createlayersurface(struct wl_listener *listener, void *data)
     if (l->is_notification || l->is_launcher) {
         l->blur = wlr_scene_blur_create(l->scene, l->scene->node.x, l->scene->node.y);
         if (l->is_launcher) wlr_scene_blur_set_corner_radius(l->blur, blur_launcher_radius);
+        if (l->is_notification) wlr_scene_blur_set_corner_radius(l->blur, blur_notifications_radius);
         wlr_scene_blur_set_size(l->blur, l->layer_surface->current.desired_width, l->layer_surface->current.desired_height);
         wlr_scene_blur_set_strength(l->blur, locked_blur_config[0]);
         wlr_scene_blur_set_alpha(l->blur, locked_blur_config[1]);
@@ -1929,6 +1933,7 @@ keybinding(uint32_t mods, xkb_keysym_t sym)
 	for (k = keys; k < END(keys); k++) {
 		if (CLEANMASK(mods) == CLEANMASK(k->mod)
 				&& sym == k->keysym && k->func) {
+            // logprintf( "keybinding: (mod:%u key:%u func:%p arg:%li)\n", k->mod, k->keysym, k->func, k->arg.v );
 			k->func(&k->arg);
 			return 1;
 		}
@@ -2688,6 +2693,20 @@ cycle_layout(const Arg* arg)
     strncpy(selmon->ltsymbol, selmon->lt[selmon->sellt]->symbol, LENGTH(selmon->ltsymbol)-1);
     arrange(selmon);
     drawbar(selmon);
+}
+
+void
+transluce(const Arg *arg)
+{
+    if (!selmon) return;
+    if (!arg) return;
+    float change = arg->i > 0 ? 0.1 : -0.1;
+    Client *c = focustop(selmon);
+    if (!c) return;
+    c->one_minus_alpha -= change;
+    c->one_minus_alpha = MAX(c->one_minus_alpha, 0.0);
+    c->one_minus_alpha = MIN(c->one_minus_alpha, 1.0);
+    if (!c->blur) attachblur(c);
 }
 
 /* arg > 1.0 will set mfact absolutely */

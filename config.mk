@@ -39,7 +39,7 @@ CFLAGS = -std=c11 -Wall -Wextra -pedantic -Wno-unused-parameter
 
 CFLAGS += -fsanitize=address -fsanitize=leak
 LDFLAGS += -fsanitize=address -fsanitize=leak
-# CFLAGS += -ggdb
+CFLAGS += -ggdb
 # CFLAGS += -O0
 CFLAGS += -Ofast -march=native -mtune=native
 

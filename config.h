@@ -17,6 +17,7 @@ static const float locked_blur_config[]    = {1.0 /*strength*/, 1.0 /*alpha*/};
 static const float fullscreen_bg[]         = {0.1f, 0.1f, 0.1f, 1.0f}; /* You can also use glsl colors */
 static const char* tray_cmd[]              = {"awl_tray", NULL};
 static const int blur_notifications        = 1,
+                 blur_notifications_radius = 15,
                  blur_launcher             = 1,
                  blur_launcher_radius      = 15;
 
@@ -49,7 +50,7 @@ static const Rule rules[] = {
 
     { "org.gnome.Calendar",NULL,      0,            1,           -1, 400, 500, 1, 0.3 },
 
-    { "telegram",         NULL,       1<<7,         0,           -1,   0,   0, 1, 0.2 },
+    { "org.telegram.desktop",NULL,    1<<7,         0,           -1,   0,   0, 1, 0.2 },
     { "signal",           "Signal",   1<<7,         0,           -1,   0,   0, 1, 0.2 },
 
     { "org.gnome.Evolution",NULL,     1<<8,         0,           -1,   0,   0, 0, 0 },
@@ -246,6 +247,8 @@ static const Key keys[] = {
     { MODKEY, XKB_KEY_d,               spawn, {.v=wdisplays} },
     { 0, XKB_KEY_XF86Display,          spawn, {.v=wdisplays} },
     { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_G, spawn, {.v=swaylock} },
+    { MODKEY|WLR_MODIFIER_CTRL,                     XKB_KEY_z, transluce, {.i=+1} },
+    { MODKEY|WLR_MODIFIER_CTRL|WLR_MODIFIER_SHIFT,  XKB_KEY_Z, transluce, {.i=-1} },
 
     { MODKEY|WLR_MODIFIER_CTRL|WLR_MODIFIER_SHIFT,XKB_KEY_D, spawn,   {.v=docked_r} },
     { MODKEY|WLR_MODIFIER_CTRL,     XKB_KEY_d,         spawn,         {.v=docked_d} },

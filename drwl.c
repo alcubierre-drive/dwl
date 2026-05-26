@@ -496,7 +496,8 @@ static uint32_t clockwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix )
 
     char timestr[16] = "--:--";
     if (!sem_timedwait_nano(&P->date->sem, 1e3)) {
-        strncpy(timestr, P->date->s, 15);
+        memcpy(timestr, P->date->s, 16);
+        timestr[15] = 0;
         w->age = 0;
         sem_post(&P->date->sem);
     } else {

@@ -16,15 +16,27 @@ typedef struct {
     void* arg;
 } _AWL_PTHREAD_START_ROUTINE_WRAPPER_T;
 
+#ifndef MIN
+#define MIN(x,y) (((x) < (y)) ? (x) : (y))
+#endif
+
+static inline void strxcpy( char* out, const char* in, size_t maxlen ) {
+    size_t sz = strlen(in);
+    sz = MIN(sz,maxlen-1);
+    memcpy( out, in, sz );
+    out[maxlen-1] = 0;
+}
+
+
 static inline void* _AWL_PTHREAD_WRAP_START_ROUTINE( void* arg_ ) {
     _AWL_PTHREAD_START_ROUTINE_WRAPPER_T* w = (_AWL_PTHREAD_START_ROUTINE_WRAPPER_T*)arg_;
     void* arg = w->arg;
     void* (*start_routine)(void*) = w->start_routine;
     printf( "%s: thread %i\n", w->starter_location, gettid() );
-    char nam[16] = {0};
+    char nam[32] = {0};
     for (char* c=w->starter_location; *c; ++c)
-        if (*c == '/') strncpy( nam, c+1, 15 );
-    if (!nam[0]) strncpy( nam, w->starter_location, 15 );
+        if (*c == '/') strxcpy( nam, c+1, 32 );
+    if (!nam[0]) strxcpy( nam, w->starter_location, 32 );
     /* pthread_setname_np( pthread_self(), nam ); */
     free(w);
     return (*start_routine)( arg );

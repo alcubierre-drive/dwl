@@ -303,6 +303,7 @@ void toggleview(const Arg* arg);
 void focusstack(const Arg *arg);
 pid_t spawn_pid(const Arg *arg);
 void spawn(const Arg *arg);
+void transluce(const Arg *arg);
 
 void arrange(Monitor *m);
 void focusclient(Client *c, int lift);

@@ -64,7 +64,7 @@ loopend:
         if (do_freeifaddrs) freeifaddrs(ifaddr);
 
         sem_wait( &ip->sem );
-        strncpy( ip->address, new_addr, 127 );
+        memcpy( ip->address, new_addr, 127 );
         ip->address[127] = '\0';
         sem_post( &ip->sem );
         atomic_store( &ip->is_online, is_online );
