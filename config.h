@@ -48,14 +48,14 @@ static const Rule rules[] = {
     { "zoom",             NULL,       0,            1,           -1,   0,   0, 0, 0 },
     { "Zoom",             NULL,       0,            1,           -1,   0,   0, 0, 0 },
 
-    { "org.gnome.Calendar",NULL,      0,            1,           -1, 400, 500, 1, 0.3 },
+    { "org.gnome.Calendar",NULL,      0,            1,           -1, 400, 500, 1, 0.2 },
 
-    { "org.telegram.desktop",NULL,    1<<7,         0,           -1,   0,   0, 1, 0.2 },
-    { "signal",           "Signal",   1<<7,         0,           -1,   0,   0, 1, 0.2 },
+    { "org.telegram.desktop",NULL,    1<<7,         0,           -1,   0,   0, 0, 0 },
+    { "signal",           "Signal",   1<<7,         0,           -1,   0,   0, 0, 0 },
 
     { "org.gnome.Evolution",NULL,     1<<8,         0,           -1,   0,   0, 0, 0 },
     { "evolution-alarm-notify", NULL, 1<<8,         1,           -1,   0,   0, 0, 0 },
-    { "kitty",            NULL,       0,            0,           -1,   0,   0, 1, 0 },
+    { "kitty",            NULL,       0,            0,           -1,   0,   0, 0, 0 },
 };
 
 static const char* Autostarts[][8] = {

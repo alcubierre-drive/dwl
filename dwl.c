@@ -926,26 +926,56 @@ commitpopup(struct wl_listener *listener, void *data)
 	struct wlr_box box;
 	int type = -1;
 
-	if (!popup->base->initial_commit)
+	if (!popup || !popup->base->initial_commit)
 		return;
 
 	type = toplevel_from_wlr_surface(popup->base->surface, &c, &l);
-	if (!popup->parent || type < 0)
+	if (type < 0)
 		return;
-    // logprintf( "commitpopup client %s:%s<-%p\n", client_get_appid(c), client_get_title(c), client_get_parent(c) );
-	popup->base->surface->data = wlr_scene_xdg_surface_create(
-			popup->parent->data, popup->base);
-	if ((l && !l->mon) || (c && !c->mon)) {
+
+	if ((type == XDGShell && (!c || !c->mon || !c->scene)) ||
+	    (type == LayerShell && (!l || !l->mon || !l->scene))) {
 		wlr_xdg_popup_destroy(popup);
 		return;
 	}
+
+	struct wlr_scene_tree *parent_tree = NULL;
+	struct wlr_xdg_surface *parent_xdg = wlr_xdg_surface_try_from_wlr_surface(popup->parent);
+
+	if (parent_xdg && parent_xdg->surface->data) {
+		struct wlr_scene_node *parent_node = parent_xdg->surface->data;
+		parent_tree = wlr_scene_tree_from_node(parent_node);
+	}
+
+	// fallback
+	if (!parent_tree)
+		parent_tree = (type == LayerShell) ? l->scene : c->scene;
+
+	if (!parent_tree) {
+		wlr_xdg_popup_destroy(popup);
+		return;
+	}
+
+	// create popup in scene graph
+	struct wlr_scene_tree *popup_tree = wlr_scene_xdg_surface_create(parent_tree, popup->base);
+	if (!popup_tree) {
+		wlr_xdg_popup_destroy(popup);
+		return;
+	}
+
+	// save pointer for submenus
+	popup->base->surface->data = &popup_tree->node;
+
 	box = type == LayerShell ? l->mon->m : c->mon->w;
 	box.x -= (type == LayerShell ? l->scene->node.x : c->geom.x);
 	box.y -= (type == LayerShell ? l->scene->node.y : c->geom.y);
 	wlr_xdg_popup_unconstrain_from_box(popup, &box);
-	wl_list_remove(&listener->link);
-	free(listener);
+
+    // do *NOT* free/remove from list, because there's a listener for that
+    // (multiple allocation inhibited through the !popup->base->initial_commit
+    // check
 }
+
 
 void
 createdecoration(struct wl_listener *listener, void *data)
@@ -1248,14 +1278,36 @@ createpointerconstraint(struct wl_listener *listener, void *data)
 			&pointer_constraint->destroy, destroypointerconstraint);
 }
 
+// helper struct to free the dynamical listener upon surface destruction
+struct popup_listener {
+	struct wl_listener commit;
+	struct wl_listener destroy;
+};
+
+static void
+destroypopuplistener(struct wl_listener *listener, void *data)
+{
+	struct popup_listener *p_listener = wl_container_of(listener, p_listener, destroy);
+	wl_list_remove(&p_listener->commit.link);
+	wl_list_remove(&p_listener->destroy.link);
+	free(p_listener);
+}
+
 void
 createpopup(struct wl_listener *listener, void *data)
 {
-	/* This event is raised when a client (either xdg-shell or layer-shell)
-	 * creates a new popup. */
 	struct wlr_xdg_popup *popup = data;
-	LISTEN_STATIC(&popup->base->surface->events.commit, commitpopup);
+	
+	struct popup_listener *p_listener = calloc(1, sizeof*p_listener);
+	if (!p_listener) return;
+
+	p_listener->commit.notify = commitpopup;
+	wl_signal_add(&popup->base->surface->events.commit, &p_listener->commit);
+
+	p_listener->destroy.notify = destroypopuplistener;
+	wl_signal_add(&popup->base->surface->events.destroy, &p_listener->destroy);
 }
+
 
 void
 cursorconstrain(struct wlr_pointer_constraint_v1 *constraint)
