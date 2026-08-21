@@ -2,6 +2,7 @@
 /*
  * See LICENSE file for copyright and license details.
  */
+#include <errno.h>
 #include <getopt.h>
 #include <libinput.h>
 #include <linux/input-event-codes.h>
@@ -10,6 +11,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>

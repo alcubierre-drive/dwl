@@ -4,6 +4,15 @@
 #include "drwl.h"
 #include "plugins.h"
 
+/* vfork(2) is a glibc/BSD extension not declared under the strict
+ * -D_POSIX_C_SOURCE=200809L this file is built with, though it's present
+ * in libc regardless; declare it ourselves rather than widen the feature
+ * test macros for the whole translation unit. Used instead of fork() when
+ * spawning children after dwl's background threads (plugin monitors, GPU
+ * driver threads) are running, since fork() alone risks inheriting a lock
+ * one of those threads held at the moment of the fork -- see spawn_pid(). */
+extern pid_t vfork(void);
+
 /* function declarations */
 static void applybounds(Client *c, struct wlr_box *bbox);
 static void applyrules(Client *c);
@@ -469,8 +478,18 @@ arrangelayers(Monitor *m)
 	for (i = 0; i < (int)LENGTH(layers_above_shell); i++) {
 		wl_list_for_each_reverse(l, &m->layers[layers_above_shell[i]], link) {
             if ((l->is_notification || l->is_launcher) && l->blur && l->layer_surface) {
-                wlr_scene_blur_set_size(l->blur, l->layer_surface->current.desired_width,
-                        l->layer_surface->current.desired_height);
+                /* arrangelayers() runs on every layer-surface commit (e.g.
+                 * every redrawn frame of a notification/launcher), not just
+                 * on actual resizes; only touch the blur node's size when it
+                 * actually changed, otherwise scenefx redoes its blur-region
+                 * bookkeeping every frame, which shows up as flicker. */
+                uint32_t desired_width = l->layer_surface->current.desired_width;
+                uint32_t desired_height = l->layer_surface->current.desired_height;
+                if ((uint32_t)l->geom.width != desired_width || (uint32_t)l->geom.height != desired_height) {
+                    wlr_scene_blur_set_size(l->blur, desired_width, desired_height);
+                    l->geom.width = desired_width;
+                    l->geom.height = desired_height;
+                }
             }
 			if (locked || !l->layer_surface->current.keyboard_interactive || !l->mapped)
 				continue;
@@ -762,6 +781,10 @@ cleanupmon(struct wl_listener *listener, void *data)
 			wlr_layer_surface_v1_destroy(l->layer_surface);
 	}
 	drwl_destroy(m->drw);
+	/* closemon() below checks m->drw to decide whether to touch the bar;
+	 * without nulling it here that check sees a dangling pointer into the
+	 * Drwl we just freed. */
+	m->drw = NULL;
 
 	wl_list_remove(&m->destroy.link);
 	wl_list_remove(&m->frame.link);
@@ -812,8 +835,12 @@ cleanuplisteners(void)
 	wl_list_remove(&start_drag.link);
 	wl_list_remove(&new_session_lock.link);
 #ifdef XWAYLAND
-	wl_list_remove(&new_xwayland_surface.link);
-	wl_list_remove(&xwayland_ready.link);
+	/* Only registered in setup() if wlr_xwayland_create() succeeded;
+	 * removing an unregistered listener dereferences its NULL link. */
+	if (xwayland) {
+		wl_list_remove(&new_xwayland_surface.link);
+		wl_list_remove(&xwayland_ready.link);
+	}
 #endif
 }
 
@@ -2543,11 +2570,15 @@ resize(Client *c, struct wlr_box geo, int interact)
 {
 	struct wlr_box *bbox;
 	struct wlr_box clip;
+	int old_width, old_height;
 
 	if (!c->mon || !client_surface(c)->mapped)
 		return;
 
 	bbox = interact ? &sgeom : &c->mon->w;
+
+	old_width = c->geom.width;
+	old_height = c->geom.height;
 
 	client_set_bounds(c, geo.width, geo.height);
 	c->geom = geo;
@@ -2556,7 +2587,12 @@ resize(Client *c, struct wlr_box geo, int interact)
 	/* Update scene-graph, including borders */
 	wlr_scene_node_set_position(&c->scene->node, c->geom.x, c->geom.y);
 	wlr_scene_node_set_position(&c->scene_surface->node, c->bw, c->bw);
-    if (c->blur) {
+    /* resize() runs on every commit, not just actual resizes (e.g. every
+     * redrawn frame of a client with c->blur set); only touch the blur
+     * node's size when it actually changed, otherwise scenefx redoes its
+     * blur-region/damage bookkeeping every single frame for no reason,
+     * which is visible as flicker. */
+    if (c->blur && (c->geom.width != old_width || c->geom.height != old_height)) {
         wlr_scene_blur_set_size(c->blur, c->geom.width, c->geom.height);
     }
 	wlr_scene_rect_set_size(c->border[0], c->geom.width, c->bw);
@@ -2604,15 +2640,20 @@ run(char *startup_cmd)
 	if (!wlr_backend_start(backend))
 		die("startup: backend_start");
 
-	/* Now that the socket exists and the backend is started, run the startup command */
+	/* Now that the socket exists and the backend is started, run the startup command.
+	 * Uses vfork(), not fork(): by this point setup() has already started the
+	 * plugin/GPU driver threads, so a plain fork() risks inheriting a lock
+	 * (e.g. malloc's arena lock) held by one of those threads at the moment
+	 * of the fork -- see spawn_pid() for the full explanation. */
 	if (startup_cmd) {
-		if ((child_pid = fork()) < 0)
-			die("startup: fork:");
+		if ((child_pid = vfork()) < 0)
+			die("startup: vfork:");
 		if (child_pid == 0) {
 			close(STDIN_FILENO);
 			setsid();
 			execl("/bin/sh", "/bin/sh", "-c", startup_cmd, NULL);
-			die("startup: execl:");
+			fprintf(stderr, "startup: execl failed: %s\n", strerror(errno));
+			_exit(1);
 		}
 	}
 
@@ -3068,14 +3109,16 @@ setup(void)
 pid_t
 spawn_pid(const Arg *arg)
 {
-    pid_t pid = fork();
+	/* on execvp failure, must call _exit() not exit()/die(): vfork()'s child
+	 * shares stdio buffers with the parent until it exits or execs. */
+    pid_t pid = vfork();
 	if (pid == 0) {
 		close(STDIN_FILENO);
 		dup2(STDERR_FILENO, STDOUT_FILENO);
 		setsid();
 		execvp(((char **)arg->v)[0], (char **)arg->v);
-		die("dwl: execvp %s failed:", ((char **)arg->v)[0]);
-		return 0;
+		fprintf(stderr, "dwl: execvp %s failed: %s\n", ((char **)arg->v)[0], strerror(errno));
+		_exit(1);
 	} else {
 		return pid;
 	}

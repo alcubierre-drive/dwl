@@ -368,8 +368,14 @@ unsigned int drwl_font_getwidth(Drwl *drwl, const char *text) {
 }
 
 void drwl_finish_drawing(Drwl *drwl) {
-    if (drwl && drwl->pix)
+    if (drwl && drwl->pix) {
         pixman_image_unref(drwl->pix);
+        /* drwl_destroy() also checks drwl->pix before unreffing it again on
+         * monitor teardown; leaving this dangling causes a double-unref /
+         * use-after-free on the pixman image (heap corruption that doesn't
+         * crash until some later, unrelated allocation reuses the memory). */
+        drwl->pix = NULL;
+    }
 }
 
 void drwl_destroy(Drwl *drwl) {
