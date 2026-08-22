@@ -1,16 +1,16 @@
-NAME := awl_tray
+NAME := libawltray.so
 
 CC := gcc
 CXX := g++
 LD := g++
 
-PKGLIST := gio-2.0 giomm-2.4 gtkmm-3.0 dbusmenu-gtk3-0.4 gtk-layer-shell-0
+PKGLIST := gio-2.0 giomm-2.4 gtkmm-3.0 gtk-layer-shell-0 dbusmenu-gtk3-0.4
 
-CFLAGS += -Wall -Wextra -pedantic
-CXXFLAGS += -Wall -Wextra -pedantic
+CFLAGS += -Wall -Wextra -pedantic -fPIC
+CXXFLAGS += -Wall -Wextra -pedantic -fPIC
 
 FLAGS += $(shell pkg-config --cflags $(PKGLIST)) -g -ggdb
-LDFLAGS += $(shell pkg-config --libs $(PKGLIST) jsoncpp spdlog wayland-client wayland-cursor pixman-1)
+LDFLAGS += -shared $(shell pkg-config --libs $(PKGLIST) jsoncpp spdlog wayland-client wayland-cursor pixman-1)
 
 SRC := $(wildcard *.cpp)
 OBJ := $(patsubst %.cpp,%.cpp.o,$(SRC))
@@ -18,7 +18,9 @@ OBJ := $(patsubst %.cpp,%.cpp.o,$(SRC))
 DBUS_SRC := dbus-menu.c dbus-status-notifier-item.c dbus-status-notifier-watcher.c
 DBUS_OBJ := $(patsubst %.c,%.c.o,$(DBUS_SRC))
 
-.PHONY: $(NAME)
+.PHONY: all clean
+
+all: $(NAME)
 
 $(NAME): $(OBJ) $(DBUS_OBJ)
 	$(LD) $^ -o $@ $(LDFLAGS)
@@ -34,3 +36,6 @@ dbus-status-notifier-watcher.c: protocol/dbus-status-notifier-watcher.xml
 	$(CC) -c $< -o $@ $(CFLAGS) $(FLAGS)
 %.cpp.o: %.cpp $(DBUS_SRC)
 	$(CXX) -c $< -o $@ $(CXXFLAGS) $(FLAGS)
+
+clean:
+	rm -f $(NAME) $(OBJ) $(DBUS_OBJ)

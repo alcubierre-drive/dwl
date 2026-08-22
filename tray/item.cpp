@@ -294,24 +294,73 @@ Glib::RefPtr<Gdk::Pixbuf> Item::extractPixBuf(GVariant* variant) {
 }
 
 void Item::updateImage() {
-  auto pixbuf = getIconPixbuf();
-  auto scaled_icon_size = getScaledIconSize();
+  try {
+    // Query the scale factor exactly once and thread it through every call
+    // below (instead of each of getScaledIconSize()/getIconByName()/here
+    // separately calling image.get_scale_factor()) -- on a HiDPI window
+    // those calls could otherwise observe different values (e.g. if the
+    // widget gets realized in between two of them), sizing the pixbuf for
+    // one scale but the Cairo surface for another. If that happens, the
+    // surface can size out to logical 0 and never render anything.
+    int scale_factor = std::max(1, image.get_scale_factor());
+    auto pixbuf = getIconPixbuf(scale_factor);
+    if (!pixbuf) {
+      spdlog::error("Item '{}': updateImage got a null pixbuf, leaving image unchanged", id);
+      return;
+    }
+    int scaled_icon_size = icon_size * scale_factor;
 
-  // If the loaded icon is not square, assume that the icon height should match the
-  // requested icon size, but the width is allowed to be different. As such, if the
-  // height of the image does not match the requested icon size, resize the icon such that
-  // the aspect ratio is maintained, but the height matches the requested icon size.
-  if (pixbuf->get_height() != scaled_icon_size) {
-    int width = scaled_icon_size * pixbuf->get_width() / pixbuf->get_height();
-    pixbuf = pixbuf->scale_simple(width, scaled_icon_size, Gdk::InterpType::INTERP_BILINEAR);
+    // If the loaded icon is not square, assume that the icon height should match the
+    // requested icon size, but the width is allowed to be different. As such, if the
+    // height of the image does not match the requested icon size, resize the icon such that
+    // the aspect ratio is maintained, but the height matches the requested icon size.
+    if (pixbuf->get_height() != scaled_icon_size) {
+      int width = scaled_icon_size * pixbuf->get_width() / pixbuf->get_height();
+      pixbuf = pixbuf->scale_simple(std::max(width, 1), scaled_icon_size,
+                                    Gdk::InterpType::INTERP_BILINEAR);
+    }
+
+    // create_surface_from_pixbuf() needs a realized GdkWindow to size the
+    // resulting HiDPI-aware surface correctly; without one (e.g. an item
+    // registering before this Item's window has ever been shown/realized,
+    // which is the common case for tray apps already running when the tray
+    // starts up) it still returns a surface, but Gtk::Image ends up sizing
+    // it wrong. Fall back to the plain pixbuf setter in that case.
+    if (image.get_window()) {
+      auto surface = Gdk::Cairo::create_surface_from_pixbuf(pixbuf, scale_factor, image.get_window());
+      image.set(surface);
+    } else {
+      // A plain Gdk::Pixbuf carries no device-scale info -- Gtk::Image
+      // treats its pixel dimensions as *logical* size directly. `pixbuf`
+      // here is sized for HiDPI (scaled_icon_size = icon_size*scale_factor,
+      // meant to back a Cairo surface above), so setting it as-is would
+      // make this icon report scale_factor times its correct width
+      // forever, reserving extra bar/tray space no visible icon fills.
+      // (The original assumption was that onConfigure() re-running this
+      // once the window is realized would swap in the correctly-sized
+      // surface and self-correct -- confirmed via testing that this does
+      // not reliably happen, so it can't be relied on to fix this up
+      // later.) Downscale to the plain logical icon_size instead so the
+      // reported size is right immediately; this just isn't HiDPI-crisp
+      // until a later real icon update naturally replaces it.
+      auto logical_pixbuf = pixbuf;
+      if (scale_factor > 1) {
+        int logical_h = std::max(1, scaled_icon_size / scale_factor);
+        int logical_w = std::max(1, pixbuf->get_width() / scale_factor);
+        logical_pixbuf = pixbuf->scale_simple(logical_w, logical_h, Gdk::InterpType::INTERP_BILINEAR);
+      }
+      image.set(logical_pixbuf);
+    }
+  } catch (const Glib::Error& err) {
+    spdlog::error("Item '{}': updateImage failed: {}", id, static_cast<std::string>(err.what()));
+  } catch (const std::exception& err) {
+    spdlog::error("Item '{}': updateImage failed: {}", id, err.what());
   }
-
-  auto surface =
-      Gdk::Cairo::create_surface_from_pixbuf(pixbuf, image.get_scale_factor(), image.get_window());
-  image.set(surface);
 }
 
-Glib::RefPtr<Gdk::Pixbuf> Item::getIconPixbuf() {
+Glib::RefPtr<Gdk::Pixbuf> Item::getIconPixbuf(int scale_factor) {
+  int scaled_icon_size = icon_size * scale_factor;
+
   if (!icon_name.empty()) {
     try {
       std::ifstream temp(icon_name);
@@ -329,9 +378,10 @@ Glib::RefPtr<Gdk::Pixbuf> Item::getIconPixbuf() {
 
     try {
       // Will throw if it can not find an icon.
-      return getIconByName(icon_name, getScaledIconSize());
+      return getIconByName(icon_name, scaled_icon_size);
     } catch (Glib::Error& e) {
-      spdlog::trace("Item '{}': {}", id, static_cast<std::string>(e.what()));
+      spdlog::warn("Item '{}': lookup for icon '{}' at size {} failed: {}", id, icon_name,
+                   scaled_icon_size, static_cast<std::string>(e.what()));
     }
   }
 
@@ -347,7 +397,20 @@ Glib::RefPtr<Gdk::Pixbuf> Item::getIconPixbuf() {
                   icon_name);
   }
 
-  return getIconByName("image-missing", getScaledIconSize());
+  try {
+    return getIconByName("image-missing", scaled_icon_size);
+  } catch (Glib::Error& e) {
+    // Even the built-in fallback icon failed to load (e.g. no icon theme
+    // configured at all) -- synthesize a plain solid pixbuf so the item
+    // still gets *something* visible/clickable instead of updateImage()
+    // throwing and leaving image with no content set.
+    spdlog::error("Item '{}': fallback icon lookup failed too: {}", id,
+                 static_cast<std::string>(e.what()));
+    auto pixbuf = Gdk::Pixbuf::create(Gdk::Colorspace::COLORSPACE_RGB, true, 8, scaled_icon_size,
+                                      scaled_icon_size);
+    pixbuf->fill(0x808080ffu);
+    return pixbuf;
+  }
 }
 
 Glib::RefPtr<Gdk::Pixbuf> Item::getIconByName(const std::string& name, int request_size) {
@@ -378,11 +441,6 @@ Glib::RefPtr<Gdk::Pixbuf> Item::getIconByName(const std::string& name, int reque
   }
   return DefaultGtkIconThemeWrapper::load_icon(name.c_str(), tmp_size,
                                                Gtk::IconLookupFlags::ICON_LOOKUP_FORCE_SIZE);
-}
-
-double Item::getScaledIconSize() {
-  // apply the scale factor from the Gtk window to the requested icon size
-  return icon_size * image.get_scale_factor();
 }
 
 void Item::onMenuDestroyed(Item* self, GObject* old_menu_pointer) {

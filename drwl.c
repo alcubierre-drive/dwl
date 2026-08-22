@@ -2,6 +2,7 @@
 #include "plugins.h"
 #include "plugins/date.h"
 #include "plugins/colors.h"
+#include "tray/awl_tray.h"
 
 int drwl_init(void) {
     return fcft_init(FCFT_LOG_COLORIZE_AUTO, 0, FCFT_LOG_CLASS_ERROR);
@@ -515,8 +516,24 @@ static uint32_t clockwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix )
 }
 
 static uint32_t systray_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {
-    drwl_rect_color2( w->bar, x, 0, w->width, w->bar->m->b.height, 1, awl_plugin_get()->awl_colors.bg_lay );
-    return w->width;
+    (void)pix;
+    /* dwl.c's right-side widget loop calls draw(widget, x_end - widget->width, pix)
+     * -- using widget->width from BEFORE this call, i.e. last frame's return
+     * value -- and only afterwards overwrites widget->width with whatever we
+     * return now. For widgets that draw their own pixels this is a harmless
+     * one-frame lag (old content briefly at a slightly-off position). We
+     * don't draw pixels at all -- we position a separate real window from
+     * `x` -- so a stale `x` means the window sits at the wrong spot for
+     * every frame where our width is changing (e.g. an icon appearing),
+     * which is exactly visible rather than a one-frame flicker. Recover the
+     * still-valid x_end (x + widget->width, using widget->width before we
+     * overwrite it below) and rebuild the real x from *this* frame's width
+     * instead of trusting the stale argument. */
+    uint32_t new_width = awl_tray_width();
+    uint32_t x_end = x + w->width;
+    uint32_t real_x = x_end > new_width ? x_end - new_width : 0;
+    awl_tray_set_widget_x( real_x );
+    return new_width;
 }
 
 static uint32_t pulsewidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {

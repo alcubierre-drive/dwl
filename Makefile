@@ -14,19 +14,23 @@ DWLCPPFLAGS = -I. -DWLR_USE_UNSTABLE -D_POSIX_C_SOURCE=200809L \
 # CFLAGS / LDFLAGS
 PKGS      = wlroots-0.20 wayland-server libpng libpulse xkbcommon libinput pixman-1 fcft $(XLIBS)
 DWLCFLAGS = `$(PKG_CONFIG) --cflags $(PKGS)` $(DWLCPPFLAGS) $(DWLDEVCFLAGS) $(CFLAGS)
-LDLIBS    = `$(PKG_CONFIG) --libs $(PKGS)` -lm $(LIBS)
+LDLIBS    = `$(PKG_CONFIG) --libs $(PKGS)` -lm $(LIBS) \
+	-Ltray -Wl,-rpath,'$$ORIGIN/tray' -lawltray
 
 PLUGINS_SRC := $(wildcard plugins/*.c)
 PLUGINS_OBJ := $(patsubst %.c,%.o,$(PLUGINS_SRC))
 
 all: dwl
-dwl: dwl.o dwl-log.o util.o drwl.o plugins.o $(PLUGINS_OBJ)
+dwl: dwl.o dwl-log.o util.o drwl.o plugins.o $(PLUGINS_OBJ) tray/libawltray.so
 	rm -f $@
 	$(CC) dwl.o dwl-log.o util.o drwl.o plugins.o $(PLUGINS_OBJ) $(DWLCFLAGS) $(LDFLAGS) $(LDLIBS) -o $@
 dwl.o: dwl.c client.h config.h drwl.h config.mk cursor-shape-v1-protocol.h \
 	pointer-constraints-unstable-v1-protocol.h wlr-layer-shell-unstable-v1-protocol.h \
-	wlr-output-power-management-unstable-v1-protocol.h xdg-shell-protocol.h
+	wlr-output-power-management-unstable-v1-protocol.h xdg-shell-protocol.h tray/awl_tray.h
 util.o: util.c util.h
+.PHONY: tray/libawltray.so
+tray/libawltray.so:
+	$(MAKE) -C tray
 
 # wayland-scanner is a tool which generates C headers and rigging for Wayland
 # protocols, which are specified in XML. wlroots requires you to rig these up
@@ -55,6 +59,7 @@ config.h:
 clean:
 	rm -f dwl *.o *-protocol.h
 	rm -f $(PLUGINS_OBJ)
+	$(MAKE) -C tray clean
 
 dist: clean
 	mkdir -p dwl-$(VERSION)

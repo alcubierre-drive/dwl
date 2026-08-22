@@ -3,6 +3,7 @@
 #include "util.h"
 #include "drwl.h"
 #include "plugins.h"
+#include "tray/awl_tray.h"
 
 /* vfork(2) is a glibc/BSD extension not declared under the strict
  * -D_POSIX_C_SOURCE=200809L this file is built with, though it's present
@@ -741,6 +742,32 @@ cleanup(void)
     drawbars_timer_keep_updating = 0;
     wl_event_source_timer_update(drawbars_timer, 0);
 
+	/* Tear down the tray's own client connection to us before we start
+	 * force-destroying clients below, so its GTK/GDK thread shuts down
+	 * cleanly instead of racing wl_display_destroy_clients(). */
+	awl_tray_shutdown();
+	/* awl_tray_shutdown() only requests the tray thread to quit; it can't
+	 * safely block here itself. wl_display_run() (above, in run()) already
+	 * returned once quit() called wl_display_terminate(), so nothing is
+	 * dispatching our Wayland event loop any more -- if the tray thread
+	 * needs a response from us to finish tearing down its own Wayland
+	 * client connection cleanly (a frame callback, a configure ack, a
+	 * buffer release), a plain pthread_join() would deadlock forever
+	 * waiting for an answer nobody is left to send. Keep servicing the
+	 * event loop ourselves until the tray thread actually confirms it's
+	 * done -- wl_display_flush_clients() is required here too, not just
+	 * dispatch: replies generated while handling a client's request are
+	 * only queued into that client's write buffer, and are normally
+	 * flushed out by wl_display_run()'s own loop, which stopped running.
+	 * Without an explicit flush here, a client blocked in a synchronous
+	 * roundtrip (e.g. GTK's gtk_main()-exit gdk_flush()) waits forever on
+	 * a reply that was generated but never actually written to its
+	 * socket. */
+	while (!awl_tray_join()) {
+		wl_display_flush_clients(dpy);
+		wl_event_loop_dispatch(event_loop, 10);
+	}
+
 	cleanuplisteners();
 #ifdef XWAYLAND
 	wlr_xwayland_destroy(xwayland);
@@ -1194,6 +1221,12 @@ createmon(struct wl_listener *listener, void *data)
 	if (!(m->drw = drwl_create(m)))
 		die("failed to create drwl context");
 
+	/* LyrBottom sits below LyrTile/LyrFloat, so floating windows dragged
+	 * over the bar's area render on top of it -- intentional: the tray
+	 * overlay window (a real layer-shell client requesting the "bottom"
+	 * protocol layer -- see gtk_layer_set_layer() in
+	 * tray/awl_tray_bridge.cpp) also lands in LyrBottom via layermap[],
+	 * so floating windows render above both. */
 	m->scene_buffer = wlr_scene_buffer_create(layers[LyrBottom], NULL);
 	m->scene_buffer->point_accepts_input = bar_accepts_input;
 
@@ -2635,6 +2668,13 @@ run(char *startup_cmd)
     strcat( buf, "/Desktop" );
     setenv("GRIM_DEFAULT_DIR", buf, 1);
 
+	/* Only now does our own Wayland socket exist and WAYLAND_DISPLAY point
+	 * at it, which the tray's GTK/GDK thread needs to connect to us as a
+	 * client. Its startup runs in the background (it can't complete the
+	 * connection handshake until wl_display_run() below starts servicing
+	 * clients) -- awl_tray_init() must not block waiting for that. */
+	awl_tray_init();
+
 	/* Start the backend. This will enumerate outputs and inputs, become the DRM
 	 * master, etc */
 	if (!wlr_backend_start(backend))
@@ -3197,6 +3237,15 @@ void togglebar(const Arg *arg) { togglebar_mon(selmon); }
 void togglebar_mon(Monitor* m) {
     m->showbar = !m->showbar;
     wlr_scene_node_set_enabled(&m->scene_buffer->node, m->showbar);
+    /* The tray is a separate, real layer-shell overlay window (see
+     * tray/awl_tray_bridge.cpp), not something drawn into m's own bar
+     * buffer, so hiding/showing that buffer's scene node above doesn't
+     * affect it -- it has to be told explicitly. It only ever tracks
+     * selmon's bar geometry/widget position (systray_draw() on every
+     * monitor calls awl_tray_set_bar_geometry()/_set_widget_x(), so on a
+     * multi-monitor setup whichever monitor drew its bar last "wins" --
+     * out of scope here), so only react when m is selmon. */
+    if (m == selmon) awl_tray_set_visible(m->showbar);
     arrangelayers(m);
 }
 
@@ -3441,8 +3490,11 @@ updatebar(Monitor *m)
 	m->b.width = rw;
 	m->b.real_width = (int)((float)m->b.width / m->wlr_output->scale);
 
-	if (m->b.scale == m->wlr_output->scale && m->drw)
+	if (m->b.scale == m->wlr_output->scale && m->drw) {
+		awl_tray_set_bar_geometry(m->m.x, m->m.y + (topbar ? 0 : m->m.height - m->b.real_height),
+				m->b.real_width, m->b.real_height, m->b.scale);
 		return;
+	}
 
 	drwl_destroy_font(m->drw->font);
 	snprintf(fontattrs, sizeof(fontattrs), "dpi=%.2f", 96. * 2. * m->wlr_output->scale);
@@ -3456,6 +3508,9 @@ updatebar(Monitor *m)
 	m->lrpad = m->drw->font->height;
 	m->b.height = m->drw->font->height + 2;
 	m->b.real_height = (int)((float)m->b.height / m->wlr_output->scale);
+
+	awl_tray_set_bar_geometry(m->m.x, m->m.y + (topbar ? 0 : m->m.height - m->b.real_height),
+			m->b.real_width, m->b.real_height, m->b.scale);
 }
 
 void
