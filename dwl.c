@@ -802,6 +802,11 @@ cleanupmon(struct wl_listener *listener, void *data)
 	LayerSurface *l, *tmp;
 	size_t i;
 
+	/* Tear down this monitor's own tray overlay window (if it ever got
+	 * one -- see tray/awl_tray_bridge.cpp), before m->wlr_output's name
+	 * becomes unavailable below. */
+	awl_tray_remove_monitor(m->wlr_output->name);
+
 	/* m->layers[i] are intentionally not unlinked */
 	for (i = 0; i < LENGTH(m->layers); i++) {
 		wl_list_for_each_safe(l, tmp, &m->layers[i], link)
@@ -1003,7 +1008,13 @@ commitpopup(struct wl_listener *listener, void *data)
 
 	// fallback
 	if (!parent_tree)
-		parent_tree = (type == LayerShell) ? l->scene : c->scene;
+		/* l->popups (not l->scene) is the tree commitlayersurfacenotify()
+		 * and createlayersurface() deliberately keep pinned to LyrTop (or
+		 * higher) even when the layer surface itself lives at LyrBottom/Bg,
+		 * so that popups (e.g. the tray's context menu) render above the
+		 * float layer instead of inheriting their parent's lower stacking
+		 * position. */
+		parent_tree = (type == LayerShell) ? l->popups : c->scene;
 
 	if (!parent_tree) {
 		wlr_xdg_popup_destroy(popup);
@@ -1108,12 +1119,30 @@ createlayersurface(struct wl_listener *listener, void *data)
 	struct wlr_surface *surface = layer_surface->surface;
 	struct wlr_scene_tree *scene_layer = layers[layermap[layer_surface->pending.layer]];
 
+	/* The tray (tray/awl_tray_bridge.cpp) opens one layer-shell window per
+	 * monitor and requests no output of its own -- instead it encodes which
+	 * monitor it belongs to in its namespace as "awl-tray:<monitor_id>"
+	 * (monitor_id being m->wlr_output->name) so we can bind it to exactly
+	 * that output here, before the generic "no output requested -> selmon"
+	 * fallback below would otherwise land every monitor's tray window on
+	 * whichever one happens to be selmon. */
+	if (!layer_surface->output && layer_surface->namespace &&
+			!strncmp(layer_surface->namespace, "awl-tray:", 9)) {
+		const char *want = layer_surface->namespace + 9;
+		Monitor *tm;
+		wl_list_for_each(tm, &mons, link) {
+			if (!strcmp(tm->wlr_output->name, want)) {
+				layer_surface->output = tm->wlr_output;
+				break;
+			}
+		}
+	}
+
 	if (!layer_surface->output
 			&& !(layer_surface->output = selmon ? selmon->wlr_output : NULL)) {
 		wlr_layer_surface_v1_destroy(layer_surface);
 		return;
 	}
-
 	l = layer_surface->data = ecalloc(1, sizeof(*l));
     l->is_notification = blur_notifications && !strcmp(layer_surface->namespace, "notifications");
     l->is_launcher = blur_launcher && !strcmp(layer_surface->namespace, "launcher");
@@ -3237,15 +3266,12 @@ void togglebar(const Arg *arg) { togglebar_mon(selmon); }
 void togglebar_mon(Monitor* m) {
     m->showbar = !m->showbar;
     wlr_scene_node_set_enabled(&m->scene_buffer->node, m->showbar);
-    /* The tray is a separate, real layer-shell overlay window (see
-     * tray/awl_tray_bridge.cpp), not something drawn into m's own bar
+    /* The tray is a separate, real layer-shell overlay window per monitor
+     * (see tray/awl_tray_bridge.cpp), not something drawn into m's own bar
      * buffer, so hiding/showing that buffer's scene node above doesn't
-     * affect it -- it has to be told explicitly. It only ever tracks
-     * selmon's bar geometry/widget position (systray_draw() on every
-     * monitor calls awl_tray_set_bar_geometry()/_set_widget_x(), so on a
-     * multi-monitor setup whichever monitor drew its bar last "wins" --
-     * out of scope here), so only react when m is selmon. */
-    if (m == selmon) awl_tray_set_visible(m->showbar);
+     * affect it -- it has to be told explicitly, for this monitor's own
+     * tray window specifically. */
+    awl_tray_set_visible(m->wlr_output->name, m->showbar);
     arrangelayers(m);
 }
 
@@ -3491,7 +3517,8 @@ updatebar(Monitor *m)
 	m->b.real_width = (int)((float)m->b.width / m->wlr_output->scale);
 
 	if (m->b.scale == m->wlr_output->scale && m->drw) {
-		awl_tray_set_bar_geometry(m->m.x, m->m.y + (topbar ? 0 : m->m.height - m->b.real_height),
+		/* x/y are monitor-local -- see the comment on the other call below. */
+		awl_tray_set_bar_geometry(m->wlr_output->name, 0, (topbar ? 0 : m->m.height - m->b.real_height),
 				m->b.real_width, m->b.real_height, m->b.scale);
 		return;
 	}
@@ -3509,7 +3536,16 @@ updatebar(Monitor *m)
 	m->b.height = m->drw->font->height + 2;
 	m->b.real_height = (int)((float)m->b.height / m->wlr_output->scale);
 
-	awl_tray_set_bar_geometry(m->m.x, m->m.y + (topbar ? 0 : m->m.height - m->b.real_height),
+	/* x/y are monitor-LOCAL (0, and the bar's own vertical offset within
+	 * this monitor), not m->m.x/m->m.y's global output-layout position:
+	 * the tray's layer-shell surface is explicitly bound to this exact
+	 * output (see createlayersurface()'s "awl-tray:" namespace handling),
+	 * so wlr_scene_layer_surface_v1_configure() already adds this
+	 * monitor's own global origin on top of whatever margin we request --
+	 * adding it again here double-counts it, pushing every monitor except
+	 * the one at (0,0) off screen (confirmed: this is exactly what made a
+	 * second monitor's tray invisible before this fix). */
+	awl_tray_set_bar_geometry(m->wlr_output->name, 0, (topbar ? 0 : m->m.height - m->b.real_height),
 			m->b.real_width, m->b.real_height, m->b.scale);
 }
 
@@ -3638,6 +3674,15 @@ plugin_restart(const Arg* arg)
     (void)arg;
     awl_plugin_data_t* P = awl_plugin_get();
     if (P) awl_plugin_restart(P);
+
+    /* The tray's D-Bus registration (and with it every item's icons) can be
+     * lost across suspend+wake, same class of problem the other plugin
+     * threads already get restarted for above -- so reload it the same way.
+     * Unlike those, this does NOT tear down and restart the tray's GTK
+     * thread itself (see awl_tray_reload()'s own comment for why: gtkmm's
+     * Gtk::Main cannot safely be constructed a second time in one process),
+     * so it's fire-and-forget, not a blocking shutdown/join/init cycle. */
+    awl_tray_reload();
 }
 
 void

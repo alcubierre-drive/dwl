@@ -529,10 +529,11 @@ static uint32_t systray_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {
      * still-valid x_end (x + widget->width, using widget->width before we
      * overwrite it below) and rebuild the real x from *this* frame's width
      * instead of trusting the stale argument. */
-    uint32_t new_width = awl_tray_width();
+    const char *mon_id = w->bar->m->wlr_output->name;
+    uint32_t new_width = awl_tray_width(mon_id);
     uint32_t x_end = x + w->width;
     uint32_t real_x = x_end > new_width ? x_end - new_width : 0;
-    awl_tray_set_widget_x( real_x );
+    awl_tray_set_widget_x( mon_id, real_x );
     return new_width;
 }
 
