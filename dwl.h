@@ -17,9 +17,12 @@
 #include <unistd.h>
 #include <wayland-server-core.h>
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
 #include <scenefx/render/fx_renderer/fx_renderer.h>
 #include <scenefx/types/fx/clipped_region.h>
 #include <scenefx/types/wlr_scene.h>
+#pragma GCC diagnostic pop
 
 #include <wlr/backend.h>
 #include <wlr/backend/libinput.h>

@@ -62,7 +62,7 @@ Item::Item(const std::string& bn, const std::string& op, Gtk::Window& win)
                                    cancellable_, interface);
 }
 
-void Item::onConfigure(GdkEventConfigure* ev) { this->updateImage(); }
+void Item::onConfigure(GdkEventConfigure* ev) { (void)ev; this->updateImage(); }
 
 void Item::proxyReady(Glib::RefPtr<Gio::AsyncResult>& result) {
   try {
@@ -113,7 +113,7 @@ ToolTip get_variant<ToolTip>(const Glib::VariantBase& value) {
 void Item::setProperty(const Glib::ustring& name, Glib::VariantBase& value) {
   try {
       fprintf(stderr, "Set tray item property: %s.%s = %i\n", id.empty() ? bus_name.c_str() : id.c_str(),
-              name.c_str(), value);
+              name.c_str(), get_variant<int>(value));
 
     if (name == "Category") {
       category = get_variant<std::string>(value);
@@ -158,10 +158,12 @@ void Item::setProperty(const Glib::ustring& name, Glib::VariantBase& value) {
     }
   } catch (const Glib::Error& err) {
       fprintf(stderr, "Failed to set tray item property: %s.%s, value = %i, err = %s\n",
-              id.empty() ? bus_name.c_str() : id.c_str(), name.c_str(), value, err.what().c_str());
+              id.empty() ? bus_name.c_str() : id.c_str(), name.c_str(), get_variant<int>(value),
+              err.what().c_str());
   } catch (const std::exception& err) {
       fprintf(stderr, "Failed to set tray item property: %s.%s, value = %i, err = %s\n",
-              id.empty() ? bus_name.c_str() : id.c_str(), name.c_str(), value, err.what());
+              id.empty() ? bus_name.c_str() : id.c_str(), name.c_str(), get_variant<int>(value),
+              err.what());
   }
 }
 
@@ -227,6 +229,8 @@ static const std::map<std::string_view, std::set<std::string_view>> signal2props
 
 void Item::onSignal(const Glib::ustring& sender_name, const Glib::ustring& signal_name,
                     const Glib::VariantContainerBase& arguments) {
+  (void)sender_name;
+  (void)arguments;
     fprintf(stderr, "Tray item %s got signal %s\n", id.c_str(), signal_name.c_str());
   auto changed = signal2props.find(signal_name.raw());
   if (changed != signal2props.end()) {
