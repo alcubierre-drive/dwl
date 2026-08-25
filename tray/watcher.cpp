@@ -28,7 +28,6 @@ Watcher::~Watcher() {
 }
 
 void Watcher::busAcquired(const Glib::RefPtr<Gio::DBus::Connection>& conn, Glib::ustring name) {
-  (void)name;
   GError* error = nullptr;
   g_dbus_interface_skeleton_export(G_DBUS_INTERFACE_SKELETON(watcher_), conn->gobj(),
                                    "/StatusNotifierWatcher", &error);
@@ -149,8 +148,6 @@ Watcher::GfWatch* Watcher::gfWatchNew(GfWatchType type, const gchar* service, co
 }
 
 void Watcher::nameVanished(GDBusConnection* connection, const char* name, gpointer data) {
-  (void)connection;
-  (void)name;
   auto watch = static_cast<GfWatch*>(data);
   if (watch->type == GF_WATCH_TYPE_HOST) {
     watch->watcher->hosts_ = g_slist_remove(watch->watcher->hosts_, watch);

@@ -14,7 +14,6 @@ Tray::Tray(const std::string& id, Gtk::Window& win)
     box_.set_name("tray");
     box_.set_margin_start(4);
     box_.set_margin_end(4);
-    box_.set_spacing(4);
     win.add( box_ );
     if (!id.empty()) box_.get_style_context()->add_class(id);
     nb_hosts_ += 1;

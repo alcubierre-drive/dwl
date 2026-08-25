@@ -32,7 +32,6 @@ Host::~Host() {
 }
 
 void Host::busAcquired(const Glib::RefPtr<Gio::DBus::Connection>& conn, Glib::ustring name) {
-  (void)name;
   watcher_id_ = Gio::DBus::watch_name(conn, "org.kde.StatusNotifierWatcher",
                                       sigc::mem_fun(*this, &Host::nameAppeared),
                                       sigc::mem_fun(*this, &Host::nameVanished));
@@ -40,8 +39,6 @@ void Host::busAcquired(const Glib::RefPtr<Gio::DBus::Connection>& conn, Glib::us
 
 void Host::nameAppeared(const Glib::RefPtr<Gio::DBus::Connection>& conn, const Glib::ustring name,
                         const Glib::ustring& name_owner) {
-  (void)name;
-  (void)name_owner;
   if (cancellable_ != nullptr) {
     // TODO
     return;
@@ -52,8 +49,6 @@ void Host::nameAppeared(const Glib::RefPtr<Gio::DBus::Connection>& conn, const G
 }
 
 void Host::nameVanished(const Glib::RefPtr<Gio::DBus::Connection>& conn, const Glib::ustring name) {
-  (void)conn;
-  (void)name;
   g_cancellable_cancel(cancellable_);
   g_clear_object(&cancellable_);
   g_clear_object(&watcher_);
@@ -61,7 +56,6 @@ void Host::nameVanished(const Glib::RefPtr<Gio::DBus::Connection>& conn, const G
 }
 
 void Host::proxyReady(GObject* src, GAsyncResult* res, gpointer data) {
-  (void)src;
   GError* error = nullptr;
   SnWatcher* watcher = sn_watcher_proxy_new_finish(res, &error);
   if (g_error_matches(error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
@@ -106,13 +100,11 @@ void Host::registerHost(GObject* src, GAsyncResult* res, gpointer data) {
 }
 
 void Host::itemRegistered(SnWatcher* watcher, const gchar* service, gpointer data) {
-  (void)watcher;
   auto host = static_cast<SNI::Host*>(data);
   host->addRegisteredItem(service);
 }
 
 void Host::itemUnregistered(SnWatcher* watcher, const gchar* service, gpointer data) {
-  (void)watcher;
   auto host = static_cast<SNI::Host*>(data);
   auto [bus_name, object_path] = host->getBusNameAndObjectPath(service);
   for (auto it = host->items_.begin(); it != host->items_.end(); ++it) {

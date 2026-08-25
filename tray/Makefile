@@ -6,13 +6,11 @@ LD := g++
 
 PKGLIST := gio-2.0 giomm-2.4 gtkmm-3.0 gtk-layer-shell-0 dbusmenu-gtk3-0.4
 
-CFLAGS += -Wall -Wextra -fPIC -Ofast -march=native -mtune=native -flto
-CXXFLAGS += -Wall -Wextra -pedantic -fPIC -Ofast -march=native -mtune=native -flto
+CFLAGS += -Wall -Wextra -pedantic -fPIC
+CXXFLAGS += -Wall -Wextra -pedantic -fPIC
 
-FLAGS += $(shell pkg-config --cflags $(PKGLIST))
+FLAGS += $(shell pkg-config --cflags $(PKGLIST)) -g -ggdb
 LDFLAGS += -shared $(shell pkg-config --libs $(PKGLIST) jsoncpp spdlog wayland-client wayland-cursor pixman-1)
-
-LDFLAGS += -flto=12
 
 SRC := $(wildcard *.cpp)
 OBJ := $(patsubst %.cpp,%.cpp.o,$(SRC))
