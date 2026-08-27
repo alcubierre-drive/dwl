@@ -96,6 +96,15 @@ class Bridge {
   std::string monitor_id_;
   std::unique_ptr<Gtk::Window> win_;
   std::unique_ptr<Tray> tray_;
+  // The width-repoll timer below runs for as long as this connection is
+  // alive -- it captures `this` in its lambda, so it MUST be disconnected
+  // in ~Bridge() before the Bridge itself goes away. Without this, the
+  // still-armed GLib timeout source outlives the Bridge (destroying a
+  // Bridge doesn't implicitly cancel timers it registered) and its next
+  // 200ms tick dereferences a freed `this` -- a use-after-free that's
+  // silent until that memory happens to get reused, which is why it only
+  // crashed intermittently around monitor disconnects/tray reloads.
+  sigc::connection poll_conn_;
 
   std::mutex geom_mtx_;
   BarGeom bar_geom_;
@@ -197,7 +206,7 @@ Bridge::Bridge(std::string monitor_id) : monitor_id_(std::move(monitor_id)) {
   // window clipped to the bar's actual height no matter what a child asks
   // for, matching the old hardcoded-size behavior for that axis while
   // still tracking width dynamically.
-  Glib::signal_timeout().connect(
+  poll_conn_ = Glib::signal_timeout().connect(
       [this]() -> bool {
         if (!win_ || !tray_) return false;
         int min_w = 0, nat_w = 0;
@@ -229,6 +238,12 @@ Bridge::Bridge(std::string monitor_id) : monitor_id_(std::move(monitor_id)) {
 }
 
 Bridge::~Bridge() {
+  // Must happen before tray_/win_ are torn down: the timer lambda captures
+  // `this` and runs on this same GTK thread, so once we're in ~Bridge()
+  // it can no longer fire concurrently -- but it's still an armed GLib
+  // source until explicitly disconnected, and would otherwise dereference
+  // this freed Bridge on its next 200ms tick. See poll_conn_'s comment.
+  poll_conn_.disconnect();
   tray_.reset();
   win_.reset();
 }
