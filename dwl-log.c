@@ -39,8 +39,12 @@ void logprintf( const char* fmt, ... ) {
     char line[1024] = {0};
     va_list ap;
     va_start(ap, fmt);
-    size_t len = vsnprintf(line, sizeof(line)-1, fmt, ap);
+    int ret = vsnprintf(line, sizeof(line), fmt, ap);
     va_end(ap);
+    if (ret < 0) return;
+
+    /* vsnprintf returns what it would have written, not what it did */
+    size_t len = (size_t)ret < sizeof(line)-1 ? (size_t)ret : sizeof(line)-1;
 
     logfile.currsize += len;
     if (logfile.currsize >= logfile.maxsize) ftruncate(logfile.fd, (logfile.currsize=0));

@@ -469,7 +469,9 @@ static uint32_t taskbarwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix
 
     // max, float, top
     for (int wi=0; wi<n_windows; ++wi) {
-        char txt[256] = {0};
+        /* prefix is at most "[FMT] ", name is a fixed-size NUL-terminated
+         * field -- size txt so both always fit */
+        char txt[sizeof(windows[wi].name) + 8] = {0};
         if (windows[wi].floating || windows[wi].maximized || windows[wi].ontop) {
             strcat( txt, "[" );
             if (windows[wi].floating) strcat( txt, "F" );

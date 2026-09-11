@@ -879,7 +879,7 @@ cleanuplisteners(void)
 void
 closemon(Monitor *m)
 {
-    if (m->tray_pid) kill(m->tray_pid, SIGKILL);
+    if (m->tray_pid > 0) kill(m->tray_pid, SIGKILL);
     if (m && m->drw && m->showbar) { togglebar_mon(m); m->closedbar=1; }
 	/* update selmon if needed and
 	 * move closed monitor's clients to the focused one */
@@ -1807,7 +1807,12 @@ focusmon(const Arg *arg)
 	// 		selmon = dirtomon(arg->i);
 	// 	while (!selmon->wlr_output->enabled && i++ < nmons);
 	// }
-	focusclient(focustop(selmon = nextmon(arg->i)), 1);
+	Monitor *m = nextmon(arg->i);
+	/* nextmon() returns NULL when no monitor is enabled -- keep selmon as it
+	 * is rather than handing NULL to everything that dereferences it */
+	if (!m)
+		return;
+	focusclient(focustop(selmon = m), 1);
 }
 
 void
@@ -1900,7 +1905,9 @@ gpureset(struct wl_listener *listener, void *data)
 	struct wlr_renderer *old_drw = drw;
 	struct wlr_allocator *old_alloc = alloc;
 	struct Monitor *m;
-	if (!(drw = wlr_renderer_autocreate(backend)))
+	/* must match setup(): the scene holds scenefx-only nodes (blur,
+	 * per-node opacity) that a plain wlroots renderer cannot render */
+	if (!(drw = fx_renderer_create(backend)))
 		die("couldn't recreate renderer");
 
 	if (!(alloc = wlr_allocator_autocreate(backend, drw)))
@@ -2693,8 +2700,8 @@ run(char *startup_cmd)
     setenv("SSH_AUTH_SOCK","1",1);
     setenv("NO_AT_BRIDGE","1",1);
     char buf[256] = {0};
-    strcpy( buf, getenv("HOME") );
-    strcat( buf, "/Desktop" );
+    const char* home = getenv("HOME");
+    snprintf( buf, sizeof(buf), "%s/Desktop", home ? home : "/tmp" );
     setenv("GRIM_DEFAULT_DIR", buf, 1);
 
 	/* Only now does our own Wayland socket exist and WAYLAND_DISPLAY point
@@ -2728,7 +2735,9 @@ run(char *startup_cmd)
 
     // autostart goes in here
     for (unsigned i=0; i<LENGTH(Autostarts); ++i) {
-        Autostarted_pids[Autostarted_pids_sz++] = spawn_pid( &(const Arg){.v=Autostarts[i]} );
+        pid_t pid = spawn_pid( &(const Arg){.v=Autostarts[i]} );
+        /* a failed spawn returns -1; never let that reach kill()/waitpid() */
+        if (pid > 0) Autostarted_pids[Autostarted_pids_sz++] = pid;
     }
 
 	/* Mark stdout as non-blocking to avoid the startup script
@@ -3181,7 +3190,10 @@ spawn_pid(const Arg *arg)
 	/* on execvp failure, must call _exit() not exit()/die(): vfork()'s child
 	 * shares stdio buffers with the parent until it exits or execs. */
     pid_t pid = vfork();
-	if (pid == 0) {
+	if (pid < 0) {
+		fprintf(stderr, "dwl: vfork failed: %s\n", strerror(errno));
+		return -1;
+	} else if (pid == 0) {
 		close(STDIN_FILENO);
 		dup2(STDERR_FILENO, STDOUT_FILENO);
 		setsid();
@@ -3264,6 +3276,7 @@ tile(Monitor *m)
 
 void togglebar(const Arg *arg) { togglebar_mon(selmon); }
 void togglebar_mon(Monitor* m) {
+    if (!m) return;
     m->showbar = !m->showbar;
     wlr_scene_node_set_enabled(&m->scene_buffer->node, m->showbar);
     /* The tray is a separate, real layer-shell overlay window per monitor
@@ -3884,13 +3897,16 @@ main(int argc, char *argv[])
 		die("XDG_RUNTIME_DIR must be set");
 
 	setup();
-    if (ScreenLockServiceAtStart)
-        Autostarted_pids[Autostarted_pids_sz++] = spawn_pid( &(const Arg){.v=ScreenLockService} );
+    if (ScreenLockServiceAtStart) {
+        pid_t lock_pid = spawn_pid( &(const Arg){.v=ScreenLockService} );
+        if (lock_pid > 0) Autostarted_pids[Autostarted_pids_sz++] = lock_pid;
+    }
 
     if (SwwwAtStart && !startup_cmd) startup_cmd = default_startup_cmd;
 	run(startup_cmd);
 	cleanup();
     for (int i=0; i<Autostarted_pids_sz; ++i) {
+        if (Autostarted_pids[i] <= 0) continue;
         kill(-Autostarted_pids[i], SIGTERM);
 		waitpid(Autostarted_pids[i], NULL, 0);
     }

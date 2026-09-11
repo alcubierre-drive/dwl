@@ -156,7 +156,7 @@ void Watcher::nameVanished(GDBusConnection* connection, const char* name, gpoint
     watch->watcher->hosts_ = g_slist_remove(watch->watcher->hosts_, watch);
     if (watch->watcher->hosts_ == nullptr) {
       sn_watcher_set_is_host_registered(watch->watcher->watcher_, FALSE);
-      sn_watcher_emit_host_registered(watch->watcher->watcher_);
+      sn_watcher_emit_host_unregistered(watch->watcher->watcher_);
     }
   } else if (watch->type == GF_WATCH_TYPE_ITEM) {
     watch->watcher->items_ = g_slist_remove(watch->watcher->items_, watch);
@@ -165,6 +165,12 @@ void Watcher::nameVanished(GDBusConnection* connection, const char* name, gpoint
     sn_watcher_emit_item_unregistered(watch->watcher->watcher_, tmp);
     g_free(tmp);
   }
+
+  /* the watch is off both lists now, so the destructor will not free it --
+   * drop the name watch (safe from inside its own callback) and the GfWatch
+   * itself, otherwise the registration outlives the Watcher and a later
+   * vanish event calls back through a dangling watch->watcher */
+  gfWatchFree(watch);
 }
 
 void Watcher::updateRegisteredItems(SnWatcher* obj) {
