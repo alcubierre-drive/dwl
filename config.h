@@ -70,7 +70,7 @@ static const char* Autostarts[][8] = {
 static const int AutostartTray = 0;
 static const int ScreenLockServiceAtStart = 1;
 static const int SwwwAtStart = 1;
-static const char* ScreenLockService[] = { "systemd-lock-handler", "--", "swaylock", "-c", "00000000", NULL };
+static const char* ScreenLockService[] = { "systemd-lock-handler", "--", "swaylock", "-c", "00000000", "-p", NULL };
 
 /* layout(s) */
 static const Layout layouts[] = {
@@ -185,7 +185,7 @@ static const char *speakerT[] = { "pulse_port_switch", NULL };
 static const char *grimslurp[] = { "grim_slurp", NULL };
 static const char *wdisplays[] = { "wdisplays", NULL };
 // static const char *swaylock[] = { "hyprlock", NULL };
-static const char* swaylock[] = { "swaylock", "-c", "00000000", NULL };
+static const char* swaylock[] = { "swaylock", "-c", "00000000", "-p", NULL };
 static const char *docked_r[] = { "docked", "reset", NULL };
 static const char *docked_d[] = { "docked", "dock", NULL };
 static const char *docked_z[] = { "docked", "zoom", NULL };

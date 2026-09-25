@@ -58,6 +58,8 @@
 #include <wlr/types/wlr_relative_pointer_v1.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_screencopy_v1.h>
+#include <wlr/types/wlr_ext_image_capture_source_v1.h>
+#include <wlr/types/wlr_ext_image_copy_capture_v1.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_server_decoration.h>
 #include <wlr/types/wlr_session_lock_v1.h>
