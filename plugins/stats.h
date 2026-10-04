@@ -1,6 +1,5 @@
 #pragma once
 
-#include "pthread_wrap.h"
 #include <semaphore.h>
 #include <stdint.h>
 
@@ -10,11 +9,11 @@ typedef struct awl_stats_t {
 
     int dir;
 
-    pthread_t me;
-    int update_sec;
     uint64_t* sizes_table;
     sem_t sem;
 } awl_stats_t;
 
-awl_stats_t* start_stats_thread( int nval_cpu, int nval_mem, int nval_swp, int update_sec );
-void stop_stats_thread( awl_stats_t* st );
+awl_stats_t* stats_init( int nval_cpu, int nval_mem, int nval_swp );
+/* Shifts the graphs by one sample. Always changes what the bar shows. */
+void stats_update( awl_stats_t* st );
+void stats_free( awl_stats_t* st );

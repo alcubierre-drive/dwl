@@ -6,48 +6,42 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-#include "pthread_wrap.h"
-
-static void* stats_thread_run( void* arg );
+#include <fcntl.h>
 
 static float cpu_idle( uint64_t* sizes_table );
 static void rotate_back( float* array, int size );
 static void getmem( float* mem, float* swp );
 
-awl_stats_t* start_stats_thread( int nval_cpu, int nval_mem, int nval_swp, int update_sec ) {
+awl_stats_t* stats_init( int nval_cpu, int nval_mem, int nval_swp ) {
     /*P_awl_log_printf( "starting system monitor" );*/
     awl_stats_t* st = calloc(1,sizeof(awl_stats_t));
     st->ncpu = nval_cpu;
     st->nmem = nval_mem;
     st->nswp = nval_swp;
-    st->update_sec = update_sec;
     st->sizes_table = calloc(20, sizeof(uint64_t));
     sem_init( &st->sem, 0, 1 );
-    AWL_PTHREAD_CREATE( &st->me, NULL, stats_thread_run, st );
     return st;
 }
 
-void stop_stats_thread( awl_stats_t* st ) {
-    sem_wait( &st->sem );
-    if (!pthread_cancel( st->me )) pthread_join( st->me, NULL );
+void stats_free( awl_stats_t* st ) {
     sem_destroy( &st->sem );
     free( st->sizes_table );
     free( st );
 }
 
-static void* stats_thread_run( void* arg ) {
-    awl_stats_t* st = (awl_stats_t*)arg;
-    while (1) {
-        sem_wait( &st->sem );
-        rotate_back( st->cpu, st->ncpu );
-        rotate_back( st->mem, st->nmem );
-        rotate_back( st->swp, st->nswp );
-        getmem( st->mem, st->swp );
-        st->cpu[0] = 1. - cpu_idle(st->sizes_table);
-        sem_post( &st->sem );
-        sleep(st->update_sec);
-    }
-    return NULL;
+void stats_update( awl_stats_t* st ) {
+    // sample outside the lock, the bar gives up after 1 µs
+    float mem = 0, swp = 0;
+    getmem( &mem, &swp );
+    float cpu = 1. - cpu_idle(st->sizes_table);
+    sem_wait( &st->sem );
+    rotate_back( st->cpu, st->ncpu );
+    rotate_back( st->mem, st->nmem );
+    rotate_back( st->swp, st->nswp );
+    st->mem[0] = mem;
+    st->swp[0] = swp;
+    st->cpu[0] = cpu;
+    sem_post( &st->sem );
 }
 
 static void rotate_back( float* array, int size ) {
@@ -58,10 +52,16 @@ static void rotate_back( float* array, int size ) {
 static float cpu_idle( uint64_t* sizes_table ) {
     // copy old values
     memcpy( sizes_table+10, sizes_table, sizeof(uint64_t)*10 );
-    // open file and read new values
-    FILE* f = fopen("/proc/stat", "r");
+    // read only the aggregate "cpu " line (first line of /proc/stat)
+    char buf[256];
+    int fd = open( "/proc/stat", O_RDONLY | O_CLOEXEC );
+    if (fd < 0) return 1.0;
+    ssize_t nread = read( fd, buf, sizeof(buf)-1 );
+    close( fd );
+    if (nread <= 0) return 1.0;
+    buf[nread] = '\0';
     uint64_t* s = sizes_table;
-    fscanf(f, "cpu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu", s+0, s+1, s+2, s+3, s+4, s+5, s+6, s+7, s+8, s+9);
+    sscanf(buf, "cpu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu", s+0, s+1, s+2, s+3, s+4, s+5, s+6, s+7, s+8, s+9);
 
     // calculate differences
     float diffs[10] = {0};
@@ -70,24 +70,16 @@ static float cpu_idle( uint64_t* sizes_table ) {
         if (i != 0) diffs[0] += diffs[i];
     }
 
-    // find #cpus
-    float ncpus = 0.0;
-    ssize_t nread = 0;
-    size_t len = 0;
-    char* line = NULL;
-    while ((nread = getline(&line, &len, f)) != -1) {
-        int buf = 0;
-        ncpus += sscanf(line, "cpu%d", &buf);
-    }
-    free(line);
-
-    fclose(f);
-
     // return idle percentage
-    if (ncpus < 1.0) ncpus = 1.0;
     #ifndef AWL_STATS_FORCE_CPU_MULT
     float result = diffs[3]/diffs[0];
     #else
+    // #cpus, determined once
+    static float ncpus = 0.0;
+    if (ncpus < 1.0) {
+        long n = sysconf( _SC_NPROCESSORS_ONLN );
+        ncpus = n > 0 ? (float)n : 1.0;
+    }
     float result = diffs[3]/diffs[0] * ncpus;
     #endif
     return result > 0.0 ? (result < 1.0 ? result : 1.0) : 0.0;
@@ -95,6 +87,7 @@ static float cpu_idle( uint64_t* sizes_table ) {
 
 static void getmem( float* mem, float* swp ) {
     FILE* f = fopen("/proc/meminfo", "r");
+    if (!f) { *mem = *swp = 0.0; return; }
     long unsigned mem_total = 0,
                   mem_avail = 0,
                   swp_total = 0,

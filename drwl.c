@@ -100,6 +100,7 @@ Drwl * drwl_create(Monitor* m) {
     drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
         .bar = drwl,
         .draw = &ipwidget_draw,
+        .free = free,
         .width = 50,
     };
     drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
@@ -504,9 +505,11 @@ static uint32_t clockwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix )
     if (!P) return ww;
 
     char timestr[16] = "--:--";
+    int sec = -1;
     if (!sem_timedwait_nano(&P->date->sem, 1e3)) {
         memcpy(timestr, P->date->s, 16);
         timestr[15] = 0;
+        sec = P->date->sec;
         w->age = 0;
         sem_post(&P->date->sem);
     } else {
@@ -514,7 +517,18 @@ static uint32_t clockwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix )
     }
 
     TEXT( ww, timestr, P->awl_colors.fg_lay, P->awl_colors.bg_lay );
-    return ww;
+
+    // seconds meter right of the time: empty at :00, full at :59
+    int mw = 3 * w->bar->m->wlr_output->scale + 0.5f;
+    if (mw < 2) mw = 2;
+    int bar_height = w->bar->m->b.height;
+    int ydiv = sec < 0 ? bar_height : bar_height - (sec * bar_height + 29) / 59;
+    pixman_box32_t bg = { .x1 = x+ww, .x2 = x+ww+mw, .y1 = 0, .y2 = ydiv },
+                   fg = { .x1 = x+ww, .x2 = x+ww+mw, .y1 = ydiv, .y2 = bar_height };
+    pixman_image_fill_boxes( PIXMAN_OP_SRC, pix, &P->awl_colors.bg_lay, 1, &bg );
+    pixman_color_t fgcolor = color_8bit_to_16bit( molokai_green );
+    pixman_image_fill_boxes( PIXMAN_OP_SRC, pix, &fgcolor, 1, &fg );
+    return ww + mw;
 }
 
 static uint32_t systray_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {
@@ -640,7 +654,9 @@ static uint32_t tempwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) 
     if (!w->userdata) w->userdata = calloc(1,sizeof(awl_temperature_t));
     awl_temperature_t* T = w->userdata;
 
-    if (!sem_timedwait_nano( &P->temp->sem, 10e6 )) {
+    // never block the compositor; the plugin requests a redraw after each
+    // change, so a missed lock is caught up on the next frame
+    if (!sem_trywait( &P->temp->sem )) {
         w->age = 0;
         memcpy( T, P->temp, sizeof(awl_temperature_t) );
         sem_post( &P->temp->sem );
@@ -702,15 +718,16 @@ static uint32_t ipwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {
     if (!P->ip) return 0;
 
     char placeholder[] = "    invalid   ";
-    char address_[128] = {0};
+    if (!w->userdata) w->userdata = calloc(128,1);
+    char* address = w->userdata;
 
-    char* address = address_;
-    if (!sem_timedwait_nano( &P->ip->sem, 10e6 )) {
+    // never block the compositor; on a missed lock show the last address
+    if (!sem_trywait( &P->ip->sem )) {
         w->age = 0;
-        strncpy( address, P->ip->address, 128 );
+        memcpy( address, P->ip->address, 128 );
+        address[127] = 0;
         sem_post( &P->ip->sem );
     } else {
-        address = placeholder;
         w->age++;
     }
     int is_online = atomic_load( &P->ip->is_online );

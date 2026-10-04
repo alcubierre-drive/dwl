@@ -1,9 +1,8 @@
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 #include <semaphore.h>
-
-typedef struct temp_thread_t temp_thread_t;
 
 typedef struct awl_temperature_t {
     // output
@@ -18,11 +17,16 @@ typedef struct awl_temperature_t {
     char f_labels[16][16];
     uint8_t f_ntemps;
 
-    temp_thread_t* handle;
     sem_t sem;
 } awl_temperature_t;
 
-void start_temp_thread( awl_temperature_t* t, int update_sec );
-void stop_temp_thread( awl_temperature_t* t );
+/* The caller fills in the input fields, then calls temp_init(). */
+void temp_init( awl_temperature_t* t );
+/* Finds the tempN_input of the hwmon device called `name` whose label starts
+ * with `label`; writes its path to `out` and returns nonzero on success. */
+int temp_find_hwmon( const char* name, const char* label, char* out, size_t n );
+/* Re-reads all sensors; returns nonzero if a reading changed. */
+int temp_update( awl_temperature_t* t );
+void temp_fini( awl_temperature_t* t );
 
 uint32_t temp_color( float T, float min, float max );

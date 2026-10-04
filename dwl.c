@@ -3,6 +3,7 @@
 #include "util.h"
 #include "drwl.h"
 #include "plugins.h"
+#include "plugins/redraw.h"
 #include "tray/awl_tray.h"
 
 /* vfork(2) is a glibc/BSD extension not declared under the strict
@@ -67,16 +68,16 @@ static void destroykeyboardgroup(struct wl_listener *listener, void *data);
 static Monitor *nextmon(int add);
 static void drawbar(Monitor *m);
 static void drawbars(void);
+static Buffer *barbuffer(Monitor *m);
+static Buffer *newbarbuffer(Monitor *m);
+static uint64_t barhash(const Buffer *buf);
 
-// TODO this should not be here
-static struct wl_event_source* drawbars_timer = NULL;
-static int drawbars_timer_elapse_ms = 200;
-static int drawbars_timer_keep_updating = 1;
-static int drawbars_timer_fire( void* data ) {
-    (void)data;
+/* bars are redrawn on demand: see plugins/redraw.h */
+static struct wl_event_source* redraw_source = NULL;
+static int redraw_fire( int fd, uint32_t mask, void* data ) {
+    (void)fd; (void)mask; (void)data;
+    awl_redraw_drain();
     drawbars();
-    if (drawbars_timer_keep_updating)
-        wl_event_source_timer_update(drawbars_timer, drawbars_timer_elapse_ms);
     return 0;
 }
 
@@ -422,6 +423,8 @@ arrange(Monitor *m)
 		m->lt[m->sellt]->arrange(m);
 	motionnotify(0, NULL, 0, 0, 0, 0);
 	checkidleinhibitor(NULL);
+	/* layout symbol, taskbar order and window states may have changed */
+	awl_redraw_request();
 }
 
 void
@@ -739,8 +742,9 @@ checkidleinhibitor(struct wlr_surface *exclude)
 void
 cleanup(void)
 {
-    drawbars_timer_keep_updating = 0;
-    wl_event_source_timer_update(drawbars_timer, 0);
+    awl_tray_set_change_callback(NULL);
+    if (redraw_source) wl_event_source_remove(redraw_source);
+    redraw_source = NULL;
 
 	/* Tear down the tray's own client connection to us before we start
 	 * force-destroying clients below, so its GTK/GDK thread shuts down
@@ -792,6 +796,8 @@ cleanup(void)
 	wlr_scene_node_destroy(&scene->tree.node);
     drwl_fini();
     awl_plugin_free(plugin_data);
+    /* only now nothing can request a redraw anymore */
+    awl_redraw_fini();
 }
 
 void
@@ -831,6 +837,9 @@ cleanupmon(struct wl_listener *listener, void *data)
 	closemon(m);
 	wlr_scene_node_destroy(&m->fullscreen_bg->node);
 	wlr_scene_node_destroy(&m->scene_buffer->node);
+	for (i = 0; i < LENGTH(m->bar_bufs); i++)
+		if (m->bar_bufs[i])
+			wlr_buffer_drop(&m->bar_bufs[i]->base);
 	free(m);
     in_cleanupmon = 0;
 }
@@ -1491,6 +1500,10 @@ destroylock(SessionLock *lock, int unlock)
 	focusclient(focustop(selmon), 0);
 	motionnotify(0, NULL, 0, 0, 0, 0);
 
+	/* catch up on everything skipped while locked (also re-places the tray
+	 * via systray_draw()) */
+	drawbars();
+
 destroy:
 	wl_list_remove(&lock->new_surface.link);
 	wl_list_remove(&lock->unlock.link);
@@ -1602,6 +1615,10 @@ void
 drawbar(Monitor *m)
 {
     if (in_cleanupmon) return;
+    /* nothing of the bar is visible under the lock screen, but every new
+     * buffer still damages the output (and the full-screen locked_bg_blur
+     * above it); destroylock() redraws all bars once on unlock */
+    if (locked) return;
     if (!m) return;
     if (!m->drw) return;
 	int x = 0, /*w,*/ tw = 0;
@@ -1609,9 +1626,10 @@ drawbar(Monitor *m)
 	// int boxw = m->drw->font->height / 6 + 2;
 	// uint32_t i;
     uint32_t occ = 0, urg = 0;
-	int32_t stride, size;
 	Client *c;
 	Buffer *buf;
+	int oneoff;
+	uint64_t hash;
 
     Client* ct;
 
@@ -1621,14 +1639,12 @@ drawbar(Monitor *m)
 	if (!m->showbar)
 		return;
 
-	stride = drwl_stride(m->b.width);
-	size = stride * m->b.height;
+	/* fall back to a throwaway buffer if the scene holds both ring slots */
+	if ((oneoff = !(buf = barbuffer(m))))
+		buf = newbarbuffer(m);
+	memset(buf->data, 0, buf->stride * buf->h);
 
-	buf = ecalloc(1, sizeof(Buffer) + size);
-	buf->stride = stride;
-	wlr_buffer_init(&buf->base, &buffer_impl, m->b.width, m->b.height);
-
-	drwl_prepare_drawing(m->drw, m->b.width, m->b.height, buf->data, stride);
+	drwl_prepare_drawing(m->drw, m->b.width, m->b.height, buf->data, buf->stride);
 
 	/*draw status first so it can be overdrawn by tags later*/
 	if (m == selmon) { // status is only drawn on selected monitor
@@ -1690,8 +1706,72 @@ drawbar(Monitor *m)
 		m->b.real_width, m->b.real_height);
 	wlr_scene_node_set_position(&m->scene_buffer->node, m->m.x,
 		m->m.y + (topbar ? 0 : m->m.height - m->b.real_height));
-	wlr_scene_buffer_set_buffer(m->scene_buffer, &buf->base);
-	wlr_buffer_drop(&buf->base);
+	/* only hand the scene a new buffer (damaging the output) if the pixels
+	 * actually changed; buf stays unlocked otherwise and is reused next time.
+	 * bar_hash == 0 means "nothing valid shown", see gpureset(). */
+	hash = barhash(buf);
+	if (hash != m->bar_hash || !m->bar_hash) {
+		wlr_scene_buffer_set_buffer(m->scene_buffer, &buf->base);
+		m->bar_hash = hash;
+	}
+	if (oneoff)
+		wlr_buffer_drop(&buf->base);
+}
+
+Buffer *
+newbarbuffer(Monitor *m)
+{
+	int32_t stride = drwl_stride(m->b.width);
+	Buffer *buf = ecalloc(1, sizeof(Buffer) + (size_t)stride * m->b.height);
+	buf->stride = stride;
+	buf->w = m->b.width;
+	buf->h = m->b.height;
+	wlr_buffer_init(&buf->base, &buffer_impl, m->b.width, m->b.height);
+	return buf;
+}
+
+Buffer *
+barbuffer(Monitor *m)
+{
+	/* The scene locks a buffer from set_buffer until it has copied it into a
+	 * texture on the next rendered frame, then unlocks it again. Any unlocked
+	 * slot is therefore free to draw into; the second slot covers redraws
+	 * that happen before that upload (e.g. while the output renders no
+	 * frames). The slots are only dropped in cleanupmon(). */
+	size_t i;
+	Buffer *buf;
+
+	for (i = 0; i < LENGTH(m->bar_bufs); i++) {
+		buf = m->bar_bufs[i];
+		if (buf && buf->base.n_locks)
+			continue;
+		if (buf && (buf->w != (size_t)m->b.width || buf->h != (size_t)m->b.height)) {
+			wlr_buffer_drop(&buf->base);
+			buf = NULL;
+		}
+		if (!buf)
+			buf = m->bar_bufs[i] = newbarbuffer(m);
+		return buf;
+	}
+	return NULL;
+}
+
+uint64_t
+barhash(const Buffer *buf)
+{
+	/* FNV-1a over 64-bit words; only ever compared with the previous frame */
+	const unsigned char *p = (const unsigned char *)buf->data;
+	size_t size = buf->stride * buf->h, i;
+	uint64_t h = 0xcbf29ce484222325ull ^ ((uint64_t)buf->w << 32 | buf->h);
+	uint64_t word;
+
+	for (i = 0; i + sizeof(word) <= size; i += sizeof(word)) {
+		memcpy(&word, p + i, sizeof(word));
+		h = (h ^ word) * 0x100000001b3ull;
+	}
+	for (; i < size; i++)
+		h = (h ^ p[i]) * 0x100000001b3ull;
+	return h;
 }
 
 void
@@ -1920,10 +2000,14 @@ gpureset(struct wl_listener *listener, void *data)
 
 	wl_list_for_each(m, &mons, link) {
 		wlr_output_init_render(m->wlr_output, alloc, drw);
+		/* the bar's texture dies with the old renderer, and the scene
+		 * no longer has the buffer to re-upload it from */
+		m->bar_hash = 0;
 	}
 
 	wlr_allocator_destroy(old_alloc);
 	wlr_renderer_destroy(old_drw);
+	awl_redraw_request();
 }
 
 void
@@ -3163,8 +3247,10 @@ setup(void)
 
     plugin_data = awl_plugin_init();
 	drwl_init();
-    drawbars_timer = wl_event_loop_add_timer(event_loop, &drawbars_timer_fire, NULL);
-    wl_event_source_timer_update(drawbars_timer, drawbars_timer_elapse_ms);
+    if (awl_redraw_init() >= 0)
+        redraw_source = wl_event_loop_add_fd(event_loop, awl_redraw_fd(),
+                WL_EVENT_READABLE, redraw_fire, NULL);
+    awl_tray_set_change_callback(awl_redraw_request);
 
 	/* Make sure XWayland clients don't connect to the parent X server,
 	 * e.g when running in the x11 backend or the wayland backend and the

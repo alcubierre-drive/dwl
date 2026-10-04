@@ -1,72 +1,71 @@
-#include "pthread_wrap.h"
-/*#include "../awl_log.h"*/
 #include "temp.h"
 #include <string.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
+#include <dirent.h>
 
-struct temp_thread_t {
-    int running;
-    int sleep_sec;
-    pthread_t me;
-    FILE* f;
-    awl_temperature_t* t;
-};
-
-static void temp_thread_cleanup( void* arg ) {
-    temp_thread_t* T = arg;
-    if (T) {
-        sem_wait( &T->t->sem );
-        sem_destroy( &T->t->sem );
-        T->running = 0;
-        T->sleep_sec = 0;
-        if (T->f) fclose(T->f);
-    }
+static int read_line( const char* path, char* buf, size_t n ) {
+    FILE* f = fopen(path, "r");
+    if (!f) return 0;
+    int ok = fgets(buf, n, f) != NULL;
+    fclose(f);
+    if (ok) buf[strcspn(buf, "\n")] = 0;
+    return ok;
 }
 
-static void* temp_thread_run( void* arg ) {
-    temp_thread_t* T = arg;
-    if (!T) return NULL;
-    pthread_cleanup_push( &temp_thread_cleanup, T );
-
-    awl_temperature_t* temp = T->t;
-    while (T->running) {
-        sem_wait( &temp->sem );
-        temp->ntemps = 0;
-        for (int i=0; i<temp->f_ntemps; ++i) {
-            if ((T->f = fopen(temp->f_files[i], "r"))) {
-                long u = 0;
-                if (fscanf(T->f, "%li", &u)) {
-                    // save output
-                    temp->temps[temp->ntemps] = (float)u/(float)1000.0;
-                    temp->idx[temp->ntemps++] = i;
-                }
-                fclose(T->f);
-                T->f = NULL;
-            }
+int temp_find_hwmon( const char* name, const char* label, char* out, size_t n ) {
+    // hwmon numbering is not stable across boots, so match by name and label
+    DIR* d = opendir("/sys/class/hwmon");
+    if (!d) return 0;
+    int found = 0;
+    struct dirent* e;
+    char path[512], buf[64];
+    while (!found && (e = readdir(d))) {
+        if (strncmp(e->d_name, "hwmon", 5)) continue;
+        snprintf(path, sizeof(path), "/sys/class/hwmon/%s/name", e->d_name);
+        if (!read_line(path, buf, sizeof(buf)) || strcmp(buf, name)) continue;
+        for (int i=1; i<64 && !found; ++i) {
+            snprintf(path, sizeof(path), "/sys/class/hwmon/%s/temp%d_label", e->d_name, i);
+            if (!read_line(path, buf, sizeof(buf)) || strncmp(buf, label, strlen(label))) continue;
+            found = snprintf(out, n, "/sys/class/hwmon/%s/temp%d_input", e->d_name, i) < (int)n;
         }
-        sem_post( &temp->sem );
-        sleep(T->sleep_sec);
+    }
+    closedir(d);
+    return found;
+}
+
+void temp_init( awl_temperature_t* temp ) {
+    sem_init( &temp->sem, 0, 1 );
+}
+
+void temp_fini( awl_temperature_t* temp ) {
+    sem_destroy( &temp->sem );
+}
+
+int temp_update( awl_temperature_t* temp ) {
+    // read outside the lock, the bar only try-locks
+    float temps[sizeof(temp->temps)/sizeof(temp->temps[0])] = {0};
+    uint8_t idx[sizeof(temp->idx)/sizeof(temp->idx[0])] = {0};
+    uint8_t ntemps = 0;
+    for (int i=0; i<temp->f_ntemps; ++i) {
+        FILE* f = fopen(temp->f_files[i], "r");
+        if (f) {
+            long u = 0;
+            if (fscanf(f, "%li", &u) == 1) {
+                temps[ntemps] = (float)u/(float)1000.0;
+                idx[ntemps++] = i;
+            }
+            fclose(f);
+        }
     }
 
-    pthread_cleanup_pop( 1 );
-    return NULL;
-}
-
-void start_temp_thread( awl_temperature_t* temp, int update_sec ) {
-    temp->handle = calloc(1,sizeof(temp_thread_t));
-    temp->handle->running = 1;
-    temp->handle->sleep_sec = update_sec;
-    temp->handle->t = temp;
-    sem_init( &temp->sem, 0, 1 );
-    AWL_PTHREAD_CREATE( &temp->handle->me, NULL, temp_thread_run, temp->handle );
-}
-
-void stop_temp_thread( awl_temperature_t* temp ) {
-    if (temp->handle->running)
-        if (!pthread_cancel( temp->handle->me )) pthread_join( temp->handle->me, NULL );
-    free(temp->handle);
+    sem_wait( &temp->sem );
+    int changed = temp->ntemps != ntemps ||
+        memcmp( temp->temps, temps, ntemps * sizeof(temps[0]) );
+    memcpy( temp->temps, temps, sizeof(temps) );
+    memcpy( temp->idx, idx, sizeof(idx) );
+    temp->ntemps = ntemps;
+    sem_post( &temp->sem );
+    return changed;
 }
 
 static uint32_t colormap[128] = {

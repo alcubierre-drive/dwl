@@ -1,17 +1,18 @@
 #pragma once
 
-#include "pthread_wrap.h"
-#include <semaphore.h>
-
 typedef struct awl_battery_t {
     _Atomic float charge;
     _Atomic int charging;
     // -1: invalid
 
-    pthread_t me;
-    sem_t sem;
-    int update_sec;
+    int uevent_fd; // kernel uevents (netlink), -1 if unavailable
 } awl_battery_t;
 
-awl_battery_t* start_bat_thread( int update_sec );
-void stop_bat_thread( awl_battery_t* bat );
+awl_battery_t* bat_init( void );
+/* Re-reads the battery; returns nonzero if charge or state changed. */
+int bat_update( awl_battery_t* b );
+/* Call when uevent_fd is readable. Drains it and re-reads the battery if any
+ * power_supply device (battery or AC adapter) changed; returns like
+ * bat_update(). */
+int bat_dispatch( awl_battery_t* b );
+void bat_free( awl_battery_t* b );

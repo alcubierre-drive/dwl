@@ -21,14 +21,33 @@ Tray::Tray(const std::string& id, Gtk::Window& win)
     dp_.emit();
 }
 
+void Tray::notifyChange() {
+    if (on_change_) on_change_();
+}
+
+void Tray::onItemWidgetNotify(GObject*, GParamSpec*, gpointer self) {
+    static_cast<Tray*>(self)->notifyChange();
+}
+
 void Tray::onAdd(std::unique_ptr<Item>& item) {
     box_.pack_start(item->event_box);
+    // Width-relevant per-item changes: Item::setStatus() toggles event_box's
+    // visibility, Item::updateImage() replaces image's pixbuf/surface (new
+    // icon, icon_size or scale factor). Both handlers live on the Item's own
+    // widgets and die with them; `this` (the Tray) owns host_, which owns
+    // the Items, so the Tray strictly outlives every handler connected here.
+    g_signal_connect(item->event_box.gobj(), "notify::visible",
+                     G_CALLBACK(&Tray::onItemWidgetNotify), this);
+    g_signal_connect(item->image.gobj(), "notify",
+                     G_CALLBACK(&Tray::onItemWidgetNotify), this);
     dp_.emit();
+    notifyChange();
 }
 
 void Tray::onRemove(std::unique_ptr<Item>& item) {
     box_.remove(item->event_box);
     dp_.emit();
+    notifyChange();
 }
 
 void Tray::update() {

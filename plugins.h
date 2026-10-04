@@ -7,6 +7,7 @@
 #include "plugins/backlight.h"
 #include "plugins/date.h"
 #include "plugins/pulsetest.h"
+#include "plugins/poller.h"
 
 #include "plugins/sem_time.h"
 #include "plugins/colors.h"
@@ -25,6 +26,7 @@ typedef struct awl_plugin_data_t {
     awl_date_t* date;
     pulse_test_t* pulse;
     awl_backlight_t* backlight;
+    awl_poller_t* poller;
 
     /*awl_wallpaper_data_t* wp;*/
 

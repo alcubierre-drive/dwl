@@ -46,6 +46,12 @@ int awl_tray_join(void);
  * alongside awl_plugin_restart(). No-op if the tray was never started. */
 void awl_tray_reload(void);
 
+/* Registers a function the tray calls (from its own thread) whenever the
+ * value awl_tray_width() returns may have changed for some monitor, so the
+ * caller can redraw its bar. Must be safe to call from any thread. Pass NULL
+ * to unregister. */
+void awl_tray_set_change_callback(void (*cb)(void));
+
 /* All of the below identify which monitor's tray overlay window they apply
  * to via `monitor_id`, a stable per-output identifier -- pass
  * m->wlr_output->name. Each monitor gets its own independent overlay

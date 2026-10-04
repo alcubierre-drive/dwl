@@ -6,6 +6,7 @@
 #include "plugins/bat.h"
 #include "plugins/date.h"
 #include "plugins/pulsetest.h"
+#include "plugins/poller.h"
 #include "plugins/wbg_png.h"
 
 #include <stddef.h>
@@ -157,23 +158,32 @@ static void* wp_thread( void* data ) {
 static void awl_plugin_start( awl_plugin_data_t* p ) {
     p->awl_colors = awl_colors();
 
-    p->ip = start_ip_thread(1);
-    p->stats = start_stats_thread( 16, 16, 16, 1 );
+    p->ip = ip_init();
+    p->stats = stats_init( 16, 16, 16 );
 
     p->temp = calloc(1,sizeof(awl_temperature_t));
-    // setup of first thermal zone
-    strcpy( p->temp->f_files[p->temp->f_ntemps], "/sys/class/thermal/thermal_zone0/temp" );
-    strcpy( p->temp->f_labels[p->temp->f_ntemps], "" );
-    p->temp->f_t_max[p->temp->f_ntemps] = 90;
-    p->temp->f_t_min[p->temp->f_ntemps++] = 40;
+    // CPU package sensor (cheap MSR read); the ACPI thermal zone goes through
+    // the EC and costs ~2ms per read, so it is only the fallback
+    if (temp_find_hwmon( "coretemp", "Package id", p->temp->f_files[p->temp->f_ntemps],
+                         sizeof(p->temp->f_files[0]) )) {
+        // idles around 50, throttles at TjMax (110)
+        p->temp->f_t_max[p->temp->f_ntemps] = 100;
+        p->temp->f_t_min[p->temp->f_ntemps] = 50;
+    } else {
+        strcpy( p->temp->f_files[p->temp->f_ntemps], "/sys/class/thermal/thermal_zone0/temp" );
+        p->temp->f_t_max[p->temp->f_ntemps] = 90;
+        p->temp->f_t_min[p->temp->f_ntemps] = 40;
+    }
+    strcpy( p->temp->f_labels[p->temp->f_ntemps++], "" );
     // here could go another thermal zone
-    start_temp_thread(p->temp, 1);
+    temp_init(p->temp);
     p->temp_color = &temp_color;
 
-    p->bat = start_bat_thread(1);
-    p->date = start_date_thread(1);
+    p->bat = bat_init();
+    p->date = date_init();
+    p->poller = poller_start( p->stats, p->temp, p->date, p->bat, p->ip );
     p->pulse = start_pulse_thread();
-    p->backlight = start_backlight_thread(1.0);
+    p->backlight = start_backlight_thread();
     /*wp_init( &wp );*/
     /*AWL_PTHREAD_CREATE( &p->wp_thread, NULL, wp_thread, NULL );*/
 }
@@ -185,11 +195,12 @@ awl_plugin_data_t* awl_plugin_init( void ) {
 }
 
 static void awl_plugin_stop( awl_plugin_data_t* p ) {
-    stop_ip_thread(p->ip);
-    stop_stats_thread(p->stats);
-    stop_temp_thread(p->temp); free(p->temp);
-    stop_bat_thread(p->bat);
-    stop_date_thread(p->date);
+    poller_stop(p->poller);
+    ip_free(p->ip);
+    stats_free(p->stats);
+    temp_fini(p->temp); free(p->temp);
+    bat_free(p->bat);
+    date_free(p->date);
     stop_pulse_thread(p->pulse);
     stop_backlight_thread(p->backlight);
 

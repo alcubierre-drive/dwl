@@ -46,7 +46,7 @@ static inline void* _AWL_PTHREAD_WRAP_START_ROUTINE( void* arg_ ) {
     _AWL_PTHREAD_START_ROUTINE_WRAPPER_T* _AWL_PTHREAD_ARG_W = calloc(1,sizeof(_AWL_PTHREAD_START_ROUTINE_WRAPPER_T)); \
     _AWL_PTHREAD_ARG_W->arg = ARG; \
     _AWL_PTHREAD_ARG_W->start_routine = START_ROUTINE; \
-    sprintf( _AWL_PTHREAD_ARG_W->starter_location, "%s.%i", __FILE__, __LINE__ ); \
+    snprintf( _AWL_PTHREAD_ARG_W->starter_location, sizeof(_AWL_PTHREAD_ARG_W->starter_location), "%s.%i", __FILE__, __LINE__ ); \
     pthread_create(THREAD, ATTR, _AWL_PTHREAD_WRAP_START_ROUTINE, _AWL_PTHREAD_ARG_W); \
 }
 

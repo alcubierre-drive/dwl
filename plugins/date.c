@@ -1,37 +1,31 @@
 #include "date.h"
 #include <time.h>
-#include <unistd.h>
 #include <stdlib.h>
-#include "pthread_wrap.h"
+#include <string.h>
 
-static void* date_thread_fun( void* arg ) {
-    awl_date_t* d = (awl_date_t*)arg;
-    while (1) {
-        time_t t;
-        time(&t);
-        struct tm* lt = localtime(&t);
-        sem_wait( &d->sem );
-        strftime( d->s, 127, "%R", lt );
-        /* strftime( date_string, 127, "%T", lt ); */
-        sem_post( &d->sem );
-        sleep(d->update_sec);
-    }
-    return NULL;
-}
-
-awl_date_t* start_date_thread( int update_sec ) {
+awl_date_t* date_init( void ) {
     awl_date_t* d = calloc(1, sizeof(awl_date_t));
-    d->update_sec = update_sec;
-    /*P_awl_log_printf( "creating date_thread" );*/
     sem_init( &d->sem, 0, 1 );
-    AWL_PTHREAD_CREATE( &d->me, NULL, &date_thread_fun, d );
     return d;
 }
 
-void stop_date_thread( awl_date_t* d ) {
+int date_update( awl_date_t* d ) {
+    time_t t;
+    time(&t);
+    struct tm lt;
+    localtime_r(&t, &lt);
+    char s[128] = {0};
+    strftime( s, 127, "%R", &lt );
+    /* strftime( s, 127, "%T", &lt ); */
     sem_wait( &d->sem );
-    if (!pthread_cancel(d->me)) pthread_join( d->me, NULL );
+    int changed = strcmp( s, d->s ) != 0 || d->sec != lt.tm_sec;
+    if (changed) memcpy( d->s, s, sizeof s );
+    d->sec = lt.tm_sec > 59 ? 59 : lt.tm_sec; // leap second
+    sem_post( &d->sem );
+    return changed;
+}
+
+void date_free( awl_date_t* d ) {
     sem_destroy( &d->sem );
     free(d);
 }
-

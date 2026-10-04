@@ -63,6 +63,11 @@ struct BarGeom {
 std::mutex g_pending_geom_mtx;
 std::unordered_map<std::string, BarGeom> g_pending_geom;
 
+// Set via awl_tray_set_change_callback(); called from the GTK thread whenever
+// a tray's content width changes, so dwl redraws its bar (which reserves
+// that width) instead of polling awl_tray_width().
+std::atomic<void (*)(void)> g_change_cb{nullptr};
+
 // Marshals `fn` onto the tray's GTK/GLib thread. Safe to call from any
 // thread (g_idle_add is documented thread-safe).
 template <typename F>
@@ -92,19 +97,27 @@ class Bridge {
 
  private:
   void reposition();
+  void scheduleWidthCheck();
+  void checkWidth();
+  void hookTray();
 
   std::string monitor_id_;
   std::unique_ptr<Gtk::Window> win_;
   std::unique_ptr<Tray> tray_;
-  // The width-repoll timer below runs for as long as this connection is
-  // alive -- it captures `this` in its lambda, so it MUST be disconnected
-  // in ~Bridge() before the Bridge itself goes away. Without this, the
-  // still-armed GLib timeout source outlives the Bridge (destroying a
-  // Bridge doesn't implicitly cancel timers it registered) and its next
-  // 200ms tick dereferences a freed `this` -- a use-after-free that's
-  // silent until that memory happens to get reused, which is why it only
-  // crashed intermittently around monitor disconnects/tray reloads.
-  sigc::connection poll_conn_;
+  // Width tracking is event-driven (see scheduleWidthCheck()): GLib/GTK
+  // sources and handlers registered with `this` as their data MUST be
+  // removed in ~Bridge() before the Bridge itself goes away. Destroying a
+  // Bridge doesn't implicitly cancel sources it registered, and a stale one
+  // firing later dereferences a freed `this` -- the use-after-free that
+  // used to crash intermittently around monitor disconnects/tray reloads
+  // (back then via a recurring 200ms width-poll timer, now gone).
+  //
+  // Pending one-shot idle source for checkWidth(), 0 if none. Only touched
+  // on the GTK thread.
+  guint width_check_id_ = 0;
+  // win_'s "check-resize": catch-all for any queued resize of the window's
+  // content that the explicit Tray::on_change_ hooks don't cover.
+  sigc::connection check_resize_conn_;
 
   std::mutex geom_mtx_;
   BarGeom bar_geom_;
@@ -186,50 +199,23 @@ Bridge::Bridge(std::string monitor_id) : monitor_id_(std::move(monitor_id)) {
   // time it's actually resized (which happens as soon as the window is
   // first mapped, in reposition() below); after that it keeps whatever
   // size it was last given and won't grow/shrink on its own as icons come
-  // and go, and (for reasons that didn't reproduce with a plain GTK
-  // container in isolation) box_'s own size-allocate signal never fires
-  // here to hook a reaction off of. Poll the box's natural width instead
-  // and force a fresh renegotiation whenever it changes. (Forcing this
-  // unconditionally on every tick, instead of only on real changes, was
-  // tried as a way to retry updateImage() for items that set their image
-  // before the window was realized -- see Item::updateImage()'s window-null
-  // fallback for the actual fix for that -- but constant forced
-  // reconfiguration interfered with the compositor's own frame/screencopy
-  // scheduling, so it's change-gated again here.)
-  //
-  // Deliberately resize to (nat_w, last_height_) rather than gtk-layer-shell's
-  // documented "resize(1, 1) to snap back to natural size" recipe: some
-  // icons' natural/preferred height (e.g. before their image widget is
-  // realized) can exceed the bar's real height, and resize(1, 1) lets
-  // GTK grow *both* axes to fit that, overflowing the window past the bar
-  // strip. Pinning height explicitly on every forced resize keeps the
-  // window clipped to the bar's actual height no matter what a child asks
-  // for, matching the old hardcoded-size behavior for that axis while
-  // still tracking width dynamically.
-  poll_conn_ = Glib::signal_timeout().connect(
-      [this]() -> bool {
-        if (!win_ || !tray_) return false;
-        int min_w = 0, nat_w = 0;
-        tray_->box_.get_preferred_width(min_w, nat_w);
-        content_w_.store(nat_w, std::memory_order_relaxed);
-        if (shown_ && nat_w != last_forced_w_) {
-          last_forced_w_ = nat_w;
-          int w = nat_w > 0 ? nat_w : 1;
-          int h = last_height_ > 0 ? last_height_ : 1;
-          // resize() alone is only a hint here and was observed to not
-          // actually change this undecorated layer-shell window's real
-          // GTK allocation once it had already been mapped with a smaller
-          // width (verified via [poll-debug]: nat_w/last_forced_w tracked
-          // the icon's real width correctly, but win_->get_allocation()
-          // stayed stuck at width 1 forever). set_size_request() is a hard
-          // constraint on the widget's size, not just a hint, and reliably
-          // forces the reallocation that resize() alone didn't.
-          win_->set_size_request(w, h);
-          win_->resize(w, h);
-        }
-        return true;
-      },
-      200);
+  // and go. So whenever box_'s natural width may have changed, re-measure
+  // it and force a renegotiation (checkWidth()). This is event-driven, with
+  // no recurring timer:
+  //  - Tray::on_change_ fires on item add/remove, item visibility (Status)
+  //    changes and item image replacement (icon, icon_size, scale);
+  //  - win_'s "check-resize" fires whenever GTK processes a queued resize
+  //    of the (visible) window's content -- a catch-all for anything else
+  //    that changes a child's size request (e.g. a style change);
+  //  - reposition()/setVisible() check when the window gets (re)mapped,
+  //    and the constructor/reloadTray() schedule an initial check so the
+  //    width is reported at startup even before any item exists.
+  // All of these only *schedule* a single deduplicated idle source; the
+  // actual measurement happens outside GTK's layout phase / widget
+  // destruction, and is change-gated so it never feeds back into itself.
+  hookTray();
+  check_resize_conn_ = win_->signal_check_resize().connect([this] { scheduleWidthCheck(); });
+  scheduleWidthCheck();
 
   // Deliberately not shown yet -- see reposition(): the window is first
   // mapped only once real bar geometry is known, so gtk-layer-shell's
@@ -238,14 +224,75 @@ Bridge::Bridge(std::string monitor_id) : monitor_id_(std::move(monitor_id)) {
 }
 
 Bridge::~Bridge() {
-  // Must happen before tray_/win_ are torn down: the timer lambda captures
-  // `this` and runs on this same GTK thread, so once we're in ~Bridge()
-  // it can no longer fire concurrently -- but it's still an armed GLib
-  // source until explicitly disconnected, and would otherwise dereference
-  // this freed Bridge on its next 200ms tick. See poll_conn_'s comment.
-  poll_conn_.disconnect();
+  // Everything that can call back into `this` must be cut off before the
+  // Bridge goes away (see width_check_id_'s comment). All of it runs on this
+  // same GTK thread, so nothing can fire concurrently with ~Bridge(), only
+  // later. Order: first stop the change notifiers (destroying tray_/win_
+  // can itself emit notify/check-resize while widgets are torn down), then
+  // destroy them, then drop any idle source that was still pending or got
+  // scheduled during that teardown.
+  check_resize_conn_.disconnect();
+  if (tray_) tray_->on_change_ = nullptr;
   tray_.reset();
   win_.reset();
+  if (width_check_id_) {
+    g_source_remove(width_check_id_);
+    width_check_id_ = 0;
+  }
+}
+
+void Bridge::hookTray() {
+  // Tray outlives none of its notifiers (see Tray::on_change_), and Bridge
+  // clears this before destroying tray_ (~Bridge()) or replaces the whole
+  // Tray (reloadTray()), so capturing `this` here is safe.
+  tray_->on_change_ = [this] { scheduleWidthCheck(); };
+}
+
+// Coalesces any burst of change notifications into one checkWidth() call on
+// the next main-loop idle. GTK thread only.
+void Bridge::scheduleWidthCheck() {
+  if (width_check_id_) return;
+  width_check_id_ = g_idle_add_full(
+      G_PRIORITY_DEFAULT_IDLE,
+      [](gpointer data) -> gboolean {
+        auto *self = static_cast<Bridge *>(data);
+        self->width_check_id_ = 0;
+        self->checkWidth();
+        return G_SOURCE_REMOVE;
+      },
+      this, nullptr);
+}
+
+void Bridge::checkWidth() {
+  if (!win_ || !tray_) return;
+  int min_w = 0, nat_w = 0;
+  tray_->box_.get_preferred_width(min_w, nat_w);
+  if (content_w_.exchange(nat_w, std::memory_order_relaxed) != nat_w)
+    if (auto cb = g_change_cb.load()) cb();
+  if (shown_ && nat_w != last_forced_w_) {
+    last_forced_w_ = nat_w;
+    int w = nat_w > 0 ? nat_w : 1;
+    int h = last_height_ > 0 ? last_height_ : 1;
+    // Deliberately resize to (nat_w, last_height_) rather than
+    // gtk-layer-shell's documented "resize(1, 1) to snap back to natural
+    // size" recipe: some icons' natural/preferred height (e.g. before their
+    // image widget is realized) can exceed the bar's real height, and
+    // resize(1, 1) lets GTK grow *both* axes to fit that, overflowing the
+    // window past the bar strip. Pinning height explicitly keeps the window
+    // clipped to the bar's actual height no matter what a child asks for.
+    //
+    // resize() alone is only a hint here and was observed to not actually
+    // change this undecorated layer-shell window's real GTK allocation once
+    // it had already been mapped with a smaller width (win_->get_allocation()
+    // stayed stuck at width 1 forever). set_size_request() is a hard
+    // constraint on the widget's size, not just a hint, and reliably forces
+    // the reallocation that resize() alone didn't.
+    //
+    // This queues a resize, so "check-resize" fires once more and schedules
+    // another checkWidth(), which then finds nat_w unchanged and stops.
+    win_->set_size_request(w, h);
+    win_->resize(w, h);
+  }
 }
 
 void Bridge::reposition() {
@@ -286,17 +333,17 @@ void Bridge::reposition() {
   }
   if (height != last_height_) {
     // Use last_forced_w_ here too (not -1/unconstrained) -- set_size_request()
-    // is what actually forces this window's real GTK allocation (see the
-    // poll timer's comment), so resetting the width constraint to -1 on
-    // every height change would silently undo whatever width the poll timer
-    // had already pinned, snapping the window back down to its unconstrained
-    // (effectively 1px) width until the next poll tick catches up.
+    // is what actually forces this window's real GTK allocation (see
+    // checkWidth()), so resetting the width constraint to -1 on every height
+    // change would silently undo whatever width checkWidth() had already
+    // pinned, snapping the window back down to its unconstrained
+    // (effectively 1px) width.
     int w = last_forced_w_ > 0 ? last_forced_w_ : 1;
     win_->set_size_request(w, height);
     last_height_ = height;
-    // Re-pin height immediately (see the poll timer in the constructor for
-    // why an explicit height is used instead of gtk-layer-shell's
-    // resize(1, 1) recipe). Width tracking is left to the poll timer.
+    // Re-pin height immediately (see checkWidth() for why an explicit
+    // height is used instead of gtk-layer-shell's resize(1, 1) recipe).
+    // Width tracking is left to checkWidth().
     if (shown_) win_->resize(w, height);
   }
 
@@ -306,6 +353,9 @@ void Bridge::reposition() {
   if (!shown_ && visible_) {
     win_->show();
     shown_ = true;
+    // last_forced_w_ is still -1: pin the real content width now that the
+    // window is mapped (checkWidth() only forces a size while shown_).
+    scheduleWidthCheck();
   }
 }
 
@@ -338,6 +388,7 @@ void Bridge::setVisible(bool visible) {
     if (!win_ || !shown_) return;
     if (visible) {
       win_->show();
+      scheduleWidthCheck();
     } else {
       win_->hide();
     }
@@ -365,8 +416,12 @@ void Bridge::reloadTray() {
   win_->remove();
   tray_.reset();
   tray_ = std::make_unique<Tray>("", *win_);
+  hookTray();
   tray_->update();
   tray_->box_.set_valign(Gtk::ALIGN_CENTER);
+  // The new Tray starts empty (items re-register asynchronously and each
+  // fires on_change_), so report the emptied width right away too.
+  scheduleWidthCheck();
 }
 
 uint32_t Bridge::width() {
@@ -529,6 +584,10 @@ void awl_tray_set_bar_geometry(const char *monitor_id, int32_t x, int32_t y, uin
   SNI::ensure_bridge(mon);
   SNI::Bridge *b = SNI::find_bridge(mon);
   if (b) b->setBarGeometry(x, y, (int32_t)width, (int32_t)height, scale);
+}
+
+void awl_tray_set_change_callback(void (*cb)(void)) {
+  SNI::g_change_cb.store(cb);
 }
 
 void awl_tray_reload(void) {
