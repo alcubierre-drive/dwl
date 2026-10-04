@@ -230,7 +230,7 @@ Popup *g_popup = nullptr;
 // live in the same process. border-radius matches dwl's blur_launcher_radius.
 const char *k_css = R"css(
 #awl-calendar {
-  background-color: rgba(60, 60, 60, 0.35);
+  background-color: rgba(60, 60, 60, 0.3);
   border-radius: 15px;
 }
 #awl-calendar * {
