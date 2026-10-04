@@ -481,7 +481,7 @@ arrangelayers(Monitor *m)
 	/* Find topmost keyboard interactive layer, if such a layer exists */
 	for (i = 0; i < (int)LENGTH(layers_above_shell); i++) {
 		wl_list_for_each_reverse(l, &m->layers[layers_above_shell[i]], link) {
-            if ((l->is_notification || l->is_launcher) && l->blur && l->layer_surface) {
+            if ((l->is_notification || l->is_launcher || l->is_calendar) && l->blur && l->layer_surface) {
                 /* arrangelayers() runs on every layer-surface commit (e.g.
                  * every redrawn frame of a notification/launcher), not just
                  * on actual resizes; only touch the blur node's size when it
@@ -615,8 +615,35 @@ buttonpress(struct wl_listener *listener, void *data)
 	uint32_t mods;
 	Client *c;
 	const Button *b;
+	static int swallow_release;
 
 	wlr_idle_notifier_v1_notify_activity(idle_notifier, seat);
+
+	/* The calendar popup (tray/calendar.cpp) takes exclusive keyboard focus
+	 * while shown, which also keeps clicks from reaching the bar's widgets.
+	 * Like a menu, a press anywhere outside it only closes it; the matching
+	 * release is swallowed too, so nothing below sees half a click. */
+	if (event->state == WL_POINTER_BUTTON_STATE_RELEASED && swallow_release) {
+		swallow_release = 0;
+		return;
+	}
+	if (event->state == WL_POINTER_BUTTON_STATE_PRESSED && exclusive_focus
+			&& ((LayerSurface *)exclusive_focus)->type == LayerShell
+			&& ((LayerSurface *)exclusive_focus)->is_calendar) {
+		/* compare against the popup's own rect: xytonode()'s parent walk
+		 * overshoots by one node for layer surfaces, so its LayerSurface
+		 * isn't reliable here */
+		LayerSurface *l = exclusive_focus;
+		int lx, ly;
+		wlr_scene_node_coords(&l->scene->node, &lx, &ly);
+		struct wlr_box box = { lx, ly, l->layer_surface->surface->current.width,
+				l->layer_surface->surface->current.height };
+		if (!wlr_box_contains_point(&box, cursor->x, cursor->y)) {
+			awl_tray_calendar_hide();
+			swallow_release = 1;
+			return;
+		}
+	}
 
 	click = ClkRoot; // TODO we don't treat these cases
 	xytonode(cursor->x, cursor->y, NULL, &c, NULL, NULL, NULL);
@@ -1135,9 +1162,12 @@ createlayersurface(struct wl_listener *listener, void *data)
 	 * that output here, before the generic "no output requested -> selmon"
 	 * fallback below would otherwise land every monitor's tray window on
 	 * whichever one happens to be selmon. */
+	/* The calendar popup from the same library does the same with
+	 * "awl-calendar:<monitor_id>". */
 	if (!layer_surface->output && layer_surface->namespace &&
-			!strncmp(layer_surface->namespace, "awl-tray:", 9)) {
-		const char *want = layer_surface->namespace + 9;
+			(!strncmp(layer_surface->namespace, "awl-tray:", 9) ||
+			 !strncmp(layer_surface->namespace, "awl-calendar:", 13))) {
+		const char *want = strchr(layer_surface->namespace, ':') + 1;
 		Monitor *tm;
 		wl_list_for_each(tm, &mons, link) {
 			if (!strcmp(tm->wlr_output->name, want)) {
@@ -1155,6 +1185,9 @@ createlayersurface(struct wl_listener *listener, void *data)
 	l = layer_surface->data = ecalloc(1, sizeof(*l));
     l->is_notification = blur_notifications && !strcmp(layer_surface->namespace, "notifications");
     l->is_launcher = blur_launcher && !strcmp(layer_surface->namespace, "launcher");
+    /* the calendar popup (tray/calendar.cpp) is translucent; it follows the
+     * launcher's blur settings */
+    l->is_calendar = layer_surface->namespace && !strncmp(layer_surface->namespace, "awl-calendar:", 13);
 	l->type = LayerShell;
 	LISTEN(&surface->events.commit, &l->surface_commit, commitlayersurfacenotify);
 	LISTEN(&surface->events.unmap, &l->unmap, unmaplayersurfacenotify);
@@ -1164,9 +1197,9 @@ createlayersurface(struct wl_listener *listener, void *data)
 	l->mon = layer_surface->output->data;
 	l->scene_layer = wlr_scene_layer_surface_v1_create(scene_layer, layer_surface);
 	l->scene = l->scene_layer->tree;
-    if (l->is_notification || l->is_launcher) {
+    if (l->is_notification || l->is_launcher || (l->is_calendar && blur_launcher)) {
         l->blur = wlr_scene_blur_create(l->scene, l->scene->node.x, l->scene->node.y);
-        if (l->is_launcher) wlr_scene_blur_set_corner_radius(l->blur, blur_launcher_radius);
+        if (l->is_launcher || l->is_calendar) wlr_scene_blur_set_corner_radius(l->blur, blur_launcher_radius);
         if (l->is_notification) wlr_scene_blur_set_corner_radius(l->blur, blur_notifications_radius);
         wlr_scene_blur_set_size(l->blur, l->layer_surface->current.desired_width, l->layer_surface->current.desired_height);
         wlr_scene_blur_set_strength(l->blur, locked_blur_config[0]);

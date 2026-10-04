@@ -801,8 +801,8 @@ static void pulsewidget_scroll( widget_t* w, uint32_t x, int amount ) {
 }
 
 static void clockwidget_click( widget_t* w, uint32_t x, int button ) {
-    (void)w; (void)x; (void)button;
-    spawn( &(Arg){.v=(const char*[]){"gnome-calendar", NULL}} );
+    (void)x; (void)button;
+    awl_tray_calendar_toggle( w->bar->m->wlr_output->name );
 }
 
 static uint32_t backlightwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {

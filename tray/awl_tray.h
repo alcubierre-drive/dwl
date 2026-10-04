@@ -86,6 +86,18 @@ void awl_tray_set_bar_geometry(const char *monitor_id, int32_t x, int32_t y, uin
  * call this from wherever dwl toggles bar visibility for a monitor. */
 void awl_tray_set_visible(const char *monitor_id, int visible);
 
+/* Shows the calendar popup (month view plus the selected day's events from
+ * evolution-data-server, see tray/calendar.hpp) next to the given monitor's
+ * bar, or hides it if it is already shown there. Escape also hides it.
+ * Fire-and-forget, safe to call from any thread. */
+void awl_tray_calendar_toggle(const char *monitor_id);
+
+/* Hides the calendar popup if it is shown. Its layer surface's namespace
+ * starts with "awl-calendar:" (followed by the monitor_id, like the tray's
+ * "awl-tray:"), so dwl can recognize it and call this on a click anywhere
+ * else. Fire-and-forget, safe to call from any thread. */
+void awl_tray_calendar_hide(void);
+
 /* Tears down the given monitor's tray overlay window (if one was ever
  * created for it) -- call when a monitor is being destroyed (e.g.
  * unplugged), from cleanupmon(), before its wlr_output goes away. Safe to

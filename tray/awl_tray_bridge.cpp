@@ -20,6 +20,7 @@
 // g_idle_add() (documented thread-safe).
 
 #include "awl_tray.h"
+#include "calendar.hpp"
 #include "tray.hpp"
 
 #include <gtk-layer-shell.h>
@@ -509,6 +510,10 @@ void *thread_main(void *) {
   // Bridges are created lazily, per monitor, the first time dwl mentions a
   // monitor_id (see ensure_bridge()) -- there's no single "the" tray window
   // to construct eagerly here any more.
+  //
+  // The calendar popup is created right away (hidden), so it can connect to
+  // evolution-data-server before the first click (see calendar.hpp).
+  awl::calendar_init();
 
   Gtk::Main::run();
 
@@ -519,6 +524,7 @@ void *thread_main(void *) {
   // while that teardown is still in flight (which would let cleanup()
   // race ahead into wl_display_destroy_clients()/wl_display_destroy()
   // concurrently with this thread still using the display).
+  awl::calendar_fini();
   {
     std::lock_guard<std::mutex> lg(g_bridges_mtx);
     g_bridges.clear();
@@ -604,6 +610,26 @@ void awl_tray_set_visible(const char *monitor_id, int visible) {
   std::string mon(monitor_id ? monitor_id : "");
   SNI::Bridge *b = SNI::find_bridge(mon);
   if (b) b->setVisible(visible != 0);
+}
+
+void awl_tray_calendar_toggle(const char *monitor_id) {
+  if (!SNI::g_running.load()) return;
+  std::string mon(monitor_id ? monitor_id : "");
+  SNI::run_on_gtk_thread([mon] {
+    SNI::BarGeom g;
+    {
+      std::lock_guard<std::mutex> lg(SNI::g_pending_geom_mtx);
+      auto it = SNI::g_pending_geom.find(mon);
+      if (it != SNI::g_pending_geom.end()) g = it->second;
+    }
+    // dwl puts a bottom bar at y = monitor height - bar height
+    awl::calendar_toggle(mon, g.y == 0);
+  });
+}
+
+void awl_tray_calendar_hide(void) {
+  if (!SNI::g_running.load()) return;
+  SNI::run_on_gtk_thread([] { awl::calendar_hide(); });
 }
 
 void awl_tray_remove_monitor(const char *monitor_id) {
