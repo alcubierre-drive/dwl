@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <ctime>
+#include <signal.h>
 #include <map>
 #include <memory>
 #include <set>
@@ -465,9 +466,22 @@ void Popup::hide() {
     shown_ = false;
 }
 
+// Runs in the forked child: dwl blocks the signals it handles in every
+// thread and ignores SIGPIPE, and exec() would keep both.
+void unblock_signals() {
+    sigset_t none;
+    sigemptyset(&none);
+    sigprocmask(SIG_SETMASK, &none, nullptr);
+    signal(SIGPIPE, SIG_DFL);
+}
+
 void Popup::launch(std::vector<std::string> argv) {
     try {
-        Glib::spawn_async("", argv, Glib::SPAWN_SEARCH_PATH);
+        // DO_NOT_REAP_CHILD: a direct child that dwl's SIGCHLD handler
+        // reaps, instead of GLib's double fork, whose waitpid() would race
+        // with that handler.
+        Glib::spawn_async("", argv, Glib::SPAWN_SEARCH_PATH | Glib::SPAWN_DO_NOT_REAP_CHILD,
+                sigc::ptr_fun(&unblock_signals));
     } catch (const Glib::Error &e) {
         g_warning("awl calendar: cannot start %s: %s", argv[0].c_str(), e.what().c_str());
     }

@@ -44,22 +44,14 @@ void drwl_prepare_drawing(Drwl *drwl, unsigned int w, unsigned int h, uint32_t *
     pixman_region32_fini(&clip);
 }
 
-static void drwl_rect_color(Drwl *drwl, int x, int y, unsigned int w, unsigned int h, int filled, uint32_t color) {
+static void drwl_rect_color(Drwl *drwl, int x, int y, unsigned int w, unsigned int h, uint32_t color) {
     pixman_color_t clr;
     if (!drwl || !drwl->pix)
         return;
 
     clr = convert_color(color);
-    if (filled)
-        pixman_image_fill_rectangles(PIXMAN_OP_SRC, drwl->pix, &clr, 1,
-            &(pixman_rectangle16_t){x, y, w, h});
-    else
-        pixman_image_fill_rectangles(PIXMAN_OP_SRC, drwl->pix, &clr, 4,
-            (pixman_rectangle16_t[4]){
-                { x,         y,         w, 1 },
-                { x,         y + h - 1, w, 1 },
-                { x,         y,         1, h },
-                { x + w - 1, y,         1, h }});
+    pixman_image_fill_rectangles(PIXMAN_OP_SRC, drwl->pix, &clr, 1,
+        &(pixman_rectangle16_t){x, y, w, h});
 }
 
 /* width of `text` in pixels, kerning included */
@@ -102,7 +94,7 @@ static int drwl_text_color(Drwl *drwl, int x, int y, unsigned int w, unsigned in
         clr = convert_color(fg);
         fg_pix = pixman_image_create_solid_fill(&clr);
 
-        drwl_rect_color(drwl, x, y, w, y<0?h-y:h, 1, bg);
+        drwl_rect_color(drwl, x, y, w, y<0?h-y:h, bg);
 
         x += lpad;
         w -= lpad;

@@ -112,9 +112,6 @@ ToolTip get_variant<ToolTip>(const Glib::VariantBase& value) {
 
 void Item::setProperty(const Glib::ustring& name, Glib::VariantBase& value) {
     try {
-        fprintf(stderr, "Set tray item property: %s.%s = %i\n", id.empty() ? bus_name.c_str() : id.c_str(),
-                name.c_str(), *reinterpret_cast<int*>(&value));
-
         if (name == "Category") {
             category = get_variant<std::string>(value);
         } else if (name == "Id") {
@@ -229,7 +226,6 @@ void Item::onSignal(const Glib::ustring& sender_name, const Glib::ustring& signa
                     const Glib::VariantContainerBase& arguments) {
     (void)sender_name;
     (void)arguments;
-        fprintf(stderr, "Tray item %s got signal %s\n", id.c_str(), signal_name.c_str());
     auto changed = signal2props.find(signal_name.raw());
     if (changed != signal2props.end()) {
         if (update_pending_.empty()) {

@@ -35,7 +35,6 @@ static inline pixman_color_t color_8bit_to_16bit( uint32_t c ) {
 }
 
 pixman_color_t alpha_blend_16( pixman_color_t B, pixman_color_t A );
-pixman_color_t mean_color_16( pixman_color_t A, pixman_color_t B, float wA );
 
 struct awl_colors {
     pixman_color_t bg_tags, bg_tags_occ, bg_tags_act, bg_tags_urg, fg_tags,

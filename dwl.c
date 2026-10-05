@@ -101,7 +101,8 @@ static void fullscreennotify(struct wl_listener *listener, void *data);
 static void gpureset(struct wl_listener *listener, void *data);
 static void bstack(Monitor* m);
 static void gaplessgrid(Monitor *m);
-static void handlesig(int signo);
+static int handlesigchld(int signo, void *data);
+static int handlesigquit(int signo, void *data);
 static void incnmaster(const Arg *arg);
 static void inputdevice(struct wl_listener *listener, void *data);
 static int keybinding(uint32_t mods, xkb_keysym_t sym);
@@ -156,6 +157,7 @@ static void togglefloating(const Arg *arg);
 static void togglefullscreen(const Arg *arg);
 static void toggletag(const Arg *arg);
 static void unlocksession(struct wl_listener *listener, void *data);
+static void unblocksignals(void);
 static void unmaplayersurfacenotify(struct wl_listener *listener, void *data);
 static void unmapnotify(struct wl_listener *listener, void *data);
 static void updatemons(struct wl_listener *listener, void *data);
@@ -2299,13 +2301,27 @@ gpureset(struct wl_listener *listener, void *data)
     awl_redraw_request();
 }
 
-void
-handlesig(int signo)
+int
+handlesigchld(int signo, void *data)
 {
-    if (signo == SIGCHLD)
-        while (waitpid(-1, NULL, WNOHANG) > 0);
-    else if (signo == SIGINT || signo == SIGTERM)
-        quit(NULL);
+    siginfo_t in;
+    /* wlroots reaps the Xwayland fork itself and gives up on Xwayland if
+     * that fails, so look first (WNOWAIT) and leave that one alone */
+    while (!waitid(P_ALL, 0, &in, WEXITED | WNOHANG | WNOWAIT) && in.si_pid) {
+#ifdef XWAYLAND
+        if (xwayland && xwayland->server && in.si_pid == xwayland->server->pid)
+            break;
+#endif
+        waitpid(in.si_pid, NULL, 0);
+    }
+    return 0;
+}
+
+int
+handlesigquit(int signo, void *data)
+{
+    quit(NULL);
+    return 0;
 }
 
 void
@@ -3103,6 +3119,7 @@ run(char *startup_cmd)
         if ((child_pid = vfork()) < 0)
             die("startup: vfork:");
         if (child_pid == 0) {
+            unblocksignals();
             close(STDIN_FILENO);
             setsid();
             execl("/bin/sh", "/bin/sh", "-c", startup_cmd, NULL);
@@ -3352,16 +3369,28 @@ setsel(struct wl_listener *listener, void *data)
 void
 setup(void)
 {
-    int drm_fd, i, sig[] = {SIGCHLD, SIGINT, SIGTERM, SIGPIPE};
-    struct sigaction sa = {.sa_flags = SA_RESTART, .sa_handler = handlesig};
-    sigemptyset(&sa.sa_mask);
+    int drm_fd, i;
+    sigset_t handled;
+
+    /* These signals are handled in the event loop (a signalfd). That
+     * only works if no thread can take them, so block them here, before any
+     * thread starts, and every thread inherits the mask; spawned children
+     * unblock them again (see unblocksignals()). */
+    sigemptyset(&handled);
+    sigaddset(&handled, SIGCHLD);
+    sigaddset(&handled, SIGINT);
+    sigaddset(&handled, SIGTERM);
+    if (getenv("DWL_TEST_OUTPUTS")) {
+        sigaddset(&handled, SIGUSR1);
+        sigaddset(&handled, SIGUSR2);
+    }
+    sigprocmask(SIG_BLOCK, &handled, NULL);
+    /* a dead client must not kill dwl (GIO ignores it anyway) */
+    signal(SIGPIPE, SIG_IGN);
 
     /* until the library is loaded */
     cfg = builtinconfig();
     wl_list_init(&inputdevices);
-
-    for (i = 0; i < (int)LENGTH(sig); i++)
-        sigaction(sig[i], &sa, NULL);
 
 
     wlr_log_init(log_level, NULL);
@@ -3370,6 +3399,9 @@ setup(void)
      * clients from the Unix socket, manging Wayland globals, and so on. */
     dpy = wl_display_create();
     event_loop = wl_display_get_event_loop(dpy);
+    wl_event_loop_add_signal(event_loop, SIGCHLD, handlesigchld, NULL);
+    wl_event_loop_add_signal(event_loop, SIGINT, handlesigquit, NULL);
+    wl_event_loop_add_signal(event_loop, SIGTERM, handlesigquit, NULL);
     hover_timer = wl_event_loop_add_timer(event_loop, hovertimeout, NULL);
     leave_timer = wl_event_loop_add_timer(event_loop, leavetimeout, NULL);
 
@@ -3573,6 +3605,10 @@ setup(void)
             &new_virtual_pointer);
 
     seat = wlr_seat_create(dpy, "seat0");
+    /* there is always a cursor (see inputdevice()), even before the first
+     * pointer device or with only a virtual one, which doesn't come through
+     * inputdevice() */
+    wlr_seat_set_capabilities(seat, WL_SEAT_CAPABILITY_POINTER);
     wl_signal_add(&seat->events.request_set_cursor, &request_cursor);
     wl_signal_add(&seat->events.request_set_selection, &request_set_sel);
     wl_signal_add(&seat->events.request_set_primary_selection, &request_set_psel);
@@ -3624,6 +3660,7 @@ spawn_pid(const Arg *arg)
         fprintf(stderr, "dwl: vfork failed: %s\n", strerror(errno));
         return -1;
     } else if (pid == 0) {
+        unblocksignals();
         close(STDIN_FILENO);
         dup2(STDERR_FILENO, STDOUT_FILENO);
         setsid();
@@ -3815,6 +3852,17 @@ unlocksession(struct wl_listener *listener, void *data)
 {
     SessionLock *lock = wl_container_of(listener, lock, unlock);
     destroylock(lock, 1);
+}
+
+/* For a (v)forked child before exec, which would keep setup()'s signal mask
+ * and ignored SIGPIPE. Both are the child's own even after vfork(). */
+void
+unblocksignals(void)
+{
+    sigset_t none;
+    sigemptyset(&none);
+    sigprocmask(SIG_SETMASK, &none, NULL);
+    signal(SIGPIPE, SIG_DFL);
 }
 
 void
