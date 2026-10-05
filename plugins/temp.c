@@ -34,37 +34,22 @@ int temp_find_hwmon( const char* name, const char* label, char* out, size_t n ) 
 }
 
 void temp_init( awl_temperature_t* temp ) {
-    sem_init( &temp->sem, 0, 1 );
-}
-
-void temp_fini( awl_temperature_t* temp ) {
-    sem_destroy( &temp->sem );
+    for (int i=0; i<16; ++i)
+        atomic_init( &temp->temps[i], AWL_TEMP_NONE );
 }
 
 int temp_update( awl_temperature_t* temp ) {
-    // read outside the lock, the bar only try-locks
-    float temps[sizeof(temp->temps)/sizeof(temp->temps[0])] = {0};
-    uint8_t idx[sizeof(temp->idx)/sizeof(temp->idx[0])] = {0};
-    uint8_t ntemps = 0;
+    int changed = 0;
     for (int i=0; i<temp->f_ntemps; ++i) {
+        float t = AWL_TEMP_NONE;
         FILE* f = fopen(temp->f_files[i], "r");
         if (f) {
             long u = 0;
-            if (fscanf(f, "%li", &u) == 1) {
-                temps[ntemps] = (float)u/(float)1000.0;
-                idx[ntemps++] = i;
-            }
+            if (fscanf(f, "%li", &u) == 1) t = (float)u/(float)1000.0;
             fclose(f);
         }
+        changed |= atomic_exchange( &temp->temps[i], t ) != t;
     }
-
-    sem_wait( &temp->sem );
-    int changed = temp->ntemps != ntemps ||
-        memcmp( temp->temps, temps, ntemps * sizeof(temps[0]) );
-    memcpy( temp->temps, temps, sizeof(temps) );
-    memcpy( temp->idx, idx, sizeof(idx) );
-    temp->ntemps = ntemps;
-    sem_post( &temp->sem );
     return changed;
 }
 

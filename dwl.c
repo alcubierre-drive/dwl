@@ -306,8 +306,8 @@ const awl_arranges_t dwl_arranges = { AWL_ARRANGES(AWL_ACTION_INIT) };
  * loaded the one dwl was built with. It points into the library, so it's only
  * good until the next reload; pluginsdetach() falls back to builtinconfig(). */
 static const awl_config_t *cfg;
-/* cfg->colors, copied: bars keep a pointer to their scheme */
-static uint32_t schemes[3][3];
+/* cfg->bordercolors, copied */
+static uint32_t borders[BorderLast];
 /* What the keyboard and the bars' font were set up with, copied, to tell
  * whether a reload changed them */
 static struct {
@@ -843,6 +843,18 @@ buttonpress(struct wl_listener *listener, void *data)
      * release is swallowed too, so nothing below sees half a click. */
     if (event->state == WL_POINTER_BUTTON_STATE_RELEASED && swallow_release) {
         swallow_release = 0;
+        return;
+    }
+    /* An open xdg_popup (a menu, e.g. the tray's) holds a pointer grab and
+     * closes itself on a press outside its client; that only works if the
+     * press reaches the grab, so the bar, the desktop and the bindings don't
+     * get to see it first. */
+    if (wlr_seat_pointer_has_grab(seat)) {
+        /* the press that opened the menu (or started a drag) set this */
+        if (event->state == WL_POINTER_BUTTON_STATE_RELEASED && cursor_mode == CurPressed)
+            cursor_mode = CurNormal;
+        wlr_seat_pointer_notify_button(seat,
+                event->time_msec, event->button, event->state);
         return;
     }
     if (event->state == WL_POINTER_BUTTON_STATE_PRESSED && exclusive_focus
@@ -1912,7 +1924,7 @@ drawbar(Monitor *m)
     if (locked) return;
     if (!m) return;
     if (!m->drw) return;
-    int x = 0, tw = 0;
+    int x = 0;
     uint32_t occ = 0, urg = 0;
     Client *c;
     Buffer *buf;
@@ -1933,13 +1945,6 @@ drawbar(Monitor *m)
     memset(buf->data, 0, buf->stride * buf->h);
 
     drwl_prepare_drawing(m->drw, m->b.width, m->b.height, buf->data, buf->stride);
-
-    /*draw status first so it can be overdrawn by tags later*/
-    if (m == selmon) { // status is only drawn on selected monitor
-        drwl_setscheme(m->drw, schemes[SchemeNorm]);
-        tw = 0;
-        drwl_text(m->drw, m->b.width - tw, 0, tw, m->b.height, 0, "", 0);
-    }
 
     ct = focustop(m);
     wl_list_for_each(c, &clients, link) {
@@ -2109,7 +2114,7 @@ focusclient(Client *c, int lift)
         /* Don't change border color if there is an exclusive focus or we are
          * handling a drag operation */
         if (!exclusive_focus && !seat->drag)
-            client_set_border_color(c, (float[])COLOR(schemes[SchemeSel][ColBorder]));
+            client_set_border_color(c, (float[])COLOR(borders[BorderSel]));
     }
 
     /* Deactivate old client if focus is changing */
@@ -2126,7 +2131,7 @@ focusclient(Client *c, int lift)
         /* Don't deactivate old client if the new one wants focus, as this causes issues with winecfg
          * and probably other clients */
         } else if (old_c && !client_is_unmanaged(old_c) && (!c || !client_wants_focus(c))) {
-            client_set_border_color(old_c, (float[])COLOR(schemes[SchemeNorm][ColBorder]));
+            client_set_border_color(old_c, (float[])COLOR(borders[BorderNorm]));
             client_activate_surface(old, 0);
         }
     }
@@ -2604,7 +2609,7 @@ mapnotify(struct wl_listener *listener, void *data)
 
     for (i = 0; i < 4; i++) {
         c->border[i] = wlr_scene_rect_create(c->scene, 0, 0,
-            (float[])COLOR(schemes[c->isurgent ? SchemeUrg : SchemeNorm][ColBorder]));
+            (float[])COLOR(borders[c->isurgent ? BorderUrg : BorderNorm]));
         c->border[i]->node.data = c;
     }
 
@@ -2706,15 +2711,6 @@ motionnotify(uint32_t time, struct wlr_input_device *device, double dx, double d
     /* Find the client under the pointer and send the event along. */
     xytonode(cursor->x, cursor->y, &surface, &c, NULL, &sx, &sy);
 
-    if (cursor_mode == CurPressed && !seat->drag
-            && surface != seat->pointer_state.focused_surface
-            && toplevel_from_wlr_surface(seat->pointer_state.focused_surface, &w, &l) >= 0) {
-        c = w;
-        surface = seat->pointer_state.focused_surface;
-        sx = cursor->x - (l ? l->scene->node.x : w->geom.x);
-        sy = cursor->y - (l ? l->scene->node.y : w->geom.y);
-    }
-
     /* time is 0 in internal calls meant to restore pointer focus. */
     if (time) {
         wlr_relative_pointer_manager_v1_send_relative_motion(
@@ -2746,6 +2742,18 @@ motionnotify(uint32_t time, struct wlr_input_device *device, double dx, double d
         /* Update selmon (even while dragging a window) */
         if (cfg->sloppyfocus)
             selmon = xytomon(cursor->x, cursor->y);
+    }
+
+    /* the cursor has moved: look again */
+    xytonode(cursor->x, cursor->y, &surface, &c, NULL, &sx, &sy);
+
+    if (cursor_mode == CurPressed && !seat->drag
+            && surface != seat->pointer_state.focused_surface
+            && toplevel_from_wlr_surface(seat->pointer_state.focused_surface, &w, &l) >= 0) {
+        c = w;
+        surface = seat->pointer_state.focused_surface;
+        sx = cursor->x - (l ? l->scene->node.x : w->geom.x);
+        sy = cursor->y - (l ? l->scene->node.y : w->geom.y);
     }
 
     /* Update drag icon's position */
@@ -4048,7 +4056,7 @@ urgent(struct wl_listener *listener, void *data)
     drawbars();
 
     if (client_surface(c)->mapped)
-        client_set_border_color(c, (float[])COLOR(schemes[SchemeUrg][ColBorder]));
+        client_set_border_color(c, (float[])COLOR(borders[BorderUrg]));
 }
 
 void
@@ -4229,11 +4237,11 @@ configapply(void)
             arrange(m);
     }
 
-    memcpy(schemes, cfg->colors, sizeof(schemes));
+    memcpy(borders, *cfg->bordercolors, sizeof(borders));
     wl_list_for_each(c, &clients, link)
         if (c->border[0])
-            client_set_border_color(c, (float[])COLOR(schemes[c->isurgent ? SchemeUrg
-                    : c == sel ? SchemeSel : SchemeNorm][ColBorder]));
+            client_set_border_color(c, (float[])COLOR(borders[c->isurgent ? BorderUrg
+                    : c == sel ? BorderSel : BorderNorm]));
     wlr_scene_rect_set_color(root_bg, cfg->rootcolor);
 
     /* blur */
@@ -4518,7 +4526,7 @@ sethints(struct wl_listener *listener, void *data)
     drawbars();
 
     if (c->isurgent && surface && surface->mapped)
-        client_set_border_color(c, (float[])COLOR(schemes[SchemeUrg][ColBorder]));
+        client_set_border_color(c, (float[])COLOR(borders[BorderUrg]));
 }
 
 void

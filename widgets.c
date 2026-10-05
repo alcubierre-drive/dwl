@@ -7,6 +7,7 @@
 #include "plugins/colors.h"
 #include "tray/awl_tray.h"
 
+#include <arpa/inet.h>
 #include <stdatomic.h>
 
 /* dwl.h's TEXTW calls into dwl directly */
@@ -257,19 +258,14 @@ typedef struct {
 static uint32_t clockwidget_measure( widget_t* w ) {
     if (!w->userdata) w->userdata = calloc(1, sizeof(clockwidget_userdata_t));
     clockwidget_userdata_t* u = w->userdata;
-    if (!*u->timestr) {
+    awl_plugin_data_t* P = awl_plugin_get();
+    int secs = P && P->date ? atomic_load( &P->date->secs ) : -1;
+    if (secs < 0) {
         strcpy(u->timestr, "--:--");
         u->sec = -1;
-    }
-    awl_plugin_data_t* P = awl_plugin_get();
-    if (P && !sem_timedwait_nano(&P->date->sem, 1e3)) {
-        memcpy(u->timestr, P->date->s, 16);
-        u->timestr[15] = 0;
-        u->sec = P->date->sec;
-        w->age = 0;
-        sem_post(&P->date->sem);
     } else {
-        w->age++;
+        snprintf(u->timestr, sizeof(u->timestr), "%02d:%02d", secs / 3600, secs / 60 % 60);
+        u->sec = secs % 60;
     }
     // time text plus the seconds meter
     int mw = 3 * w->bar->m->wlr_output->scale + 0.5f;
@@ -329,8 +325,7 @@ static uint32_t pulsewidget_measure( widget_t* w ) {
 }
 
 typedef struct {
-    awl_stats_t stats;
-    pixman_box32_t boxes[128*3*2];
+    pixman_box32_t fg[AWL_STATS_MAX], bg[AWL_STATS_MAX]; // one graph at a time
 } statuswidget_userdata_t;
 
 static uint32_t statuswidget_measure( widget_t* w ) {
@@ -339,16 +334,7 @@ static uint32_t statuswidget_measure( widget_t* w ) {
 
     if (!w->userdata)
         w->userdata = calloc(1, sizeof(statuswidget_userdata_t));
-    statuswidget_userdata_t* u = w->userdata;
-    awl_stats_t* st = &u->stats;
-
-    if (!sem_timedwait_nano( &P->stats->sem, 1e3 )) {
-        w->age = 0;
-        memcpy( st, P->stats, sizeof(awl_stats_t) );
-        sem_post( &P->stats->sem );
-    } else {
-        w->age++;
-    }
+    const awl_stats_t* st = P->stats;
 
     // one column per sample, accumulated the same way draw() places them
     float xx = 0;
@@ -359,94 +345,60 @@ static uint32_t statuswidget_measure( widget_t* w ) {
 
 static uint32_t statuswidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {
     awl_plugin_data_t* P = awl_plugin_get();
-    if (!P) return 0;
+    if (!P || !P->stats) return 0;
     statuswidget_userdata_t* u = w->userdata;
-    pixman_box32_t* widget_boxes = u->boxes;
-    awl_stats_t* st = &u->stats;
+    awl_stats_t* st = P->stats;
 
-    const int ncpu = st->ncpu,
-              nmem = st->nmem,
-              nswp = st->nswp;
-    const float *icpu = st->cpu,
-                *imem = st->mem,
-                *iswp = st->swp;
-    pixman_box32_t *b_cpu = widget_boxes;
-    pixman_box32_t *b_mem = b_cpu + ncpu;
-    pixman_box32_t *b_swp = b_mem + nmem;
-    pixman_box32_t *b_bg = b_swp + nswp;
-    pixman_box32_t *b_bg_run = b_bg;
+    const int n[3] = { st->ncpu, st->nmem, st->nswp };
+    _Atomic float* graph[3] = { st->cpu, st->mem, st->swp };
+    const pixman_color_t* fg[3] = { &P->awl_colors.fg_stats_cpu, &P->awl_colors.fg_stats_mem,
+                                    &P->awl_colors.fg_stats_swp };
 
+    unsigned samples = atomic_load( &st->samples );
     int bar_height = w->bar->m->b.height;
-    float xx=0;
-    if (icpu) {
-        for (int i=0; i<ncpu; ++i) {
-            int ydiv = bar_height - icpu[st->dir ? ncpu-i : i] * bar_height;
+    float xx = 0;
+    for (int g=0; g<3; ++g) {
+        // newest sample first
+        for (int i=0; i<n[g]; ++i) {
+            int ydiv = bar_height - stats_sample( graph[g], n[g], samples, i ) * bar_height;
             float next_x = xx + w->bar->m->wlr_output->scale;
-            *b_bg_run++ = (pixman_box32_t){.x1=x+(int32_t)xx,.x2=x+(int32_t)next_x,.y1=0, .y2=ydiv};
-            b_cpu[i] = (pixman_box32_t){.x1=x+(int32_t)xx,.x2=x+(int32_t)next_x,.y1=ydiv,.y2=bar_height};
+            u->bg[i] = (pixman_box32_t){.x1=x+(int32_t)xx,.x2=x+(int32_t)next_x,.y1=0, .y2=ydiv};
+            u->fg[i] = (pixman_box32_t){.x1=x+(int32_t)xx,.x2=x+(int32_t)next_x,.y1=ydiv,.y2=bar_height};
             xx = next_x;
         }
+        pixman_image_fill_boxes(PIXMAN_OP_SRC, pix, &P->awl_colors.bg_stats, n[g], u->bg);
+        pixman_image_fill_boxes(PIXMAN_OP_SRC, pix, fg[g], n[g], u->fg);
     }
-    if (imem) {
-        for (int i=0; i<nmem; ++i) {
-            int ydiv = bar_height - imem[st->dir ? ncpu-i : i] * bar_height;
-            float next_x = xx + w->bar->m->wlr_output->scale;
-            *b_bg_run++ = (pixman_box32_t){.x1=x+(int32_t)xx,.x2=x+(int32_t)next_x,.y1=0, .y2=ydiv};
-            b_mem[i] = (pixman_box32_t){.x1=x+(int32_t)xx,.x2=x+(int32_t)next_x,.y1=ydiv,.y2=bar_height};
-            xx = next_x;
-        }
-    }
-    if (iswp) {
-        for (int i=0; i<nswp; ++i) {
-            int ydiv = bar_height - iswp[st->dir ? ncpu-i : i] * bar_height;
-            float next_x = xx + w->bar->m->wlr_output->scale;
-            *b_bg_run++ = (pixman_box32_t){.x1=x+(int32_t)xx,.x2=x+(int32_t)next_x,.y1=0, .y2=ydiv};
-            b_swp[i] = (pixman_box32_t){.x1=x+(int32_t)xx,.x2=x+(int32_t)next_x,.y1=ydiv,.y2=bar_height};
-            xx = next_x;
-        }
-    }
-
-    pixman_color_t bgcolor = P->awl_colors.bg_stats;
-    for (int a=0; a<w->age; ++a) bgcolor = mean_color_16( bgcolor, P->awl_colors.bg_status, 0.9 );
-
-    pixman_image_fill_boxes(PIXMAN_OP_SRC, pix, &bgcolor, b_bg_run-b_bg, b_bg);
-    pixman_image_fill_boxes(PIXMAN_OP_SRC, pix, &P->awl_colors.fg_stats_cpu, ncpu, b_cpu);
-    pixman_image_fill_boxes(PIXMAN_OP_SRC, pix, &P->awl_colors.fg_stats_mem, nmem, b_mem);
-    pixman_image_fill_boxes(PIXMAN_OP_SRC, pix, &P->awl_colors.fg_stats_swp, nswp, b_swp);
 
     return w->width;
 }
 
-/* text of sensor i; the same snapshot always gives the same text */
-static void tempwidget_text( awl_temperature_t* T, int i, char* text, size_t size ) {
+/* the readings measure() saw, so draw() renders text of the same width */
+typedef struct {
+    float temps[16];
+} tempwidget_userdata_t;
+
+static void tempwidget_text( const awl_temperature_t* T, int i, float t, char* text, size_t size ) {
     // only put the label if the string is set
-    if (*T->f_labels[T->idx[i]])
-        snprintf( text, size, "%s:%.0f°C", T->f_labels[T->idx[i]], T->temps[i] );
+    if (*T->f_labels[i])
+        snprintf( text, size, "%s:%.0f°C", T->f_labels[i], t );
     else
-        snprintf( text, size, "%3.0f°C", T->temps[i] );
+        snprintf( text, size, "%3.0f°C", t );
 }
 
 static uint32_t tempwidget_measure( widget_t* w ) {
     awl_plugin_data_t* P = awl_plugin_get();
     if (!P || !P->temp) return 0;
 
-    if (!w->userdata) w->userdata = calloc(1,sizeof(awl_temperature_t));
-    awl_temperature_t* T = w->userdata;
-
-    // never block the compositor; the plugin requests a redraw after each
-    // change, so a missed lock is caught up on the next frame
-    if (!sem_trywait( &P->temp->sem )) {
-        w->age = 0;
-        memcpy( T, P->temp, sizeof(awl_temperature_t) );
-        sem_post( &P->temp->sem );
-    } else {
-        w->age++;
-    }
+    if (!w->userdata) w->userdata = calloc(1,sizeof(tempwidget_userdata_t));
+    tempwidget_userdata_t* u = w->userdata;
 
     uint32_t width = 0;
-    for (int i=0; i<T->ntemps; ++i) {
+    for (int i=0; i<P->temp->f_ntemps; ++i) {
+        u->temps[i] = atomic_load( &P->temp->temps[i] );
+        if (u->temps[i] == AWL_TEMP_NONE) continue; // unreadable
         char text[128];
-        tempwidget_text( T, i, text, sizeof(text) );
+        tempwidget_text( P->temp, i, u->temps[i], text, sizeof(text) );
         width += TEXTW(w->bar->m, text);
     }
     return width;
@@ -454,19 +406,18 @@ static uint32_t tempwidget_measure( widget_t* w ) {
 
 static uint32_t tempwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {
     awl_plugin_data_t* P = awl_plugin_get();
-    if (!P) return 0;
-    awl_temperature_t* T = w->userdata;
+    if (!P || !P->temp) return 0;
+    const awl_temperature_t* T = P->temp;
+    tempwidget_userdata_t* u = w->userdata;
 
-    pixman_color_t bgcolor = P->awl_colors.bg_status;
-    for (int a=0; a<w->age; ++a) bgcolor = mean_color_16( bgcolor, white, 0.9 );
-
-    for (int i=0; i<T->ntemps; ++i) {
+    for (int i=0; i<T->f_ntemps; ++i) {
+        if (u->temps[i] == AWL_TEMP_NONE) continue;
         char text[128];
-        tempwidget_text( T, i, text, sizeof(text) );
+        tempwidget_text( T, i, u->temps[i], text, sizeof(text) );
         pixman_color_t fgcolor = color_8bit_to_16bit(
-                P->temp_color( T->temps[i], T->f_t_min[T->idx[i]], T->f_t_max[T->idx[i]] ) );
+                P->temp_color( u->temps[i], T->f_t_min[i], T->f_t_max[i] ) );
         uint32_t ww = TEXTW(w->bar->m, text);
-        TEXT( ww, text, fgcolor, bgcolor );
+        TEXT( ww, text, fgcolor, P->awl_colors.bg_status );
         x += ww;
     }
     return w->width;
@@ -495,21 +446,23 @@ static uint32_t ipwidget_measure( widget_t* w ) {
     if (!P || !P->ip) return 0;
     textsnap_t* s = textsnap( w );
 
-    // never block the compositor; on a missed lock show the last address
-    if (!sem_trywait( &P->ip->sem )) {
-        w->age = 0;
-        memcpy( s->text, P->ip->address, sizeof(s->text) );
-        s->text[sizeof(s->text)-1] = 0;
-        sem_post( &P->ip->sem );
-    } else {
-        w->age++;
+    int n = atomic_load( &P->ip->n_addr ), online = n > 0;
+    size_t len = 0;
+    *s->text = 0;
+    for (int i=0; i<n && i<AWL_IP_MAX; ++i) {
+        struct in_addr a = { .s_addr = atomic_load( &P->ip->addr[i] ) };
+        char host[INET_ADDRSTRLEN];
+        if (!inet_ntop( AF_INET, &a, host, sizeof host )) continue;
+        if (!strncmp( host, "127.0.0.", 8 )) online = 0;
+        // truncates instead of overflowing with many interfaces
+        int c = snprintf( s->text+len, sizeof(s->text)-len, "%s%s", len ? " | " : "", host );
+        if (c > 0) len += (size_t)c;
+        if (len >= sizeof(s->text)) len = sizeof(s->text)-1;
     }
-    if (!*s->text) strcpy( s->text, "    invalid   " );
+    if (!*s->text) strcpy( s->text, "disconnected" );
 
-    s->fg = atomic_load( &P->ip->is_online ) ? color_8bit_to_16bit(molokai_green) :
-                                               color_8bit_to_16bit(molokai_red);
+    s->fg = online ? color_8bit_to_16bit(molokai_green) : color_8bit_to_16bit(molokai_red);
     s->bg = P->awl_colors.bg_status;
-    for (int a=0; a<w->age; ++a) s->bg = mean_color_16( s->bg, white, 0.9 );
     return textsnap_width( w );
 }
 

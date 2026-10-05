@@ -2,6 +2,8 @@
 #include "pthread_wrap.h"
 #include "redraw.h"
 #include <errno.h>
+#include <stdio.h>
+#include <string.h>
 #include <stdatomic.h>
 #include <poll.h>
 #include <stdint.h>
@@ -116,19 +118,33 @@ static void* poller_run( void* arg ) {
 awl_poller_t* poller_start( awl_stats_t* stats, awl_temperature_t* temp, awl_date_t* date,
                             awl_battery_t* bat, awl_ipaddr_t* ip ) {
     awl_poller_t* p = calloc(1, sizeof(awl_poller_t));
+    if (!p) return NULL;
     p->stats = stats;
     p->temp = temp;
     p->date = date;
     p->bat = bat;
     p->ip = ip;
+    atomic_init( &p->stop, 0 );
+    atomic_init( &p->paused, 0 );
+    // the eventfd is the only way to stop the thread
     p->wake_fd = eventfd( 0, EFD_CLOEXEC | EFD_NONBLOCK );
-    AWL_PTHREAD_CREATE( &p->me, NULL, poller_run, p );
+    if (p->wake_fd < 0) {
+        perror( "poller: eventfd" );
+        free( p );
+        return NULL;
+    }
+    int err = AWL_PTHREAD_CREATE( &p->me, NULL, poller_run, p );
+    if (err) {
+        fprintf( stderr, "poller: can't start the thread: %s\n", strerror( err ) );
+        close( p->wake_fd );
+        free( p );
+        return NULL;
+    }
     return p;
 }
 
 void poller_set_paused( awl_poller_t* p, int paused ) {
-    // without the eventfd a paused thread could never be woken again
-    if (p->wake_fd < 0) return;
+    if (!p) return;
     if (atomic_exchange( &p->paused, !!paused ) == !!paused) return;
     uint64_t one = 1;
     // only fails if the counter is full, i.e. the thread is due to wake anyway
@@ -136,14 +152,12 @@ void poller_set_paused( awl_poller_t* p, int paused ) {
 }
 
 void poller_stop( awl_poller_t* p ) {
+    if (!p) return;
     uint64_t one = 1;
     atomic_store( &p->stop, 1 );
-    if (p->wake_fd >= 0 && write( p->wake_fd, &one, sizeof one ) == sizeof one) {
-        pthread_join( p->me, NULL );
-        close( p->wake_fd );
-    } else if (!pthread_cancel( p->me )) {
-        // no eventfd: the thread can only be cancelled
-        pthread_join( p->me, NULL );
-    }
+    // only fails if the counter is full, i.e. the thread is due to wake anyway
+    if (write( p->wake_fd, &one, sizeof one ) < 0) {}
+    pthread_join( p->me, NULL );
+    close( p->wake_fd );
     free( p );
 }

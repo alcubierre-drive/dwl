@@ -1,9 +1,10 @@
 #pragma once
 
+#include <stdatomic.h>
+
 typedef struct awl_battery_t {
     _Atomic float charge;
-    _Atomic int charging;
-    // -1: invalid
+    atomic_int charging; // -1: invalid
 
     int uevent_fd; // kernel uevents (netlink), -1 if unavailable
 } awl_battery_t;

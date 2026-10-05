@@ -1,9 +1,10 @@
 #pragma once
 
 #include "pthread_wrap.h"
+#include <stdatomic.h>
 
 typedef struct awl_backlight_t {
-    _Atomic int enabled;
+    atomic_int enabled;
     pthread_t me;
     int wake_fd; /* eventfd; written by stop_backlight_thread() to end the thread */
 } awl_backlight_t;

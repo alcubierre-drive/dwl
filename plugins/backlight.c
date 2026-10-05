@@ -3,7 +3,6 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdint.h>
-#include <stdatomic.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <poll.h>
@@ -167,21 +166,29 @@ static void* backlight( void* arg ) {
 
 awl_backlight_t* start_backlight_thread( void ) {
     awl_backlight_t* b = calloc(1, sizeof *b);
-    atomic_store( &b->enabled, 1 );
-    b->wake_fd = eventfd( 0, EFD_CLOEXEC );
+    if (!b) return NULL;
+    atomic_init( &b->enabled, 1 );
+    b->wake_fd = eventfd( 0, EFD_CLOEXEC | EFD_NONBLOCK );
     if (b->wake_fd < 0) {
+        perror( "backlight: eventfd" );
         free(b);
         return NULL;
     }
-    AWL_PTHREAD_CREATE( &b->me, NULL, backlight, b );
+    int err = AWL_PTHREAD_CREATE( &b->me, NULL, backlight, b );
+    if (err) {
+        fprintf( stderr, "backlight: can't start the thread: %s\n", strerror( err ) );
+        close( b->wake_fd );
+        free(b);
+        return NULL;
+    }
     return b;
 }
 
 void stop_backlight_thread( awl_backlight_t* b ) {
     if (!b) return;
     uint64_t one = 1;
-    if (write( b->wake_fd, &one, sizeof one ) != sizeof one)
-        perror( "stop_backlight_thread: write" );
+    // only fails if the counter is full, i.e. the thread is due to wake anyway
+    if (write( b->wake_fd, &one, sizeof one ) < 0) {}
     pthread_join( b->me, NULL );
     close( b->wake_fd );
     free(b);

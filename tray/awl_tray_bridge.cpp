@@ -36,6 +36,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace SNI {
 namespace {
@@ -44,25 +45,27 @@ struct BarGeom {
     int32_t x = 0, y = 0;
     int32_t width = 0, height = 20;
     double scale = 1.0;
+    bool known = false;  // dwl sent it
 };
 
-// dwl calls awl_tray_set_bar_geometry() from updatebar(), which runs at
-// monitor-creation time -- potentially before this thread's Gtk::Main has
-// finished its (deliberately non-blocking, see awl_tray_init()) Wayland
-// connection handshake and this monitor's Bridge has been constructed (see
-// ensure_bridge()). If that first call lands while the Bridge doesn't exist
-// yet, it would otherwise be silently dropped: updatebar() only re-fires on
-// real monitor/output changes, not every frame, so a static session might
-// never send geometry again for that monitor, leaving its Bridge stuck at
-// BarGeom's all-zero default forever (X positioning masks this, since
-// awl_tray_set_widget_x() -- and thus a reposition() retry -- is called
-// every frame from systray_draw(), but Y never gets fixed up because
-// nothing keeps re-sending geometry the same way). Cache the latest call
-// per monitor here, independent of that monitor's Bridge readiness, so
-// Bridge's constructor can pick up whatever was last sent instead of only
-// ever seeing pushes that happened to land after it existed.
-std::mutex g_pending_geom_mtx;
-std::unordered_map<std::string, BarGeom> g_pending_geom;
+// What dwl's thread and a monitor's Bridge (GTK thread) exchange. dwl's
+// thread only ever touches this, never the Bridge: it is created together
+// with the monitor's registry entry (see shared_for()), so nothing dwl sends
+// is lost while the Bridge is still being constructed (updatebar() only
+// sends the geometry on real changes), and it stays valid for whoever still
+// holds a reference after the monitor is removed.
+struct Shared {
+    std::mutex mtx;
+    BarGeom geom;                         // guarded by mtx
+    std::atomic<int32_t> widget_x{0};     // buffer-scaled px, from systray_draw's `x`
+    std::atomic<int32_t> content_w{0};    // logical px, box_'s current allocated width
+    std::atomic<bool> visible{true};      // dwl's togglebar
+
+    BarGeom getGeom() {
+        std::lock_guard<std::mutex> lg(mtx);
+        return geom;
+    }
+};
 
 // Set via awl_tray_set_change_callback(); called from the GTK thread whenever
 // a tray's content width changes, so dwl redraws its bar (which reserves
@@ -85,24 +88,25 @@ void run_on_gtk_thread(F &&fn) {
         boxed, nullptr);
 }
 
+// One monitor's tray window. Constructed, used and destroyed on the GTK
+// thread only.
 class Bridge {
 public:
-    explicit Bridge(std::string monitor_id);
+    Bridge(std::string monitor_id, std::shared_ptr<Shared> shared);
     ~Bridge();
 
-    void setBarGeometry(int32_t x, int32_t y, int32_t w, int32_t h, double scale);
-    void setWidgetX(uint32_t x);
-    void setVisible(bool visible);
+    // Apply what dwl last sent (shared_).
+    void reposition();
+    void applyVisible();
     void reloadTray();
-    uint32_t width();
 
 private:
-    void reposition();
     void scheduleWidthCheck();
     void checkWidth();
     void hookTray();
 
     std::string monitor_id_;
+    std::shared_ptr<Shared> shared_;
     std::unique_ptr<Gtk::Window> win_;
     std::unique_ptr<Tray> tray_;
     // Width tracking is event-driven (see scheduleWidthCheck()): GLib/GTK
@@ -120,33 +124,15 @@ private:
     // content that the explicit Tray::on_change_ hooks don't cover.
     sigc::connection check_resize_conn_;
 
-    std::mutex geom_mtx_;
-    BarGeom bar_geom_;
-    std::atomic<int32_t> widget_x_{0};   // buffer-scaled px, from systray_draw's `x`
-    std::atomic<int32_t> content_w_{0};  // logical px, box_'s current allocated width
-
     int last_margin_left_ = INT32_MIN;
     int last_margin_top_ = INT32_MIN;
     int last_height_ = -1;
     int last_forced_w_ = -1;
     bool shown_ = false;
-    // Whether the monitor bar we're tracking currently wants us visible (dwl's
-    // togglebar). Only touched on the GTK thread (via run_on_gtk_thread), same
-    // as shown_/reposition()'s other state.
-    bool visible_ = true;
 };
 
-Bridge::Bridge(std::string monitor_id) : monitor_id_(std::move(monitor_id)) {
-    // Pick up whatever geometry dwl already tried to send for this monitor
-    // before its Bridge was ready (see the comment on g_pending_geom) instead
-    // of only starting from BarGeom's all-zero default.
-    {
-        std::lock_guard<std::mutex> lg(g_pending_geom_mtx);
-        std::lock_guard<std::mutex> lg2(geom_mtx_);
-        auto it = g_pending_geom.find(monitor_id_);
-        if (it != g_pending_geom.end()) bar_geom_ = it->second;
-    }
-
+Bridge::Bridge(std::string monitor_id, std::shared_ptr<Shared> shared)
+    : monitor_id_(std::move(monitor_id)), shared_(std::move(shared)) {
     win_ = std::make_unique<Gtk::Window>();
     win_->set_decorated(false);
     win_->set_name("awl-tray");
@@ -210,7 +196,7 @@ Bridge::Bridge(std::string monitor_id) : monitor_id_(std::move(monitor_id)) {
     //  - win_'s "check-resize" fires whenever GTK processes a queued resize
     //    of the (visible) window's content -- a catch-all for anything else
     //    that changes a child's size request (e.g. a style change);
-    //  - reposition()/setVisible() check when the window gets (re)mapped,
+    //  - reposition()/applyVisible() check when the window gets (re)mapped,
     //    and the constructor/reloadTray() schedule an initial check so the
     //    width is reported at startup even before any item exists.
     // All of these only *schedule* a single deduplicated idle source; the
@@ -270,7 +256,7 @@ void Bridge::checkWidth() {
     if (!win_ || !tray_) return;
     int min_w = 0, nat_w = 0;
     tray_->box_.get_preferred_width(min_w, nat_w);
-    if (content_w_.exchange(nat_w, std::memory_order_relaxed) != nat_w)
+    if (shared_->content_w.exchange(nat_w, std::memory_order_relaxed) != nat_w)
         if (auto cb = g_change_cb.load()) cb();
     if (shown_ && nat_w != last_forced_w_) {
         last_forced_w_ = nat_w;
@@ -300,13 +286,11 @@ void Bridge::checkWidth() {
 
 void Bridge::reposition() {
     if (!win_) return;
-    BarGeom g;
-    int32_t wx;
-    {
-        std::lock_guard<std::mutex> lg(geom_mtx_);
-        g = bar_geom_;
-    }
-    wx = widget_x_.load(std::memory_order_relaxed);
+    BarGeom g = shared_->getGeom();
+    // the window is mapped only once the real geometry is known (see the
+    // constructor); its arrival calls this again
+    if (!g.known) return;
+    int32_t wx = shared_->widget_x.load(std::memory_order_relaxed);
 
     // gtk-layer-shell margins get added by wlroots *directly* onto the
     // compositor's own output-layout coordinates (wlr_scene_layer_surface_v1_configure
@@ -352,8 +336,8 @@ void Bridge::reposition() {
 
     // First real geometry: map the window now, with the correct min-height
     // size request already in place (see comment in the constructor) -- but
-    // only if the bar we're tracking isn't currently hidden (see setVisible()).
-    if (!shown_ && visible_) {
+    // only if the bar we're tracking isn't currently hidden (see applyVisible()).
+    if (!shown_ && shared_->visible.load()) {
         win_->show();
         shown_ = true;
         // last_forced_w_ is still -1: pin the real content width now that the
@@ -362,40 +346,18 @@ void Bridge::reposition() {
     }
 }
 
-void Bridge::setBarGeometry(int32_t x, int32_t y, int32_t w, int32_t h, double scale) {
-    bool moved;
-    {
-        std::lock_guard<std::mutex> g(geom_mtx_);
-        moved = bar_geom_.x != x || bar_geom_.y != y || bar_geom_.width != w ||
-                bar_geom_.height != h || bar_geom_.scale != scale;
-        bar_geom_.x = x;
-        bar_geom_.y = y;
-        bar_geom_.width = w;
-        bar_geom_.height = h;
-        bar_geom_.scale = scale;
+// GTK thread only.
+void Bridge::applyVisible() {
+    // Not mapped yet (e.g. toggled before the first real bar geometry ever
+    // arrived) -- nothing to show/hide; reposition() checks visible itself
+    // once it does map the window for the first time.
+    if (!win_ || !shown_) return;
+    if (shared_->visible.load()) {
+        win_->show();
+        scheduleWidthCheck();
+    } else {
+        win_->hide();
     }
-    if (moved) run_on_gtk_thread([this] { reposition(); });
-}
-
-void Bridge::setWidgetX(uint32_t x) {
-    int32_t prev = widget_x_.exchange((int32_t)x, std::memory_order_relaxed);
-    if (prev != (int32_t)x) run_on_gtk_thread([this] { reposition(); });
-}
-
-void Bridge::setVisible(bool visible) {
-    run_on_gtk_thread([this, visible] {
-        visible_ = visible;
-        // Not mapped yet (e.g. toggled before the first real bar geometry ever
-        // arrived) -- nothing to show/hide; reposition() checks visible_ itself
-        // once it does map the window for the first time.
-        if (!win_ || !shown_) return;
-        if (visible) {
-            win_->show();
-            scheduleWidthCheck();
-        } else {
-            win_->hide();
-        }
-    });
 }
 
 void Bridge::reloadTray() {
@@ -427,13 +389,14 @@ void Bridge::reloadTray() {
     scheduleWidthCheck();
 }
 
-uint32_t Bridge::width() {
-    int32_t w = content_w_.load(std::memory_order_relaxed);
+// The tray's width for dwl's bar. Any thread.
+uint32_t tray_width(Shared &sh) {
+    int32_t w = sh.content_w.load(std::memory_order_relaxed);
     if (w <= 0) return 0;
-    // content_w_ is box_'s preferred width in *this window's own* GTK-logical
+    // content_w is box_'s preferred width in *this window's own* GTK-logical
     // pixels; dwl wants it back in units matching its own raw bar buffer (see
     // drawbar()'s m->b.width, which is m->b.real_width * m->wlr_output->scale)
-    // to reserve bar space. That's dwl's own *real* output scale (bar_geom_.scale,
+    // to reserve bar space. That's dwl's own *real* output scale (geom.scale,
     // e.g. 1.5) -- the same one reposition() uses for margins, per its comment
     // on wlr_scene_layer_surface_v1_configure(). It is NOT this window's own
     // client-negotiated buffer scale (win_->get_scale_factor()): GTK3/
@@ -441,57 +404,85 @@ uint32_t Bridge::width() {
     // which wlroots reports as ceil(1.5)=2 for a 1.5x monitor -- using that
     // here over-reserved bar space by 2/1.5 (~33%), leaving a visible
     // transparent gap past the real icons' right edge.
-    double scale;
-    {
-        std::lock_guard<std::mutex> lg(geom_mtx_);
-        scale = bar_geom_.scale;
-    }
+    double scale = sh.getGeom().scale;
     if (scale <= 0) scale = 1.0;
     return (uint32_t)(w * scale + 0.5);
 }
 
-// One Bridge (one overlay window) per monitor, keyed by monitor_id
-// (m->wlr_output->name). Only ever constructed/destroyed on the GTK
-// thread (inside ensure_bridge()'s/awl_tray_remove_monitor()'s
-// run_on_gtk_thread() callback, or thread_main()'s final teardown below);
-// the mutex just protects the map's own structure (insert/erase/find) from
-// the render thread's concurrent lookups, not the Bridge objects'
-// internals (those are already safe for cross-thread use on their own,
-// same as before this was a map).
-std::mutex g_bridges_mtx;
-std::unordered_map<std::string, std::unique_ptr<Bridge>> g_bridges;
+pthread_t g_thread;
+std::atomic<bool> g_running{false};
 
-// Returns the existing Bridge for `mon`, or nullptr if none exists (yet).
-// Safe to call from any thread.
-Bridge *find_bridge(const std::string &mon) {
+// The monitors dwl told us about, keyed by monitor_id (m->wlr_output->name).
+// An entry is created by dwl's thread (shared_for()) and removed by it
+// (awl_tray_remove_monitor()), so a monitor that is unplugged and plugged
+// back under the same name gets a fresh entry right away. Its Bridge is
+// filled in later by the GTK thread, and is only ever constructed, used and
+// destroyed there, outside the lock; the lock only guards the map itself.
+struct Entry {
+    std::shared_ptr<Shared> shared;
+    std::unique_ptr<Bridge> bridge;  // null until the GTK thread built it
+};
+std::mutex g_bridges_mtx;
+std::unordered_map<std::string, Entry> g_bridges;
+
+// The Bridge of `mon`, or nullptr if there is none (yet). GTK thread only:
+// the pointer stays valid until the current GTK callback returns, since only
+// this thread destroys Bridges.
+Bridge *gtk_bridge(const std::string &mon) {
     std::lock_guard<std::mutex> lg(g_bridges_mtx);
     auto it = g_bridges.find(mon);
-    return (it == g_bridges.end() || !it->second) ? nullptr : it->second.get();
+    return it == g_bridges.end() ? nullptr : it->second.bridge.get();
 }
 
-// Creates a Bridge for `mon` if one doesn't already exist (or isn't
-// already being created), asynchronously on the GTK thread -- Bridge's
-// constructor touches Gtk::Window/gtk-layer-shell, which must happen
-// there. Safe to call repeatedly/from any thread; idempotent.
-void ensure_bridge(const std::string &mon) {
+// Destroys `b` on the GTK thread, where it was made.
+void destroy_on_gtk_thread(std::unique_ptr<Bridge> b) {
+    if (!b) return;
+    Bridge *raw = b.release();
+    run_on_gtk_thread([raw] { delete raw; });
+}
+
+// The shared state of `mon`, creating its entry and queueing the construction
+// of its Bridge if it is new. nullptr if the tray isn't running. dwl's thread.
+std::shared_ptr<Shared> shared_for(const std::string &mon) {
+    if (!g_running.load()) return nullptr;
+    std::shared_ptr<Shared> sh;
     {
         std::lock_guard<std::mutex> lg(g_bridges_mtx);
-        if (g_bridges.count(mon)) return;
-        // Reserve the slot (as a null entry) immediately so a burst of calls
-        // for the same brand-new monitor_id (e.g. width() and
-        // set_bar_geometry() both firing the same frame) only queues one
-        // construction, instead of racing multiple Bridges into the same slot.
-        g_bridges.emplace(mon, nullptr);
+        auto &e = g_bridges[mon];
+        if (e.shared) return e.shared;
+        sh = e.shared = std::make_shared<Shared>();
     }
-    run_on_gtk_thread([mon] {
-        std::lock_guard<std::mutex> lg(g_bridges_mtx);
-        auto &slot = g_bridges[mon];
-        if (!slot) slot = std::make_unique<Bridge>(mon);
+    run_on_gtk_thread([mon, sh] {
+        auto is_current = [&] {
+            auto it = g_bridges.find(mon);
+            return it != g_bridges.end() && it->second.shared == sh && !it->second.bridge;
+        };
+        {
+            // the monitor may have gone away (or come back) meanwhile
+            std::lock_guard<std::mutex> lg(g_bridges_mtx);
+            if (!is_current()) return;
+        }
+        auto b = std::make_unique<Bridge>(mon, sh);
+        Bridge *raw = b.get();
+        {
+            std::lock_guard<std::mutex> lg(g_bridges_mtx);
+            if (is_current()) g_bridges[mon].bridge = std::move(b);
+        }
+        if (b) return;  // removed while it was being built; destroyed here
+        // apply whatever dwl sent before the Bridge existed
+        raw->reposition();
+    });
+    return sh;
+}
+
+// Queues fn(bridge) on the GTK thread, if `mon` has a Bridge by then.
+template <typename F>
+void with_bridge(const std::string &mon, F &&fn) {
+    run_on_gtk_thread([mon, fn = std::forward<F>(fn)] {
+        if (Bridge *b = gtk_bridge(mon)) fn(*b);
     });
 }
 
-pthread_t g_thread;
-std::atomic<bool> g_running{false};
 // Set by thread_main right before it returns, i.e. once Gtk::Main::run()
 // has actually come back and all Bridges have been torn down -- see
 // awl_tray_join()'s comment for why the caller polls this instead of just
@@ -510,7 +501,7 @@ void *thread_main(void *) {
     Gtk::Main kit(argc, argv);
 
     // Bridges are created lazily, per monitor, the first time dwl mentions a
-    // monitor_id (see ensure_bridge()) -- there's no single "the" tray window
+    // monitor_id (see shared_for()) -- there's no single "the" tray window
     // to construct eagerly here any more.
     //
     // The calendar popup is created right away (hidden), so it can connect to
@@ -527,10 +518,12 @@ void *thread_main(void *) {
     // race ahead into wl_display_destroy_clients()/wl_display_destroy()
     // concurrently with this thread still using the display).
     awl::calendar_fini();
+    std::unordered_map<std::string, Entry> bridges;
     {
         std::lock_guard<std::mutex> lg(g_bridges_mtx);
-        g_bridges.clear();
+        bridges.swap(g_bridges);
     }
+    bridges.clear();
     g_finished.store(true, std::memory_order_release);
     return nullptr;
 }
@@ -570,28 +563,32 @@ int awl_tray_join(void) {
 }
 
 uint32_t awl_tray_width(const char *monitor_id) {
-    std::string mon(monitor_id ? monitor_id : "");
-    SNI::ensure_bridge(mon);
-    SNI::Bridge *b = SNI::find_bridge(mon);
-    return b ? b->width() : 0;
+    auto sh = SNI::shared_for(monitor_id ? monitor_id : "");
+    return sh ? SNI::tray_width(*sh) : 0;
 }
 
 void awl_tray_set_widget_x(const char *monitor_id, uint32_t x) {
     std::string mon(monitor_id ? monitor_id : "");
-    SNI::ensure_bridge(mon);
-    SNI::Bridge *b = SNI::find_bridge(mon);
-    if (b) b->setWidgetX(x);
+    auto sh = SNI::shared_for(mon);
+    if (!sh) return;
+    if (sh->widget_x.exchange((int32_t)x, std::memory_order_relaxed) != (int32_t)x)
+        SNI::with_bridge(mon, [](SNI::Bridge &b) { b.reposition(); });
 }
 
 void awl_tray_set_bar_geometry(const char *monitor_id, int32_t x, int32_t y, uint32_t width, uint32_t height, double scale) {
     std::string mon(monitor_id ? monitor_id : "");
+    auto sh = SNI::shared_for(mon);
+    if (!sh) return;
+    SNI::BarGeom g{x, y, (int32_t)width, (int32_t)height, scale, true};
+    bool moved;
     {
-        std::lock_guard<std::mutex> lg(SNI::g_pending_geom_mtx);
-        SNI::g_pending_geom[mon] = SNI::BarGeom{x, y, (int32_t)width, (int32_t)height, scale};
+        std::lock_guard<std::mutex> lg(sh->mtx);
+        const SNI::BarGeom &o = sh->geom;
+        moved = !o.known || o.x != g.x || o.y != g.y || o.width != g.width ||
+                o.height != g.height || o.scale != g.scale;
+        sh->geom = g;
     }
-    SNI::ensure_bridge(mon);
-    SNI::Bridge *b = SNI::find_bridge(mon);
-    if (b) b->setBarGeometry(x, y, (int32_t)width, (int32_t)height, scale);
+    if (moved) SNI::with_bridge(mon, [](SNI::Bridge &b) { b.reposition(); });
 }
 
 void awl_tray_set_change_callback(void (*cb)(void)) {
@@ -601,34 +598,41 @@ void awl_tray_set_change_callback(void (*cb)(void)) {
 void awl_tray_reload(void) {
     if (!SNI::g_running.load()) return;
     SNI::run_on_gtk_thread([] {
-        std::lock_guard<std::mutex> lg(SNI::g_bridges_mtx);
-        for (auto &kv : SNI::g_bridges) {
-            if (kv.second) kv.second->reloadTray();
+        // reloadTray() is GTK work; don't hold the lock for it
+        std::vector<SNI::Bridge *> bridges;
+        {
+            std::lock_guard<std::mutex> lg(SNI::g_bridges_mtx);
+            for (auto &kv : SNI::g_bridges)
+                if (kv.second.bridge) bridges.push_back(kv.second.bridge.get());
         }
+        for (SNI::Bridge *b : bridges) b->reloadTray();
     });
 }
 
 void awl_tray_set_visible(const char *monitor_id, int visible) {
     std::string mon(monitor_id ? monitor_id : "");
-    SNI::Bridge *b = SNI::find_bridge(mon);
-    if (b) b->setVisible(visible != 0);
+    auto sh = SNI::shared_for(mon);
+    if (!sh) return;
+    if (sh->visible.exchange(visible != 0) != (visible != 0))
+        SNI::with_bridge(mon, [](SNI::Bridge &b) { b.applyVisible(); });
 }
 
 static void calendar_on_gtk_thread(const char *monitor_id, bool toggle) {
     if (!SNI::g_running.load()) return;
     std::string mon(monitor_id ? monitor_id : "");
-    SNI::run_on_gtk_thread([mon, toggle] {
-        SNI::BarGeom g;
-        {
-            std::lock_guard<std::mutex> lg(SNI::g_pending_geom_mtx);
-            auto it = SNI::g_pending_geom.find(mon);
-            if (it != SNI::g_pending_geom.end()) g = it->second;
-        }
-        // dwl puts a bottom bar at y = monitor height - bar height
+    SNI::BarGeom g;
+    {
+        std::lock_guard<std::mutex> lg(SNI::g_bridges_mtx);
+        auto it = SNI::g_bridges.find(mon);
+        if (it != SNI::g_bridges.end()) g = it->second.shared->getGeom();
+    }
+    // dwl puts a bottom bar at y = monitor height - bar height
+    bool top = g.y == 0;
+    SNI::run_on_gtk_thread([mon, toggle, top] {
         if (toggle)
-            awl::calendar_toggle(mon, g.y == 0);
+            awl::calendar_toggle(mon, top);
         else
-            awl::calendar_show(mon, g.y == 0);
+            awl::calendar_show(mon, top);
     });
 }
 
@@ -647,15 +651,15 @@ void awl_tray_calendar_hide(void) {
 
 void awl_tray_remove_monitor(const char *monitor_id) {
     std::string mon(monitor_id ? monitor_id : "");
+    std::unique_ptr<SNI::Bridge> b;
     {
-        std::lock_guard<std::mutex> lg(SNI::g_pending_geom_mtx);
-        SNI::g_pending_geom.erase(mon);
-    }
-    if (!SNI::g_running.load()) return;
-    SNI::run_on_gtk_thread([mon] {
         std::lock_guard<std::mutex> lg(SNI::g_bridges_mtx);
-        SNI::g_bridges.erase(mon);
-    });
+        auto it = SNI::g_bridges.find(mon);
+        if (it == SNI::g_bridges.end()) return;
+        b = std::move(it->second.bridge);
+        SNI::g_bridges.erase(it);
+    }
+    SNI::destroy_on_gtk_thread(std::move(b));
 }
 
 }  // extern "C"

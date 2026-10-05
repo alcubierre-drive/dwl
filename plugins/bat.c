@@ -2,7 +2,6 @@
 #include <string.h>
 #include <stdio.h>
 #include <unistd.h>
-#include <stdatomic.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <sys/socket.h>
@@ -26,7 +25,8 @@ static int uevent_open( void ) {
 
 awl_battery_t* bat_init( void ) {
     awl_battery_t* b = calloc(1, sizeof(awl_battery_t));
-    atomic_store( &b->charging, -1 );
+    atomic_init( &b->charge, 0 );
+    atomic_init( &b->charging, -1 );
     b->uevent_fd = uevent_open();
     return b;
 }

@@ -13,7 +13,6 @@
 #define BETWEEN(X, A, B) ((A) <= (X) && (X) <= (B))
 #define NTAGS 9
 
-enum { ColFg, ColBg, ColBorder }; /* colorscheme index */
 
 typedef struct widget_t widget_t;
 typedef struct Drwl Drwl;
@@ -47,7 +46,6 @@ struct widget_t {
     const char* popup_namespace;
     double scroll_amount;
     void* userdata;
-    int age;
     void (*free)( void* userdata );
     Drwl* bar;
 };
@@ -69,7 +67,6 @@ typedef struct drwl_window_t {
 struct Drwl {
     pixman_image_t *pix;
     struct fcft_font *font;
-    uint32_t *scheme;
 
     widget_t widgets_left[32];
     int n_widgets_left;
@@ -152,10 +149,7 @@ Drwl * drwl_create(Monitor* m);
 struct fcft_font * drwl_load_font(Drwl *drwl, size_t fontcount,
         const char *fonts[static fontcount], const char *attributes);
 void drwl_destroy_font(struct fcft_font *font);
-void drwl_setscheme(Drwl *drwl, uint32_t *scm);
 void drwl_prepare_drawing(Drwl *drwl, unsigned int w, unsigned int h, uint32_t *bits, int stride);
-int drwl_text(Drwl *drwl, int x, int y, unsigned int w, unsigned int h, unsigned int lpad,
-        const char *text, int invert);
 int drwl_text_color2(Drwl *drwl, int x, int y, unsigned int w, unsigned int h,
         unsigned int lpad, const char *text, pixman_color_t fg, pixman_color_t bg);
 unsigned int drwl_font_getwidth(Drwl *drwl, const char *text);

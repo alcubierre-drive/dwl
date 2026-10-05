@@ -133,14 +133,9 @@ static int draw( DesktopView* v, const awl_plugin_api_t* api ) {
     b->h = height;
     wlr_buffer_init( &b->base, &buffer_impl, width, height );
 
-    /* drwl's text functions want a scheme, but don't use it here */
-    uint32_t* scheme = drw->scheme;
-    static uint32_t dummy[3];
-    drwl_setscheme( drw, dummy );
     drwl_prepare_drawing( drw, width, height, b->data, stride );
     api->desktop_draw( drw, b->data, stride, width, height, radius, s );
     drwl_finish_drawing( drw );
-    drwl_setscheme( drw, scheme );
 
     const int lw = (int)lroundf( width / s ), lh = (int)lroundf( height / s );
     wlr_scene_buffer_set_buffer( v->buffer, &b->base );

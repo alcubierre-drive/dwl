@@ -13,7 +13,6 @@
 #include "plugins/pulsetest.h"
 #include "plugins/poller.h"
 
-#include "plugins/sem_time.h"
 #include "plugins/colors.h"
 
 typedef struct awl_plugin_data_t {

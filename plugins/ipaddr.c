@@ -6,7 +6,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-#include <stdatomic.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 
@@ -33,14 +32,15 @@ awl_ipaddr_t* ip_init( void ) {
     strcpy( ip->exclude_list[ip->n_exclude_list++], "lo" );
     strcpy( ip->exclude_list[ip->n_exclude_list++], "virbr0" );
     strcpy( ip->exclude_list[ip->n_exclude_list++], "docker0" );
+    for (int i=0; i<AWL_IP_MAX; ++i)
+        atomic_init( &ip->addr[i], 0 );
+    atomic_init( &ip->n_addr, 0 );
     ip->nl_fd = rtnl_open();
-    sem_init( &ip->sem, 0, 1 );
     return ip;
 }
 
 void ip_free( awl_ipaddr_t* ip ) {
     if (ip->nl_fd >= 0) close( ip->nl_fd );
-    sem_destroy( &ip->sem );
     free(ip);
 }
 
@@ -53,9 +53,8 @@ int ip_dispatch( awl_ipaddr_t* ip ) {
 }
 
 int ip_update( awl_ipaddr_t* ip ) {
-    int is_online = 1;
-    char new_addr[128] = {0};
-    size_t len = 0;
+    uint32_t addr[AWL_IP_MAX] = {0};
+    int n = 0;
 
     struct ifaddrs *ifaddr;
     if (getifaddrs(&ifaddr) == -1) {
@@ -63,33 +62,19 @@ int ip_update( awl_ipaddr_t* ip ) {
         return 0;
     }
 
-    for (struct ifaddrs *ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+    for (struct ifaddrs *ifa = ifaddr; ifa != NULL && n < AWL_IP_MAX; ifa = ifa->ifa_next) {
         if (!ifa->ifa_addr) continue;
         int family = ifa->ifa_addr->sa_family;
-        if (family == AF_INET && is_not_in_exclude_list(ifa->ifa_name, ip->exclude_list, ip->n_exclude_list)) {
-            char host[INET_ADDRSTRLEN];
-            if (!inet_ntop( AF_INET, &((struct sockaddr_in*)ifa->ifa_addr)->sin_addr, host, sizeof host ))
-                continue;
-            if (strstr(host, "127.0.0"))
-                is_online = 0;
-            // truncates instead of overflowing with many interfaces
-            int w = snprintf( new_addr+len, sizeof(new_addr)-len, "%s%s", len ? " | " : "", host );
-            if (w > 0) len += (size_t)w;
-            if (len >= sizeof(new_addr)) len = sizeof(new_addr)-1;
-        }
+        if (family == AF_INET && is_not_in_exclude_list(ifa->ifa_name, ip->exclude_list, ip->n_exclude_list))
+            addr[n++] = ((struct sockaddr_in*)ifa->ifa_addr)->sin_addr.s_addr;
     }
     freeifaddrs(ifaddr);
 
-    if (!*new_addr) {
-        is_online = 0;
-        strcpy(new_addr, "disconnected");
-    }
-
-    sem_wait( &ip->sem );
-    int changed = strcmp( ip->address, new_addr ) != 0;
-    if (changed) memcpy( ip->address, new_addr, sizeof new_addr );
-    sem_post( &ip->sem );
-    changed |= atomic_exchange( &ip->is_online, is_online ) != is_online;
+    // addresses first, so a reader seeing the new count sees them too
+    int changed = 0;
+    for (int i=0; i<AWL_IP_MAX; ++i)
+        changed |= atomic_exchange( &ip->addr[i], addr[i] ) != addr[i];
+    changed |= atomic_exchange( &ip->n_addr, n ) != n;
     return changed;
 }
 

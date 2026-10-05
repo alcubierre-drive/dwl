@@ -31,11 +31,6 @@ void drwl_destroy_font(struct fcft_font *font) {
     fcft_destroy(font);
 }
 
-void drwl_setscheme(Drwl *drwl, uint32_t *scm) {
-    if (drwl)
-        drwl->scheme = scm;
-}
-
 void drwl_prepare_drawing(Drwl *drwl, unsigned int w, unsigned int h, uint32_t *bits, int stride) {
     pixman_region32_t clip;
 
@@ -51,7 +46,7 @@ void drwl_prepare_drawing(Drwl *drwl, unsigned int w, unsigned int h, uint32_t *
 
 static void drwl_rect_color(Drwl *drwl, int x, int y, unsigned int w, unsigned int h, int filled, uint32_t color) {
     pixman_color_t clr;
-    if (!drwl || !drwl->scheme || !drwl->pix)
+    if (!drwl || !drwl->pix)
         return;
 
     clr = convert_color(color);
@@ -67,96 +62,23 @@ static void drwl_rect_color(Drwl *drwl, int x, int y, unsigned int w, unsigned i
                 { x + w - 1, y,         1, h }});
 }
 
-static void drwl_rect(Drwl *drwl, int x, int y, unsigned int w, unsigned int h, int filled, int invert) {
-    if (!drwl || !drwl->scheme || !drwl->pix)
-        return;
-    drwl_rect_color(drwl, x, y, w, h, filled, drwl->scheme[invert ? ColBg : ColFg]);
-}
-
-int drwl_text(Drwl *drwl, int x, int y, unsigned int w, unsigned int h, unsigned int lpad,
-        const char *text, int invert) {
-    int ty;
-    int utf8charlen, render = x || y || w || h;
-    long x_kern;
+/* width of `text` in pixels, kerning included */
+static unsigned int text_width(Drwl *drwl, const char *text) {
     uint32_t cp = 0, last_cp = 0;
-    pixman_color_t clr;
-    pixman_image_t *fg_pix = NULL;
-    int noellipsis = 0;
-    const struct fcft_glyph *glyph, *eg;
-    int fcft_subpixel_mode = FCFT_SUBPIXEL_DEFAULT;
-
-    if (!drwl || (render && (!drwl->scheme || !w || !drwl->pix)) || !text || !drwl->font)
-        return 0;
-
-    if (!render) {
-        w = invert ? invert : ~invert;
-    } else {
-        clr = convert_color(drwl->scheme[invert ? ColBg : ColFg]);
-        fg_pix = pixman_image_create_solid_fill(&clr);
-
-        drwl_rect(drwl, x, y, w, h, 1, !invert);
-
-        x += lpad;
-        w -= lpad;
-    }
-
-    if (render && (drwl->scheme[ColBg] & 0xFF) != 0xFF)
-        fcft_subpixel_mode = FCFT_SUBPIXEL_NONE;
-
-    // U+2026 == …
-    eg = fcft_rasterize_char_utf32(drwl->font, 0x2026, fcft_subpixel_mode);
+    long x = 0, x_kern;
+    const struct fcft_glyph *glyph;
 
     while (*text) {
-        utf8charlen = utf8decode(text, &cp);
-
-        glyph = fcft_rasterize_char_utf32(drwl->font, cp, fcft_subpixel_mode);
-        if (!glyph)
+        text += utf8decode(text, &cp);
+        if (!(glyph = fcft_rasterize_char_utf32(drwl->font, cp, FCFT_SUBPIXEL_DEFAULT)))
             continue;
-
         x_kern = 0;
         if (last_cp)
             fcft_kerning(drwl->font, last_cp, cp, &x_kern, NULL);
         last_cp = cp;
-
-        ty = y + (h - drwl->font->height) / 2 + drwl->font->ascent;
-
-        /* draw ellipsis if remaining text doesn't fit */
-        if (!noellipsis && x_kern + glyph->advance.x + eg->advance.x > w && *(text + 1) != '\0') {
-            if (drwl_text(drwl, 0, 0, 0, 0, 0, text, 0)
-                    - glyph->advance.x < eg->advance.x) {
-                noellipsis = 1;
-            } else {
-                w -= eg->advance.x;
-                pixman_image_composite32(
-                    PIXMAN_OP_OVER, fg_pix, eg->pix, drwl->pix, 0, 0, 0, 0,
-                    x + eg->x, ty - eg->y, eg->width, eg->height);
-            }
-        }
-
-        if ((x_kern + glyph->advance.x) > w)
-            break;
-
-        x += x_kern;
-
-        if (render && pixman_image_get_format(glyph->pix) == PIXMAN_a8r8g8b8)
-            // pre-rendered glyphs (eg. emoji)
-            pixman_image_composite32(
-                PIXMAN_OP_OVER, glyph->pix, NULL, drwl->pix, 0, 0, 0, 0,
-                x + glyph->x, ty - glyph->y, glyph->width, glyph->height);
-        else if (render)
-            pixman_image_composite32(
-                PIXMAN_OP_OVER, fg_pix, glyph->pix, drwl->pix, 0, 0, 0, 0,
-                x + glyph->x, ty - glyph->y, glyph->width, glyph->height);
-
-        text += utf8charlen;
-        x += glyph->advance.x;
-        w -= glyph->advance.x;
+        x += x_kern + glyph->advance.x;
     }
-
-    if (render)
-        pixman_image_unref(fg_pix);
-
-    return x + (render ? w : 0);
+    return x > 0 ? (unsigned int)x : 0;
 }
 
 static int drwl_text_color(Drwl *drwl, int x, int y, unsigned int w, unsigned int h,
@@ -171,7 +93,7 @@ static int drwl_text_color(Drwl *drwl, int x, int y, unsigned int w, unsigned in
     const struct fcft_glyph *glyph, *eg;
     int fcft_subpixel_mode = FCFT_SUBPIXEL_DEFAULT;
 
-    if (!drwl || (render && (!drwl->scheme || !w || !drwl->pix)) || !text || !drwl->font)
+    if (!drwl || (render && (!w || !drwl->pix)) || !text || !drwl->font)
         return 0;
 
     if (!render) {
@@ -196,8 +118,10 @@ static int drwl_text_color(Drwl *drwl, int x, int y, unsigned int w, unsigned in
         utf8charlen = utf8decode(text, &cp);
 
         glyph = fcft_rasterize_char_utf32(drwl->font, cp, fcft_subpixel_mode);
-        if (!glyph)
+        if (!glyph) {
+            text += utf8charlen;
             continue;
+        }
 
         x_kern = 0;
         if (last_cp)
@@ -208,8 +132,7 @@ static int drwl_text_color(Drwl *drwl, int x, int y, unsigned int w, unsigned in
 
         /* draw ellipsis if remaining text doesn't fit */
         if (!noellipsis && x_kern + glyph->advance.x + eg->advance.x > w && *(text + 1) != '\0') {
-            if (drwl_text(drwl, 0, 0, 0, 0, 0, text, 0)
-                    - glyph->advance.x < eg->advance.x) {
+            if ((int)text_width(drwl, text) - glyph->advance.x < eg->advance.x) {
                 noellipsis = 1;
             } else {
                 w -= eg->advance.x;
@@ -253,7 +176,7 @@ int drwl_text_color2(Drwl *drwl, int x, int y, unsigned int w, unsigned int h,
 unsigned int drwl_font_getwidth(Drwl *drwl, const char *text) {
     if (!drwl || !drwl->font || !text)
         return 0;
-    return drwl_text(drwl, 0, 0, 0, 0, 0, text, 0);
+    return text_width(drwl, text);
 }
 
 void drwl_finish_drawing(Drwl *drwl) {

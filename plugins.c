@@ -50,7 +50,7 @@ static void awl_plugin_stop( awl_plugin_data_t* p ) {
     poller_stop(p->poller);
     ip_free(p->ip);
     stats_free(p->stats);
-    temp_fini(p->temp); free(p->temp);
+    free(p->temp);
     bat_free(p->bat);
     date_free(p->date);
     stop_pulse_thread(p->pulse);

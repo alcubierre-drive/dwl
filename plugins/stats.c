@@ -9,44 +9,39 @@
 #include <fcntl.h>
 
 static float cpu_idle( uint64_t* sizes_table );
-static void rotate_back( float* array, int size );
 static void getmem( float* mem, float* swp );
 
 awl_stats_t* stats_init( int nval_cpu, int nval_mem, int nval_swp ) {
     /*P_awl_log_printf( "starting system monitor" );*/
     awl_stats_t* st = calloc(1,sizeof(awl_stats_t));
-    st->ncpu = nval_cpu;
-    st->nmem = nval_mem;
-    st->nswp = nval_swp;
+    st->ncpu = nval_cpu < AWL_STATS_MAX ? nval_cpu : AWL_STATS_MAX;
+    st->nmem = nval_mem < AWL_STATS_MAX ? nval_mem : AWL_STATS_MAX;
+    st->nswp = nval_swp < AWL_STATS_MAX ? nval_swp : AWL_STATS_MAX;
+    for (int i=0; i<AWL_STATS_MAX; ++i) {
+        atomic_init( &st->cpu[i], 0 );
+        atomic_init( &st->mem[i], 0 );
+        atomic_init( &st->swp[i], 0 );
+    }
+    atomic_init( &st->samples, 0 );
     st->sizes_table = calloc(20, sizeof(uint64_t));
-    sem_init( &st->sem, 0, 1 );
     return st;
 }
 
 void stats_free( awl_stats_t* st ) {
-    sem_destroy( &st->sem );
     free( st->sizes_table );
     free( st );
 }
 
 void stats_update( awl_stats_t* st ) {
-    // sample outside the lock, the bar gives up after 1 µs
     float mem = 0, swp = 0;
     getmem( &mem, &swp );
     float cpu = 1. - cpu_idle(st->sizes_table);
-    sem_wait( &st->sem );
-    rotate_back( st->cpu, st->ncpu );
-    rotate_back( st->mem, st->nmem );
-    rotate_back( st->swp, st->nswp );
-    st->mem[0] = mem;
-    st->swp[0] = swp;
-    st->cpu[0] = cpu;
-    sem_post( &st->sem );
-}
-
-static void rotate_back( float* array, int size ) {
-    for (int i=size-1; i>=1; i--)
-        array[i] = array[i-1];
+    // the slot after the head is the oldest sample; it becomes the newest
+    unsigned next = atomic_load( &st->samples ) + 1;
+    if (st->ncpu) atomic_store( &st->cpu[next % st->ncpu], cpu );
+    if (st->nmem) atomic_store( &st->mem[next % st->nmem], mem );
+    if (st->nswp) atomic_store( &st->swp[next % st->nswp], swp );
+    atomic_store( &st->samples, next );
 }
 
 static float cpu_idle( uint64_t* sizes_table ) {

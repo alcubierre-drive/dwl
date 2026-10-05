@@ -61,11 +61,10 @@ static const int blur_notifications        = 1, /* "notifications" */
                  blur_launcher_radius      = 15;
 
 /* molokai_* are in plugins/colors.h */
-static uint32_t colors[][3]                = {
-    /*               fg          bg          border    */
-    [SchemeNorm] = { 0xbbbbbbff, 0x222222ff, 0x444444ff },
-    [SchemeSel]  = { 0xeeeeeeff, 0x005577ff, 0x005577ff },
-    [SchemeUrg]  = { 0,          0,          0x770000ff },
+static const uint32_t bordercolors[BorderLast] = {
+    [BorderNorm] = 0x444444ff,
+    [BorderSel]  = 0x005577ff,
+    [BorderUrg]  = 0x770000ff,
 };
 
 /* NOTE: ALWAYS keep a rule declared even if you don't use rules (e.g leave at least one example) */

@@ -77,20 +77,24 @@ pulse_test_t* start_pulse_thread( void ) {
         free( p );
         return NULL;
     }
-    /*P_awl_log_printf( "create pulse_thread" );*/
-    AWL_PTHREAD_CREATE( &p->h->me, NULL, pulse_thread_fun, p );
+    int err = AWL_PTHREAD_CREATE( &p->h->me, NULL, pulse_thread_fun, p );
+    if (err) {
+        fprintf( stderr, "pulse: can't start the thread: %s\n", strerror( err ) );
+        PulseAudio_destroy( &p->h->PA );
+        sem_destroy( &p->sem );
+        free( p->h );
+        free( p );
+        return NULL;
+    }
     return p;
 }
 
 void stop_pulse_thread( pulse_test_t* p ) {
     if (p && p->h) {
         uint64_t one = 1;
-        if (write( p->h->PA.wake_fd, &one, sizeof one ) == sizeof one) {
-            pthread_join( p->h->me, NULL );
-        } else if (!pthread_cancel( p->h->me )) {
-            // cannot happen with a valid eventfd; last resort
-            pthread_join( p->h->me, NULL );
-        }
+        // only fails if the counter is full, i.e. the thread is due to wake anyway
+        if (write( p->h->PA.wake_fd, &one, sizeof one ) < 0) {}
+        pthread_join( p->h->me, NULL );
         PulseAudio_destroy( &p->h->PA );
         sem_destroy( &p->sem );
         free( p->h );

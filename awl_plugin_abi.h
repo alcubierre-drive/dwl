@@ -16,7 +16,7 @@
 #include <stdint.h>
 #include "drwl.h"
 
-#define AWL_PLUGIN_ABI 4
+#define AWL_PLUGIN_ABI 5
 #define AWL_PLUGIN_ENTRY "awl_plugin_entry"
 
 /* Every dwl function config.h can bind to a key or button. The library binds
@@ -59,7 +59,7 @@ typedef struct awl_config_t {
     size_t n_layouts;
     const MonitorRule* monrules; /* their lt points into layouts */
     size_t n_monrules;
-    const uint32_t (*colors)[3]; /* [SchemeNorm..SchemeUrg][ColFg..ColBorder] */
+    const uint32_t (*bordercolors)[BorderLast];
     uint32_t modkey;
 
     int sloppyfocus, bypass_surface_visibility;
@@ -89,7 +89,7 @@ typedef struct awl_config_t {
     .rules = rules, .n_rules = LENGTH( rules ), \
     .layouts = layouts, .n_layouts = LENGTH( layouts ), \
     .monrules = monrules, .n_monrules = LENGTH( monrules ), \
-    .colors = (const uint32_t (*)[3])colors, .modkey = MODKEY, \
+    .bordercolors = &bordercolors, .modkey = MODKEY, \
     .sloppyfocus = sloppyfocus, .bypass_surface_visibility = bypass_surface_visibility, \
     .borderpx = borderpx, .font = font, .fontsize = fontsize, \
     .rootcolor = rootcolor, .fullscreen_bg = fullscreen_bg, .blur = locked_blur_config, \
