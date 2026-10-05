@@ -191,6 +191,7 @@ class Popup {
  public:
   Popup();
   void toggle(const std::string &mon, bool top);
+  void show(const std::string &mon, bool top);
   void hide();
   void goToday();
 #ifdef AWL_HAVE_ECAL
@@ -227,10 +228,12 @@ Popup *g_popup = nullptr;
 // viewport -- the wildcard clears all of them (and borders/shadows) at once,
 // then the few states that need a background get a translucent one back.
 // Scoped to #awl-calendar: the provider is screen-wide and the tray windows
-// live in the same process. border-radius matches dwl's blur_launcher_radius.
+// live in the same process. border-radius matches dwl's blur_launcher_radius,
+// the border is borderpx wide in molokai_green (plugins/colors.h).
 const char *k_css = R"css(
 #awl-calendar {
   background-color: rgba(60, 60, 60, 0.3);
+  border: 2px solid #a6e22e;
   border-radius: 15px;
 }
 #awl-calendar * {
@@ -422,6 +425,13 @@ void Popup::toggle(const std::string &mon, bool top) {
   bool same = shown_ && mon == mon_;
   hide();
   if (same) return;
+  show(mon, top);
+}
+
+// Unlike toggle(), leaves the popup alone if it is already shown on mon.
+void Popup::show(const std::string &mon, bool top) {
+  if (shown_ && mon == mon_) return;
+  hide();
 
   mon_ = mon;
   // dwl binds the surface to that monitor (createlayersurface()) and
@@ -503,6 +513,10 @@ void calendar_fini() {
 
 void calendar_toggle(const std::string &monitor_id, bool bar_on_top) {
   if (g_popup) g_popup->toggle(monitor_id, bar_on_top);
+}
+
+void calendar_show(const std::string &monitor_id, bool bar_on_top) {
+  if (g_popup) g_popup->show(monitor_id, bar_on_top);
 }
 
 void calendar_hide() {

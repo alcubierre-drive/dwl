@@ -612,10 +612,10 @@ void awl_tray_set_visible(const char *monitor_id, int visible) {
   if (b) b->setVisible(visible != 0);
 }
 
-void awl_tray_calendar_toggle(const char *monitor_id) {
+static void calendar_on_gtk_thread(const char *monitor_id, bool toggle) {
   if (!SNI::g_running.load()) return;
   std::string mon(monitor_id ? monitor_id : "");
-  SNI::run_on_gtk_thread([mon] {
+  SNI::run_on_gtk_thread([mon, toggle] {
     SNI::BarGeom g;
     {
       std::lock_guard<std::mutex> lg(SNI::g_pending_geom_mtx);
@@ -623,8 +623,19 @@ void awl_tray_calendar_toggle(const char *monitor_id) {
       if (it != SNI::g_pending_geom.end()) g = it->second;
     }
     // dwl puts a bottom bar at y = monitor height - bar height
-    awl::calendar_toggle(mon, g.y == 0);
+    if (toggle)
+      awl::calendar_toggle(mon, g.y == 0);
+    else
+      awl::calendar_show(mon, g.y == 0);
   });
+}
+
+void awl_tray_calendar_toggle(const char *monitor_id) {
+  calendar_on_gtk_thread(monitor_id, true);
+}
+
+void awl_tray_calendar_show(const char *monitor_id) {
+  calendar_on_gtk_thread(monitor_id, false);
 }
 
 void awl_tray_calendar_hide(void) {

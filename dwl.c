@@ -2,7 +2,8 @@
 #include "dwl-log.h"
 #include "util.h"
 #include "drwl.h"
-#include "plugins.h"
+#include "plugin_host.h"
+#include "plugins/colors.h" /* config.h */
 #include "plugins/redraw.h"
 #include "tray/awl_tray.h"
 
@@ -147,6 +148,7 @@ static void unlocksession(struct wl_listener *listener, void *data);
 static void unmaplayersurfacenotify(struct wl_listener *listener, void *data);
 static void unmapnotify(struct wl_listener *listener, void *data);
 static void updatemons(struct wl_listener *listener, void *data);
+static void updatepluginpause(void);
 static void updatebar(Monitor *m);
 static void updatetitle(struct wl_listener *listener, void *data);
 static void urgent(struct wl_listener *listener, void *data);
@@ -229,11 +231,6 @@ static const struct wlr_buffer_impl buffer_impl = {
     .end_data_ptr_access = buffer_end_data_ptr_access
 };
 
-static awl_plugin_data_t* plugin_data = NULL;
-
-awl_plugin_data_t* awl_plugin_get( void ) {
-    return plugin_data;
-}
 /* global event handlers */
 static struct wl_listener cursor_axis = {.notify = axisnotify};
 static struct wl_listener cursor_button = {.notify = buttonpress};
@@ -506,6 +503,146 @@ arrangelayers(Monitor *m)
 	}
 }
 
+/* Bar widget hover (widget_t.callback_hover): hover_widget is the widget
+ * under the pointer if it has a hover callback, hover_timer fires its
+ * callback hover_delay_ms after the pointer got there. hover_active is the
+ * widget whose hover fired and that has a callback_leave; leave_timer fires
+ * that leave_delay_ms after the pointer left both it and its popup (at once
+ * for a delay of 0). */
+static struct wl_event_source *hover_timer, *leave_timer;
+static widget_t *hover_widget, *hover_active;
+static int leave_pending;
+
+static widget_t *
+barwidgetat(Monitor *m, double cx, double cy)
+{
+	struct wlr_scene_node *node;
+	struct wlr_scene_buffer *buffer;
+	unsigned int cursor_x, xpos = 0;
+	Drwl *d = m->drw;
+	int i;
+
+	if (!d || !(node = wlr_scene_node_at(&layers[LyrBottom]->node, cx, cy, NULL, NULL))
+			|| !(buffer = wlr_scene_buffer_from_node(node)) || buffer != m->scene_buffer)
+		return NULL;
+	cursor_x = (unsigned int)((cx - m->m.x) * m->wlr_output->scale);
+	for (i = 0; i < d->n_widgets_left; ++i) {
+		if (cursor_x >= xpos && cursor_x < xpos + d->widgets_left[i].width)
+			return &d->widgets_left[i];
+		xpos += d->widgets_left[i].width;
+	}
+	xpos = d->center_widget_start;
+	if (cursor_x >= xpos && cursor_x < xpos + d->center_widget_space)
+		return d->has_center_widget ? &d->center_widget : NULL;
+	xpos += d->center_widget_space;
+	for (i = d->n_widgets_right - 1; i >= 0; --i) {
+		if (cursor_x >= xpos && cursor_x < xpos + d->widgets_right[i].width)
+			return &d->widgets_right[i];
+		xpos += d->widgets_right[i].width;
+	}
+	return NULL;
+}
+
+static int leavetimeout(void *data);
+
+/* a leave_delay_ms of 0 calls callback_leave right away */
+static void
+setleavepending(int pending)
+{
+	if (pending == leave_pending)
+		return;
+	if (pending && !hover_active->leave_delay_ms) {
+		leavetimeout(NULL);
+		return;
+	}
+	leave_pending = pending;
+	wl_event_source_timer_update(leave_timer, pending ? (int)hover_active->leave_delay_ms : 0);
+}
+
+static int
+leavetimeout(void *data)
+{
+	widget_t *w = hover_active;
+
+	(void)data;
+	hover_active = NULL;
+	leave_pending = 0;
+	if (w)
+		w->callback_leave(w);
+	return 0;
+}
+
+static int
+hovertimeout(void *data)
+{
+	(void)data;
+	/* not while a popup such as the calendar holds the keyboard */
+	if (!hover_widget || locked || exclusive_focus)
+		return 0;
+	if (hover_active && hover_active != hover_widget) {
+		setleavepending(0);
+		leavetimeout(NULL);
+	}
+	if (hover_widget->callback_leave)
+		hover_active = hover_widget;
+	hover_widget->callback_hover(hover_widget);
+	return 0;
+}
+
+/* whether the pointer is inside a mapped layer surface whose namespace
+ * starts with ns */
+static int
+pointerinpopup(const char *ns)
+{
+	Monitor *m;
+	LayerSurface *l;
+	size_t i;
+	int lx, ly;
+
+	wl_list_for_each(m, &mons, link) {
+		for (i = 0; i < LENGTH(m->layers); i++) {
+			wl_list_for_each(l, &m->layers[i], link) {
+				if (!l->mapped || !l->layer_surface->namespace
+						|| strncmp(l->layer_surface->namespace, ns, strlen(ns)))
+					continue;
+				wlr_scene_node_coords(&l->scene->node, &lx, &ly);
+				struct wlr_box box = { lx, ly, l->layer_surface->surface->current.width,
+						l->layer_surface->surface->current.height };
+				if (wlr_box_contains_point(&box, cursor->x, cursor->y))
+					return 1;
+			}
+		}
+	}
+	return 0;
+}
+
+/* c is the client under the pointer, which may cover the bar. Exclusive
+ * focus (e.g. the calendar popup) deliberately doesn't reset the hover
+ * state, so the click that closes the popup over its widget doesn't make it
+ * pop up again right away. */
+static void
+updatehover(Client *c)
+{
+	widget_t *w = NULL;
+	Monitor *m;
+
+	if (!hover_timer)
+		return;
+	if (!c && !locked && cursor_mode == CurNormal
+			&& (m = xytomon(cursor->x, cursor->y)))
+		w = barwidgetat(m, cursor->x, cursor->y);
+	if (w && !w->callback_hover)
+		w = NULL;
+	if (hover_active)
+		setleavepending(w != hover_active && !(hover_active->popup_namespace
+				&& pointerinpopup(hover_active->popup_namespace)));
+	if (w == hover_widget)
+		return;
+	hover_widget = w;
+	/* a delay of 0 would disarm the timer */
+	wl_event_source_timer_update(hover_timer, w ? (w->hover_delay_ms ? (int)w->hover_delay_ms : 1) : 0);
+}
+
 static const double SCROLL_LIMIT = 10.0;
 static void widget_wrap_scroll_callback( widget_t* w, uint32_t xrel, double delta ) {
     if (w->callback_scroll) {
@@ -654,6 +791,12 @@ buttonpress(struct wl_listener *listener, void *data)
 		(node = wlr_scene_node_at(&layers[LyrBottom]->node, cursor->x, cursor->y, NULL, NULL)) &&
 		(buffer = wlr_scene_buffer_from_node(node)) && buffer == selmon->scene_buffer
         && event->state == WL_POINTER_BUTTON_STATE_PRESSED && !locked) {
+		/* a click on the hovered widget takes over from the hover, so
+		 * whatever it opens doesn't close on leave */
+		if (hover_active && barwidgetat(selmon, cursor->x, cursor->y) == hover_active) {
+			setleavepending(0);
+			hover_active = NULL;
+		}
         unsigned int cursor_x = cursor->x, cursor_y = cursor->y;
 		cursor_x -= selmon->m.x;
 		cursor_x *= selmon->wlr_output->scale;
@@ -771,6 +914,16 @@ cleanup(void)
 {
     awl_tray_set_change_callback(NULL);
     if (redraw_source) wl_event_source_remove(redraw_source);
+	if (hover_timer) {
+		wl_event_source_remove(hover_timer);
+		hover_timer = NULL;
+		hover_widget = NULL;
+	}
+	if (leave_timer) {
+		wl_event_source_remove(leave_timer);
+		leave_timer = NULL;
+		hover_active = NULL;
+	}
     redraw_source = NULL;
 
 	/* Tear down the tray's own client connection to us before we start
@@ -822,7 +975,7 @@ cleanup(void)
 	   to avoid destroying them with an invalid scene output. */
 	wlr_scene_node_destroy(&scene->tree.node);
     drwl_fini();
-    awl_plugin_free(plugin_data);
+    awl_plugins_unload();
     /* only now nothing can request a redraw anymore */
     awl_redraw_fini();
 }
@@ -844,6 +997,17 @@ cleanupmon(struct wl_listener *listener, void *data)
 	for (i = 0; i < LENGTH(m->layers); i++) {
 		wl_list_for_each_safe(l, tmp, &m->layers[i], link)
 			wlr_layer_surface_v1_destroy(l->layer_surface);
+	}
+	/* hover_widget points into m->drw */
+	if (hover_widget && (char *)hover_widget >= (char *)m->drw
+			&& (char *)hover_widget < (char *)(m->drw + 1)) {
+		hover_widget = NULL;
+		wl_event_source_timer_update(hover_timer, 0);
+	}
+	if (hover_active && (char *)hover_active >= (char *)m->drw
+			&& (char *)hover_active < (char *)(m->drw + 1)) {
+		setleavepending(0);
+		hover_active = NULL;
 	}
 	drwl_destroy(m->drw);
 	/* closemon() below checks m->drw to decide whether to touch the bar;
@@ -1291,6 +1455,7 @@ createmon(struct wl_listener *listener, void *data)
 
 	if (!(m->drw = drwl_create(m)))
 		die("failed to create drwl context");
+	awl_plugins_bar_widgets(m->drw);
 
 	/* LyrBottom sits below LyrTile/LyrFloat, so floating windows dragged
 	 * over the bar's area render on top of it -- intentional: the tray
@@ -1527,6 +1692,7 @@ destroylock(SessionLock *lock, int unlock)
 	wlr_seat_keyboard_notify_clear_focus(seat);
 	if ((locked = !unlock))
 		goto destroy;
+	updatepluginpause();
 
 	if (locked_bg_blur) wlr_scene_node_set_enabled(&locked_bg_blur->node, 0);
 
@@ -1722,10 +1888,12 @@ drawbar(Monitor *m)
 
     uint32_t x_end = m->b.width;
     for (int ww=0; ww<m->drw->n_widgets_right; ++ww) {
-        if (m->drw->widgets_right[ww].draw)
-            m->drw->widgets_right[ww].width = m->drw->widgets_right[ww].draw(
-                    &m->drw->widgets_right[ww], x_end - m->drw->widgets_right[ww].width, m->drw->pix );
-        x_end -= m->drw->widgets_right[ww].width;
+        widget_t *w = &m->drw->widgets_right[ww];
+        /* width first, so the widget lands at its final position right away */
+        w->width = w->measure ? w->measure(w) : 0;
+        x_end = w->width < x_end ? x_end - w->width : 0;
+        if (w->draw && w->width)
+            w->draw(w, x_end, m->drw->pix);
     }
 
     m->drw->center_widget_space = x_end > m->drw->center_widget_start ? x_end - m->drw->center_widget_start : 0;
@@ -2307,6 +2475,7 @@ locksession(struct wl_listener *listener, void *data)
 	lock->scene = wlr_scene_tree_create(layers[LyrBlock]);
 	cur_lock = lock->lock = session_lock;
 	locked = 1;
+	updatepluginpause();
 
 	LISTEN(&session_lock->events.new_surface, &lock->new_surface, createlocksurface);
 	LISTEN(&session_lock->events.destroy, &lock->destroy, destroysessionlock);
@@ -2515,6 +2684,7 @@ motionnotify(uint32_t time, struct wlr_input_device *device, double dx, double d
 	if (!surface && !seat->drag)
 		wlr_cursor_set_xcursor(cursor, cursor_mgr, "default");
 
+	updatehover(c);
 	pointerfocus(c, surface, sx, sy, time);
 }
 
@@ -3074,6 +3244,8 @@ setup(void)
 	 * clients from the Unix socket, manging Wayland globals, and so on. */
 	dpy = wl_display_create();
 	event_loop = wl_display_get_event_loop(dpy);
+	hover_timer = wl_event_loop_add_timer(event_loop, hovertimeout, NULL);
+	leave_timer = wl_event_loop_add_timer(event_loop, leavetimeout, NULL);
 
 	/* The backend is a wlroots feature which abstracts the underlying input and
 	 * output hardware. The autocreate option will choose the most suitable
@@ -3278,7 +3450,7 @@ setup(void)
 
 	/*wlr_scene_set_presentation(scene, wlr_presentation_create(dpy, backend));*/
 
-    plugin_data = awl_plugin_init();
+    awl_plugins_load(0);
 	drwl_init();
     if (awl_redraw_init() >= 0)
         redraw_source = wl_event_loop_add_fd(event_loop, awl_redraw_fd(),
@@ -3522,6 +3694,18 @@ unmapnotify(struct wl_listener *listener, void *data)
 	motionnotify(0, NULL, 0, 0, 0, 0);
 }
 
+/* No bar is visible while locked or with every output off (unplugged or
+ * powered down), so the plugins' 1 s polling can stop. */
+void
+updatepluginpause(void)
+{
+	Monitor *m;
+	int visible = 0;
+	wl_list_for_each(m, &mons, link)
+		visible |= m->wlr_output->enabled;
+	awl_plugins_set_paused(locked || !visible);
+}
+
 void
 updatemons(struct wl_listener *listener, void *data)
 {
@@ -3638,6 +3822,7 @@ updatemons(struct wl_listener *listener, void *data)
 	wlr_cursor_move(cursor, NULL, 0, 0);
 
 	wlr_output_manager_v1_set_configuration(output_mgr, config);
+	updatepluginpause();
 }
 
 void
@@ -3802,12 +3987,43 @@ maximize(const Arg* arg)
     drawbars();
 }
 
+/* awl_plugins_reload(): the bars' widgets come from the library */
+static void
+pluginsdetach(void)
+{
+	Monitor *m;
+
+	/* a hover popup gets its leave callback while that still exists */
+	if (hover_active) {
+		setleavepending(0);
+		leavetimeout(NULL);
+	}
+	hover_widget = NULL;
+	if (hover_timer)
+		wl_event_source_timer_update(hover_timer, 0);
+	wl_list_for_each(m, &mons, link)
+		if (m->drw)
+			drwl_widgets_clear(m->drw);
+}
+
+static void
+pluginsattach(void)
+{
+	Monitor *m;
+
+	wl_list_for_each(m, &mons, link)
+		if (m->drw)
+			awl_plugins_bar_widgets(m->drw);
+	drawbars();
+}
+
 void
 plugin_restart(const Arg* arg)
 {
     (void)arg;
-    awl_plugin_data_t* P = awl_plugin_get();
-    if (P) awl_plugin_restart(P);
+    /* picks up a rebuilt libawlplugins.so; with an unchanged (or broken)
+     * one this is a plain restart of the plugin threads */
+    awl_plugins_reload(pluginsdetach, pluginsattach);
 
     /* The tray's D-Bus registration (and with it every item's icons) can be
      * lost across suspend+wake, same class of problem the other plugin

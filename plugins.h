@@ -1,5 +1,9 @@
 #pragma once
 
+/* Internal to libawlplugins.so; dwl itself only sees awl_plugin_abi.h. */
+
+#include "awl_plugin_abi.h"
+
 #include "plugins/ipaddr.h"
 #include "plugins/stats.h"
 #include "plugins/temp.h"
@@ -27,6 +31,7 @@ typedef struct awl_plugin_data_t {
     pulse_test_t* pulse;
     awl_backlight_t* backlight;
     awl_poller_t* poller;
+    int paused;
 
     /*awl_wallpaper_data_t* wp;*/
 
@@ -35,7 +40,11 @@ typedef struct awl_plugin_data_t {
     pthread_t wp_thread;
 } awl_plugin_data_t;
 
-awl_plugin_data_t* awl_plugin_init( void );
-void awl_plugin_free( awl_plugin_data_t* p );
+/* dwl's side of the boundary, set by awl_plugin_entry() */
+extern const awl_host_t* awl_host;
 
-void awl_plugin_restart( awl_plugin_data_t* p );
+/* NULL while the plugins aren't running */
+awl_plugin_data_t* awl_plugin_get( void );
+
+/* widgets.c */
+void awl_widgets_create( Drwl* bar );

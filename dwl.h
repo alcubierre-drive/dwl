@@ -326,6 +326,3 @@ int drawroot_eventfd( void );
         write( fd, &val, sizeof(val) ); \
     } \
 }
-
-typedef struct awl_plugin_data_t awl_plugin_data_t;
-awl_plugin_data_t* awl_plugin_get( void );

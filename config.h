@@ -64,8 +64,10 @@ static const char* Autostarts[][8] = {
     { "blueman-applet", NULL },
     { "system-config-printer-applet", NULL },
     { "random_wallpaper.sh", "-s", NULL },
+    /*
     { "Telegram", NULL },
     { "evolution", NULL },
+    */
 };
 static const int AutostartTray = 0;
 static const int ScreenLockServiceAtStart = 1;
@@ -194,7 +196,7 @@ static const char *next_wallpaper_cmd[] = { "random_wallpaper.sh", "-n", NULL };
 static const char *notification_action[] = { "fnottctl", "actions", NULL };
 static const char *garfield[] = { "garfield", NULL };
 static const char *backlight_tooler_disable_cmd[] = {"systemctl", "--user", "stop", "backlight-tooler.timer", NULL};
-static const char *backlight_tooler_enable_cmd[] = {"systemctl", "--user", "start", "backlight-tooler.timer", NULL};
+static const char *backlight_tooler_enable_cmd[] = {"systemctl", "--user", "--no-block", "start", "backlight-tooler.timer", "backlight-tooler.service", NULL};
 
 static void tagmonf( const Arg* arg ) { tagmon(arg); focusmon(arg); }
 

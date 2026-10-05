@@ -92,6 +92,10 @@ void awl_tray_set_visible(const char *monitor_id, int visible);
  * Fire-and-forget, safe to call from any thread. */
 void awl_tray_calendar_toggle(const char *monitor_id);
 
+/* Like awl_tray_calendar_toggle(), but leaves the popup shown if it already
+ * is on that monitor (moves it there if it is shown elsewhere). */
+void awl_tray_calendar_show(const char *monitor_id);
+
 /* Hides the calendar popup if it is shown. Its layer surface's namespace
  * starts with "awl-calendar:" (followed by the monitor_id, like the tray's
  * "awl-tray:"), so dwl can recognize it and call this on a click anywhere

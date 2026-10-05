@@ -21,10 +21,30 @@ typedef struct Client Client;
 
 struct widget_t {
     uint32_t width;
+    /* Right-hand widgets are laid out from the bar's right edge, so their
+     * width has to be known before anything is drawn: measure() takes a
+     * snapshot of whatever the widget shows and returns its exact width, then
+     * draw() renders that snapshot at x into exactly that width (its return
+     * value is ignored). Left and center widgets only have draw(), which
+     * returns the width it used. */
+    uint32_t (*measure)(widget_t* this);
     uint32_t (*draw)(widget_t* this, uint32_t x, pixman_image_t* pix);
     void (*callback_view)(widget_t* this, int32_t x_rel);
     void (*callback_click)(widget_t* this, uint32_t x_rel, int button);
     void (*callback_scroll)(widget_t* this, uint32_t x_rel, int amount);
+    /* called once the pointer has rested on the widget for hover_delay_ms;
+     * leaving it before then cancels, and it fires again only after the
+     * pointer has left and come back */
+    void (*callback_hover)(widget_t* this);
+    uint32_t hover_delay_ms;
+    /* called leave_delay_ms after the pointer has left a widget whose
+     * callback_hover fired, unless it came back first (0: right away). While the pointer is
+     * inside a layer surface whose namespace starts with popup_namespace
+     * (the popup the hover opened), it counts as still on the widget. A
+     * click on the widget cancels it, so a popup opened by click stays. */
+    void (*callback_leave)(widget_t* this);
+    uint32_t leave_delay_ms;
+    const char* popup_namespace;
     double scroll_amount;
     void* userdata;
     int age;
@@ -147,4 +167,7 @@ int drwl_text_color2(Drwl *drwl, int x, int y, unsigned int w, unsigned int h,
 unsigned int drwl_font_getwidth(Drwl *drwl, const char *text);
 void drwl_finish_drawing(Drwl *drwl);
 void drwl_destroy(Drwl *drwl);
+/* Frees every widget's userdata and empties the widget lists, so nothing in
+ * the bar points into libawlplugins.so anymore. */
+void drwl_widgets_clear(Drwl *drwl);
 void drwl_fini(void);

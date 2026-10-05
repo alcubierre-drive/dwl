@@ -8,6 +8,7 @@
 #include "plugins/pulsetest.h"
 #include "plugins/poller.h"
 #include "plugins/wbg_png.h"
+#include "plugins/redraw.h"
 
 #include <stddef.h>
 #include <unistd.h>
@@ -182,16 +183,11 @@ static void awl_plugin_start( awl_plugin_data_t* p ) {
     p->bat = bat_init();
     p->date = date_init();
     p->poller = poller_start( p->stats, p->temp, p->date, p->bat, p->ip );
+    poller_set_paused( p->poller, p->paused );
     p->pulse = start_pulse_thread();
     p->backlight = start_backlight_thread();
     /*wp_init( &wp );*/
     /*AWL_PTHREAD_CREATE( &p->wp_thread, NULL, wp_thread, NULL );*/
-}
-
-awl_plugin_data_t* awl_plugin_init( void ) {
-    awl_plugin_data_t* p = calloc(1,sizeof(awl_plugin_data_t));
-    awl_plugin_start( p );
-    return p;
 }
 
 static void awl_plugin_stop( awl_plugin_data_t* p ) {
@@ -209,12 +205,56 @@ static void awl_plugin_stop( awl_plugin_data_t* p ) {
     /*wp_destroy( &wp );*/
 }
 
-void awl_plugin_free( awl_plugin_data_t* p ) {
-    awl_plugin_stop( p );
-    free(p);
+/* everything below is the library's side of awl_plugin_abi.h */
+
+const awl_host_t* awl_host = NULL;
+static awl_plugin_data_t* plugin_data = NULL;
+
+awl_plugin_data_t* awl_plugin_get( void ) {
+    return plugin_data;
 }
 
-void awl_plugin_restart( awl_plugin_data_t* p ) {
-    awl_plugin_stop(p);
-    awl_plugin_start(p);
+/* plugins/redraw.c lives in dwl, which owns the eventfd */
+void awl_redraw_request( void ) {
+    awl_host->redraw_request();
+}
+
+static void api_init( int paused ) {
+    plugin_data = calloc(1,sizeof(awl_plugin_data_t));
+    plugin_data->paused = paused;
+    awl_plugin_start( plugin_data );
+}
+
+static void api_fini( void ) {
+    if (!plugin_data) return;
+    awl_plugin_stop( plugin_data );
+    free( plugin_data );
+    plugin_data = NULL;
+}
+
+static void api_set_paused( int paused ) {
+    if (!plugin_data) return;
+    plugin_data->paused = paused;
+    if (plugin_data->poller) poller_set_paused( plugin_data->poller, paused );
+}
+
+static const awl_plugin_api_t api = {
+    .abi = AWL_PLUGIN_ABI,
+    .init = api_init,
+    .fini = api_fini,
+    .set_paused = api_set_paused,
+    .bar_widgets = awl_widgets_create,
+};
+
+__attribute__((visibility("default")))
+const awl_plugin_api_t* awl_plugin_entry( const awl_host_t* host ) {
+    if (!host || host->abi != AWL_PLUGIN_ABI ||
+        host->sizeof_host != sizeof(awl_host_t) ||
+        host->sizeof_drwl != sizeof(Drwl) ||
+        host->sizeof_widget != sizeof(widget_t) ||
+        host->sizeof_monitor != sizeof(Monitor) ||
+        host->sizeof_client != sizeof(Client))
+        return NULL;
+    awl_host = host;
+    return &api;
 }
