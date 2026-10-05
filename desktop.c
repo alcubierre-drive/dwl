@@ -38,6 +38,23 @@ void desktop_init( struct wlr_scene_tree* tree, const desktop_config_t* cfg ) {
     wl_list_init( &desk.views );
 }
 
+/* (re)does v's blur, under its buffer, from desk.cfg */
+static void configure( DesktopView* v ) {
+    if (!desk.cfg.blur) {
+        if (v->blur) wlr_scene_node_destroy( &v->blur->node );
+        v->blur = NULL;
+        return;
+    }
+    if (!v->blur) {
+        v->blur = wlr_scene_blur_create( v->tree, 0, 0 );
+        wlr_scene_node_lower_to_bottom( &v->blur->node );
+        wlr_scene_blur_set_should_only_blur_bottom_layer( v->blur, 0 );
+    }
+    wlr_scene_blur_set_corner_radius( v->blur, desk.cfg.radius );
+    wlr_scene_blur_set_strength( v->blur, desk.cfg.blur_strength );
+    wlr_scene_blur_set_alpha( v->blur, desk.cfg.blur_alpha );
+}
+
 static DesktopView* view_of( Monitor* m ) {
     DesktopView* v;
     wl_list_for_each( v, &desk.views, link )
@@ -45,18 +62,22 @@ static DesktopView* view_of( Monitor* m ) {
     return NULL;
 }
 
+void desktop_configure( const desktop_config_t* cfg ) {
+    desk.cfg = *cfg;
+    DesktopView* v;
+    wl_list_for_each( v, &desk.views, link ) {
+        configure( v );
+        v->drawn = 0; /* the radius is drawn into the buffer too */
+        desktop_update( v->m );
+    }
+}
+
 void desktop_addmon( Monitor* m ) {
     DesktopView* v = ecalloc( 1, sizeof(*v) );
     v->m = m;
     v->tree = wlr_scene_tree_create( desk.tree );
-    if (desk.cfg.blur) {
-        v->blur = wlr_scene_blur_create( v->tree, 0, 0 );
-        wlr_scene_blur_set_corner_radius( v->blur, desk.cfg.radius );
-        wlr_scene_blur_set_strength( v->blur, desk.cfg.blur_strength );
-        wlr_scene_blur_set_alpha( v->blur, desk.cfg.blur_alpha );
-        wlr_scene_blur_set_should_only_blur_bottom_layer( v->blur, 0 );
-    }
     v->buffer = wlr_scene_buffer_create( v->tree, NULL );
+    configure( v );
     wlr_scene_node_set_enabled( &v->tree->node, 0 );
     wl_list_insert( &desk.views, &v->link );
     desktop_update( m );

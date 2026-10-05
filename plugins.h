@@ -59,3 +59,6 @@ void awl_desktop_measure( Drwl* drw, int avail_w, int avail_h, int r, float scal
 void awl_desktop_draw( Drwl* drw, uint32_t* data, int stride, int w, int h, int r,
                        float scale );
 int awl_desktop_click( int button );
+
+/* awl_config.c */
+const awl_config_t* awl_config( void );

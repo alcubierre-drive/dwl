@@ -61,10 +61,21 @@ fixture() {
 	mkdir -p "$d/Projects" "$d/.hidden_dir"
 	touch "$d/notes.txt" "$d/report.pdf" "$d/.hidden_file"
 	ln -s /nonexistent "$d/broken_link"
-	# fonts, fontconfig, icon themes etc. from the real home
+}
+
+# Only the real home's fonts, fontconfig, icon and GTK themes: anything
+# started in the test session (autostarts, D-Bus activated services) must not
+# see the user's real application data.
+homelinks() {
 	local f
-	for f in .config .local .cache .fonts; do
-		[ -e "$HOME/$f" ] && ln -sfn "$HOME/$f" "$dir/home/$f"
+	for f in .config .local .cache; do # older versions linked these whole
+		[ -L "$dir/home/$f" ] && rm "$dir/home/$f"
+	done
+	for f in .fonts .icons .themes .config/fontconfig .config/gtk-3.0 .config/gtk-4.0 \
+			.local/share/fonts .local/share/icons .local/share/themes; do
+		[ -e "$HOME/$f" ] || continue
+		mkdir -p "$(dirname "$dir/home/$f")"
+		ln -sfn "$HOME/$f" "$dir/home/$f"
 	done
 }
 
@@ -74,6 +85,7 @@ start)
 	mkdir -p "$run" && chmod 700 "$run"
 	rm -f "$run"/wayland-* "$dir/socket"
 	fixture
+	homelinks
 	(
 		# audio for the volume widget; libpulse refuses a symlinked runtime dir
 		[ -S "$XDG_RUNTIME_DIR/pulse/native" ] && export PULSE_SERVER=unix:$XDG_RUNTIME_DIR/pulse/native

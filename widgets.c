@@ -512,27 +512,27 @@ static uint32_t ipwidget_measure( widget_t* w ) {
 static void tagwidget_scroll( widget_t* w, uint32_t x, int amount ) {
     (void)w;
     (void)x;
-    awl_host->cycle_view( &(Arg){.i=amount} );
+    awl_host->actions->cycle_view( &(Arg){.i=amount} );
 }
 static void tagwidget_click( widget_t* w, uint32_t x, int button ) {
     int t = (double)x / (double)w->width * NTAGS;
     switch (button) {
-        case BTN_LEFT: awl_host->view( &(Arg){.ui = (1 << t)} ); break;
-        case BTN_RIGHT: awl_host->toggleview( &(Arg){.ui = (1 << t)} ); break;
-        case BTN_MIDDLE: awl_host->view( &(Arg){.ui = ~0} ); break;
+        case BTN_LEFT: awl_host->actions->view( &(Arg){.ui = (1 << t)} ); break;
+        case BTN_RIGHT: awl_host->actions->toggleview( &(Arg){.ui = (1 << t)} ); break;
+        case BTN_MIDDLE: awl_host->actions->view( &(Arg){.ui = ~0} ); break;
         default: break;
     }
 }
 
 static void layoutwidget_scroll( widget_t* w, uint32_t x, int amount ) {
-    (void)w; (void)x; awl_host->cycle_layout( &(Arg){.i=amount} );
+    (void)w; (void)x; awl_host->actions->cycle_layout( &(Arg){.i=amount} );
 }
 static void layoutwidget_click( widget_t* w, uint32_t x, int button ) {
-    (void)w; (void)x; awl_host->cycle_layout( &(Arg){.i=button==BTN_LEFT?1:-1} );
+    (void)w; (void)x; awl_host->actions->cycle_layout( &(Arg){.i=button==BTN_LEFT?1:-1} );
 }
 
 static void taskbarwidget_scroll( widget_t* w, uint32_t x, int amount ) {
-    awl_host->focusstack( &(Arg){.i=amount} );
+    awl_host->actions->focusstack( &(Arg){.i=amount} );
 }
 static void taskbarwidget_click( widget_t* w, uint32_t x, int button ) {
     if (w->bar->n_tagwindows <= 0) return;
@@ -556,14 +556,14 @@ arrange:
 
 static void pulsewidget_click( widget_t* w, uint32_t x, int button ) {
     (void)w; (void)x; (void)button;
-    awl_host->spawn( &(Arg){.v=(const char*[]){"pavucontrol", NULL}} );
+    awl_host->actions->spawn( &(Arg){.v=(const char*[]){"pavucontrol", NULL}} );
 }
 static void pulsewidget_scroll( widget_t* w, uint32_t x, int amount ) {
     (void)w; (void)x;
     if (amount < 0) {
-        awl_host->spawn( &(Arg){.v=(const char*[]){"pactl", "set-sink-volume", "@DEFAULT_SINK@", "+2.5%", NULL }} );
+        awl_host->actions->spawn( &(Arg){.v=(const char*[]){"pactl", "set-sink-volume", "@DEFAULT_SINK@", "+2.5%", NULL }} );
     } else {
-        awl_host->spawn( &(Arg){.v=(const char*[]){"pactl", "set-sink-volume", "@DEFAULT_SINK@", "-2.5%", NULL }} );
+        awl_host->actions->spawn( &(Arg){.v=(const char*[]){"pactl", "set-sink-volume", "@DEFAULT_SINK@", "-2.5%", NULL }} );
     }
 }
 
@@ -597,8 +597,8 @@ static void backlightwidget_click( widget_t* w, uint32_t x, int button ) {
     (void)w; (void)x;
     if (button == BTN_LEFT)
         // the timer only fires on the quarter hour; run the service once now
-        awl_host->spawn( &(Arg){.v=(const char*[]){"systemctl", "--user", "--no-block", "start",
+        awl_host->actions->spawn( &(Arg){.v=(const char*[]){"systemctl", "--user", "--no-block", "start",
                 "backlight-tooler.timer", "backlight-tooler.service", NULL}} );
     else
-        awl_host->spawn( &(Arg){.v=(const char*[]){"systemctl", "--user", "stop",  "backlight-tooler.timer", NULL}} );
+        awl_host->actions->spawn( &(Arg){.v=(const char*[]){"systemctl", "--user", "stop",  "backlight-tooler.timer", NULL}} );
 }

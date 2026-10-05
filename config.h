@@ -3,19 +3,59 @@
                         ((hex >> 16) & 0xFF) / 255.0f, \
                         ((hex >> 8) & 0xFF) / 255.0f, \
                         (hex & 0xFF) / 255.0f }
+/* If you want to use the windows key for MODKEY, use WLR_MODIFIER_LOGO */
+#define MODKEY WLR_MODIFIER_LOGO
+// #define MODKEY WLR_MODIFIER_ALT
+
+/* config.h has two halves. The first is read by dwl once, at startup:
+ * restart dwl to apply changes there. The second is reloadable: it is built
+ * into libawlplugins.so as well, so `make` and plugin_restart (MOD+Ctrl+r)
+ * apply it to the running dwl -- keymap, input devices, font, colors,
+ * borders, blur and layouts included (monitor rules are applied to outputs
+ * appearing afterwards). dwl is built with the second half too and uses it
+ * while no library is loaded. */
+
+#ifndef AWL_CONFIG_RELOADABLE_ONLY
+/* ==================== startup: restart dwl to apply ==================== */
+
+/* appearance */
+static const int showbar                   = 1; /* 0 means no bar */
+static const int topbar                    = 0; /* 0 means bottom bar */
+static const bool locked_blur              = true;
+
+/* tagging - TAGCOUNT must be no greater than 31 */
+#define NTAGS 9
+static char *tags[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9" };
+
+/* logging */
+static int log_level = WLR_ERROR;
+
+static const char* Autostarts[][8] = {
+    { "fnott", NULL },
+    { "nm-applet", NULL },
+    { "blueman-applet", NULL },
+    { "system-config-printer-applet", NULL },
+    { "random_wallpaper.sh", "-s", NULL },
+    { "Telegram", NULL },
+    { "evolution", NULL },
+};
+static const int ScreenLockServiceAtStart = 1;
+static const int SwwwAtStart = 1;
+static const char* ScreenLockService[] = { "systemd-lock-handler", "--", "swaylock", "-c", "00000000", "-p", NULL };
+
+#endif /* AWL_CONFIG_RELOADABLE_ONLY */
+
+/* ==================== reloadable: make && MOD+Ctrl+r ==================== */
+
 /* appearance */
 static const int sloppyfocus               = 1;  /* focus follows mouse */
 static const int bypass_surface_visibility = 0;  /* 1 means idle inhibitors will disable idle tracking even if it's surface isn't visible  */
 static const int borderpx                  = 2; /* border pixel of windows */
-static const int showbar                   = 1; /* 0 means no bar */
-static const int topbar                    = 0; /* 0 means bottom bar */
 static const char font[]                   = "monospace:size=";
 static const int fontsize                  = 10;
 static const float rootcolor[]             = COLOR(0x000000ff);
-static const bool locked_blur              = true;
 static const float locked_blur_config[]    = {1.0 /*strength*/, 1.0 /*alpha*/};
 static const float fullscreen_bg[]         = {0.1f, 0.1f, 0.1f, 1.0f}; /* You can also use glsl colors */
-static const char* tray_cmd[]              = {"awl_tray", NULL};
 static const int blur_notifications        = 1,
                  blur_notifications_radius = 15,
                  blur_launcher             = 1,
@@ -31,48 +71,27 @@ static uint32_t colors[][3]                = {
 	[SchemeUrg]  = { 0,          0,          molokai_orange },
 };
 
-/* tagging - TAGCOUNT must be no greater than 31 */
-#define NTAGS 9
-static char *tags[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9" };
-
-/* logging */
-static int log_level = WLR_ERROR;
-
 /* NOTE: ALWAYS keep a rule declared even if you don't use rules (e.g leave at least one example) */
 static const Rule rules[] = {
 	/* app_id             title       tags mask     isfloating   monitor w h blur 1-alpha*/
-    { NULL,               "nomacs_garfield", 0,     1,           -1,   0,   0, 0, 0 },
+    // { NULL,               "nomacs_garfield", 0,     1,           -1,   0,   0, 0, 0 },
     { "python3",          "Figure",   0,            1,           -1,   0,   0, 0, 0 },
     { "wdisplays",        NULL,       0,            1,           -1,   0,   0, 0, 0 },
 
     { "zoom",             NULL,       0,            1,           -1,   0,   0, 0, 0 },
     { "Zoom",             NULL,       0,            1,           -1,   0,   0, 0, 0 },
 
-    { "org.gnome.Calendar",NULL,      0,            1,           -1, 400, 500, 1, 0.2 },
-
     { "org.telegram.desktop",NULL,    1<<7,         0,           -1,   0,   0, 0, 0 },
     { "signal",           "Signal",   1<<7,         0,           -1,   0,   0, 0, 0 },
+    { "mattermost-desktop","Mattermost Desktop App",1<<7,0,      -1,   0,   0, 0, 0 },
 
     { "org.gnome.Evolution",NULL,     1<<8,         0,           -1,   0,   0, 0, 0 },
     { "evolution-alarm-notify", NULL, 1<<8,         1,           -1,   0,   0, 0, 0 },
-    { "kitty",            NULL,       0,            0,           -1,   0,   0, 0, 0 },
+    // { "kitty",            NULL,       0,            0,           -1,   0,   0, 0, 0 },
 };
 
-static const char* Autostarts[][8] = {
-    { "fnott", NULL },
-    { "nm-applet", NULL },
-    { "blueman-applet", NULL },
-    { "system-config-printer-applet", NULL },
-    { "random_wallpaper.sh", "-s", NULL },
-    { "Telegram", NULL },
-    { "evolution", NULL },
-};
-static const int AutostartTray = 0;
-static const int ScreenLockServiceAtStart = 1;
-static const int SwwwAtStart = 1;
-static const char* ScreenLockService[] = { "systemd-lock-handler", "--", "swaylock", "-c", "00000000", "-p", NULL };
-
-/* layout(s) */
+/* layout(s); setlayout/cycle_layout switch between them. After a reload
+ * every monitor keeps the layout at the same index. */
 static const Layout layouts[] = {
 	/* symbol     arrange function */
 	{ "[|]",      tile },
@@ -81,7 +100,6 @@ static const Layout layouts[] = {
 	{ "[×]",      gaplessgrid },
     { "[–]",      bstack },
 };
-static int layout_idx = 0;
 
 /* monitors */
 /* (x=-1, y=-1) is reserved as an "autoconfigure" monitor position indicator
@@ -157,10 +175,6 @@ LIBINPUT_CONFIG_TAP_MAP_LMR -- 1/2/3 finger tap maps to left/middle/right
 */
 static const enum libinput_config_tap_button_map button_map = LIBINPUT_CONFIG_TAP_MAP_LRM;
 
-/* If you want to use the windows key for MODKEY, use WLR_MODIFIER_LOGO */
-#define MODKEY WLR_MODIFIER_LOGO
-// #define MODKEY WLR_MODIFIER_ALT
-
 #define TAGKEYS(KEY,SKEY,TAG) \
 	{ MODKEY,                    KEY,            view,            {.ui = 1ul << TAG} }, \
 	{ MODKEY|WLR_MODIFIER_CTRL,  KEY,            toggleview,      {.ui = 1ul << TAG} }, \
@@ -192,7 +206,7 @@ static const char *docked_z[] = { "docked", "zoom", NULL };
 static const char *rand_wallpaper_cmd[] = { "random_wallpaper.sh", "-r", NULL };
 static const char *next_wallpaper_cmd[] = { "random_wallpaper.sh", "-n", NULL };
 static const char *notification_action[] = { "fnottctl", "actions", NULL };
-static const char *garfield[] = { "garfield", NULL };
+// static const char *garfield[] = { "garfield", NULL };
 static const char *backlight_tooler_disable_cmd[] = {"systemctl", "--user", "stop", "backlight-tooler.timer", NULL};
 static const char *backlight_tooler_enable_cmd[] = {"systemctl", "--user", "--no-block", "start", "backlight-tooler.timer", "backlight-tooler.service", NULL};
 
@@ -228,7 +242,7 @@ static const Key keys[] = {
     { MODKEY,                    XKB_KEY_w,          spawn,            {.v = rand_wallpaper_cmd} },
     { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_W,          spawn,            {.v = next_wallpaper_cmd} },
     { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_N,          spawn,            {.v = notification_action} },
-    { MODKEY,                    XKB_KEY_g,          spawn,            {.v = garfield} },
+    // { MODKEY,                    XKB_KEY_g,          spawn,            {.v = garfield} },
     { MODKEY,                    XKB_KEY_b,          togglebw,         {0} },
     { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_B,          changebw,         {.i=+1} },
     { MODKEY|WLR_MODIFIER_SHIFT|WLR_MODIFIER_CTRL,XKB_KEY_B, changebw, {.i=-1} },

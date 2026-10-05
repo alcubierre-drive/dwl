@@ -260,7 +260,6 @@ struct Monitor {
 	int asleep;
 	Drwl *drw;
 	int lrpad;
-    pid_t tray_pid;
 };
 
 struct Buffer {
@@ -305,14 +304,7 @@ typedef struct {
 	struct wl_listener destroy;
 } SessionLock;
 
-void cycle_view(const Arg* arg);
-void cycle_layout(const Arg* arg);
-void view(const Arg* arg);
-void toggleview(const Arg* arg);
-void focusstack(const Arg *arg);
 pid_t spawn_pid(const Arg *arg);
-void spawn(const Arg *arg);
-void transluce(const Arg *arg);
 
 void arrange(Monitor *m);
 void focusclient(Client *c, int lift);

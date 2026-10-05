@@ -3,6 +3,7 @@
 #include "util.h"
 #include "drwl.h"
 #include "plugin_host.h"
+#include "awl_plugin_abi.h"
 #include "desktop.h"
 #include "plugins/colors.h" /* config.h */
 #include "plugins/redraw.h"
@@ -51,6 +52,11 @@ static void createdecoration(struct wl_listener *listener, void *data);
 static void createidleinhibitor(struct wl_listener *listener, void *data);
 static void createkeyboard(struct wlr_keyboard *keyboard);
 static KeyboardGroup *createkeyboardgroup(void);
+static struct xkb_keymap *compilekeymap(void);
+static void configapply(void);
+static void configuse(void);
+static void configurepointer(struct wlr_pointer *pointer);
+static void trackinputdevice(struct wlr_input_device *device);
 static void createlayersurface(struct wl_listener *listener, void *data);
 static void createlocksurface(struct wl_listener *listener, void *data);
 static void createmon(struct wl_listener *listener, void *data);
@@ -91,7 +97,7 @@ static int redraw_fire( int fd, uint32_t mask, void* data ) {
 
 /*static void focusclient(Client *c, int lift);*/
 static void focusmon(const Arg *arg);
-/*static void focusstack(const Arg *arg);*/
+static void focusstack(const Arg *arg);
 static void movestack(const Arg *arg);
 static Client *focustop(Monitor *m);
 static void fullscreennotify(struct wl_listener *listener, void *data);
@@ -138,7 +144,7 @@ static void setmon(Client *c, Monitor *m, uint32_t newtags);
 static void setpsel(struct wl_listener *listener, void *data);
 static void setsel(struct wl_listener *listener, void *data);
 static void setup(void);
-/*static void spawn(const Arg *arg);*/
+static void spawn(const Arg *arg);
 static void startdrag(struct wl_listener *listener, void *data);
 static void tag(const Arg *arg);
 static void tagmon(const Arg *arg);
@@ -174,6 +180,13 @@ static void plugin_restart(const Arg* arg);
 static void minimize(const Arg* arg);
 static void unminimize(const Arg* arg);
 static void maximize(const Arg* arg);
+static void cycle_layout(const Arg* arg);
+static void setlayout(const Arg *arg);
+static int layoutindex(const Layout *l);
+static void cycle_view(const Arg* arg);
+static void toggleview(const Arg *arg);
+static void transluce(const Arg *arg);
+static void view(const Arg *arg);
 
 /* variables */
 static pid_t child_pid = -1;
@@ -290,6 +303,44 @@ static struct wlr_xwayland *xwayland;
 /* attempt to encapsulate suck into one file */
 #include "client.h"
 
+#define AWL_ACTION_INIT(name) .name = name,
+const awl_actions_t dwl_actions = { AWL_ACTIONS(AWL_ACTION_INIT) };
+const awl_arranges_t dwl_arranges = { AWL_ARRANGES(AWL_ACTION_INIT) };
+#undef AWL_ACTION_INIT
+
+/* The reloadable half of config.h in effect: the library's, or while none is
+ * loaded the one dwl was built with. It points into the library, so it's only
+ * good until the next reload; pluginsdetach() falls back to builtinconfig(). */
+static const awl_config_t *cfg;
+/* cfg->colors, copied: bars keep a pointer to their scheme */
+static uint32_t schemes[3][3];
+/* What the keyboard and the bars' font were set up with, copied, to tell
+ * whether a reload changed them */
+static struct {
+	char *xkb[5]; /* rules, model, layout, variant, options */
+	int repeat_rate, repeat_delay;
+	char *font;
+	int fontsize;
+	unsigned int borderpx;
+} applied;
+
+/* the keyboards and pointers, to apply a reloaded config.h to */
+typedef struct {
+	struct wlr_input_device *device;
+	struct wl_listener destroy;
+	struct wl_list link;
+} InputDevice;
+static struct wl_list inputdevices; /* InputDevice.link */
+static struct wl_event_source *plugin_restart_source;
+
+static const awl_config_t *
+builtinconfig(void)
+{
+	static awl_config_t c;
+	c = AWL_CONFIG_TABLE;
+	return &c;
+}
+
 /* function implementations */
 void
 applybounds(Client *c, struct wlr_box *bbox)
@@ -344,7 +395,7 @@ applyrules(Client *c)
 	int apply_resize = 0;
 	struct wlr_box rbox;
 
-	for (r = rules; r < END(rules); r++) {
+	for (r = cfg->rules; r < cfg->rules + cfg->n_rules; r++) {
 		if ((!r->title || strstr(title, r->title))
 				&& (!r->id || strstr(appid, r->id))) {
 			c->isfloating = r->isfloating;
@@ -383,8 +434,8 @@ attachblur(Client *c)
     if (!c->blur) {
         c->blur = wlr_scene_blur_create(tree, 0, 0);
         wlr_scene_blur_set_size(c->blur, c->geom.width, c->geom.height);
-        wlr_scene_blur_set_strength(c->blur, locked_blur_config[0]);
-        wlr_scene_blur_set_alpha(c->blur, locked_blur_config[1]);
+        wlr_scene_blur_set_strength(c->blur, cfg->blur[0]);
+        wlr_scene_blur_set_alpha(c->blur, cfg->blur[1]);
         wlr_scene_blur_set_should_only_blur_bottom_layer(c->blur, 0);
         wlr_scene_node_lower_to_bottom(&c->blur->node);
         wlr_scene_node_set_enabled(&c->blur->node, 1);
@@ -769,8 +820,8 @@ void
 wallpapernext(void)
 {
 	const Key *k;
-	for (k = keys; k < END(keys); k++) {
-		if (CLEANMASK(k->mod) == CLEANMASK(MODKEY) && k->keysym == XKB_KEY_w && k->func) {
+	for (k = cfg->keys; k < cfg->keys + cfg->n_keys; k++) {
+		if (CLEANMASK(k->mod) == CLEANMASK(cfg->modkey) && k->keysym == XKB_KEY_w && k->func) {
 			k->func(&k->arg);
 			return;
 		}
@@ -889,7 +940,7 @@ buttonpress(struct wl_listener *listener, void *data)
 
 		keyboard = wlr_seat_get_keyboard(seat);
 		mods = keyboard ? wlr_keyboard_get_modifiers(keyboard) : 0;
-		for (b = buttons; b < END(buttons); b++) {
+		for (b = cfg->buttons; b < cfg->buttons + cfg->n_buttons; b++) {
 			if (CLEANMASK(mods) == CLEANMASK(b->mod) &&
 					event->button == b->button && b->func) {
 				if (b->click == click) {
@@ -938,7 +989,7 @@ checkidleinhibitor(struct wlr_surface *exclude)
 	wl_list_for_each(inhibitor, &idle_inhibit_mgr->inhibitors, link) {
 		struct wlr_surface *surface = wlr_surface_get_root_surface(inhibitor->surface);
 		struct wlr_scene_tree *tree = surface->data;
-		if (exclude != surface && (bypass_surface_visibility || (!tree
+		if (exclude != surface && (cfg->bypass_surface_visibility || (!tree
 				|| wlr_scene_node_coords(&tree->node, &unused_lx, &unused_ly)))) {
 			inhibited = 1;
 			break;
@@ -1014,6 +1065,7 @@ cleanup(void)
 	   to avoid destroying them with an invalid scene output. */
 	wlr_scene_node_destroy(&scene->tree.node);
     drwl_fini();
+    cfg = builtinconfig();
     awl_plugins_unload();
     /* only now nothing can request a redraw anymore */
     awl_redraw_fini();
@@ -1119,7 +1171,6 @@ cleanuplisteners(void)
 void
 closemon(Monitor *m)
 {
-    if (m->tray_pid > 0) kill(m->tray_pid, SIGKILL);
     if (m && m->drw && m->showbar) { togglebar_mon(m); m->closedbar=1; }
 	/* update selmon if needed and
 	 * move closed monitor's clients to the focused one */
@@ -1314,27 +1365,38 @@ createkeyboard(struct wlr_keyboard *keyboard)
 	wlr_keyboard_group_add_keyboard(kb_group->wlr_group, keyboard);
 }
 
+struct xkb_keymap *
+compilekeymap(void)
+{
+	struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+	struct xkb_keymap *keymap = context ? xkb_keymap_new_from_names(context,
+			cfg->xkb_rules, XKB_KEYMAP_COMPILE_NO_FLAGS) : NULL;
+	xkb_context_unref(context);
+	return keymap;
+}
+
 KeyboardGroup *
 createkeyboardgroup(void)
 {
 	KeyboardGroup *group = ecalloc(1, sizeof(*group));
-	struct xkb_context *context;
 	struct xkb_keymap *keymap;
 
 	group->wlr_group = wlr_keyboard_group_create();
 	group->wlr_group->data = group;
 
-	/* Prepare an XKB keymap and assign it to the keyboard group. */
-	context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-	if (!(keymap = xkb_keymap_new_from_names(context, &xkb_rules,
-				XKB_KEYMAP_COMPILE_NO_FLAGS)))
+	/* Prepare an XKB keymap and assign it to the keyboard group: the one in
+	 * effect, which is config.h's unless a reload brought a broken one */
+	if (kb_group)
+		keymap = xkb_keymap_ref(kb_group->wlr_group->keyboard.keymap);
+	else if (!(keymap = compilekeymap()))
 		die("failed to compile keymap");
 
 	wlr_keyboard_set_keymap(&group->wlr_group->keyboard, keymap);
 	xkb_keymap_unref(keymap);
-	xkb_context_unref(context);
 
-	wlr_keyboard_set_repeat_info(&group->wlr_group->keyboard, repeat_rate, repeat_delay);
+	wlr_keyboard_set_repeat_info(&group->wlr_group->keyboard,
+			kb_group ? kb_group->wlr_group->keyboard.repeat_info.rate : cfg->repeat_rate,
+			kb_group ? kb_group->wlr_group->keyboard.repeat_info.delay : cfg->repeat_delay);
 
 	/* Set up listeners for keyboard events */
 	LISTEN(&group->wlr_group->keyboard.events.key, &group->key, keypress);
@@ -1387,8 +1449,8 @@ createlayersurface(struct wl_listener *listener, void *data)
 		return;
 	}
 	l = layer_surface->data = ecalloc(1, sizeof(*l));
-    l->is_notification = blur_notifications && !strcmp(layer_surface->namespace, "notifications");
-    l->is_launcher = blur_launcher && !strcmp(layer_surface->namespace, "launcher");
+    l->is_notification = cfg->blur_notifications && !strcmp(layer_surface->namespace, "notifications");
+    l->is_launcher = cfg->blur_launcher && !strcmp(layer_surface->namespace, "launcher");
     /* the calendar popup (tray/calendar.cpp) is translucent; it follows the
      * launcher's blur settings */
     l->is_calendar = layer_surface->namespace && !strncmp(layer_surface->namespace, "awl-calendar:", 13);
@@ -1401,13 +1463,13 @@ createlayersurface(struct wl_listener *listener, void *data)
 	l->mon = layer_surface->output->data;
 	l->scene_layer = wlr_scene_layer_surface_v1_create(scene_layer, layer_surface);
 	l->scene = l->scene_layer->tree;
-    if (l->is_notification || l->is_launcher || (l->is_calendar && blur_launcher)) {
+    if (l->is_notification || l->is_launcher || (l->is_calendar && cfg->blur_launcher)) {
         l->blur = wlr_scene_blur_create(l->scene, l->scene->node.x, l->scene->node.y);
-        if (l->is_launcher || l->is_calendar) wlr_scene_blur_set_corner_radius(l->blur, blur_launcher_radius);
-        if (l->is_notification) wlr_scene_blur_set_corner_radius(l->blur, blur_notifications_radius);
+        if (l->is_launcher || l->is_calendar) wlr_scene_blur_set_corner_radius(l->blur, cfg->blur_launcher_radius);
+        if (l->is_notification) wlr_scene_blur_set_corner_radius(l->blur, cfg->blur_notifications_radius);
         wlr_scene_blur_set_size(l->blur, l->layer_surface->current.desired_width, l->layer_surface->current.desired_height);
-        wlr_scene_blur_set_strength(l->blur, locked_blur_config[0]);
-        wlr_scene_blur_set_alpha(l->blur, locked_blur_config[1]);
+        wlr_scene_blur_set_strength(l->blur, cfg->blur[0]);
+        wlr_scene_blur_set_alpha(l->blur, cfg->blur[1]);
         wlr_scene_blur_set_should_only_blur_bottom_layer(l->blur, 0);
         wlr_scene_node_set_enabled(&l->blur->node, 1);
         wlr_scene_node_lower_to_bottom(&l->blur->node);
@@ -1463,14 +1525,21 @@ createmon(struct wl_listener *listener, void *data)
 	wlr_output_state_init(&state);
 	/* Initialize monitor state using configured rules */
 	m->tagset[0] = m->tagset[1] = 1;
-	for (r = monrules; r < END(monrules); r++) {
+	/* if no rule matches */
+	m->m.x = m->m.y = -1;
+	m->mfact = 0.55f;
+	m->nmaster = 1;
+	m->lt[0] = m->lt[1] = &cfg->layouts[0];
+	strncpy(m->ltsymbol, m->lt[0]->symbol, LENGTH(m->ltsymbol)-1);
+	for (r = cfg->monrules; r < cfg->monrules + cfg->n_monrules; r++) {
 		if (!r->name || strstr(wlr_output->name, r->name)) {
 			m->m.x = r->x;
 			m->m.y = r->y;
 			m->mfact = r->mfact;
 			m->nmaster = r->nmaster;
-			m->lt[0] = r->lt;
-			m->lt[1] = &layouts[LENGTH(layouts) > 1 && r->lt != &layouts[1]];
+			if (layoutindex(r->lt) >= 0)
+				m->lt[0] = r->lt;
+			m->lt[1] = &cfg->layouts[cfg->n_layouts > 1 && r->lt != &cfg->layouts[1]];
 			strncpy(m->ltsymbol, m->lt[m->sellt]->symbol, LENGTH(m->ltsymbol)-1);
 			wlr_output_state_set_scale(&state, r->scale);
 			wlr_output_state_set_transform(&state, r->rr);
@@ -1522,7 +1591,7 @@ createmon(struct wl_listener *listener, void *data)
 	 *
 	 */
 	/* updatemons() will resize and set correct position */
-	m->fullscreen_bg = wlr_scene_rect_create(layers[LyrFS], 0, 0, fullscreen_bg);
+	m->fullscreen_bg = wlr_scene_rect_create(layers[LyrFS], 0, 0, cfg->fullscreen_bg);
 	wlr_scene_node_set_enabled(&m->fullscreen_bg->node, 0);
 
 	/* Adds this to the output layout in the order it was configured.
@@ -1537,7 +1606,6 @@ createmon(struct wl_listener *listener, void *data)
 	else
 		wlr_output_layout_add(output_layout, wlr_output, m->m.x, m->m.y);
 
-    if (AutostartTray) m->tray_pid = spawn_pid( &(const Arg){.v=tray_cmd} );
 }
 
 void
@@ -1550,7 +1618,7 @@ createnotify(struct wl_listener *listener, void *data)
 	/* Allocate a Client for this surface */
 	c = toplevel->base->data = ecalloc(1, sizeof(*c));
 	c->surface.xdg = toplevel->base;
-	c->bw = borderpx;
+	c->bw = cfg->borderpx;
     c->isvisible = 1;
 
 	LISTEN(&toplevel->base->surface->events.commit, &c->commit, commitnotify);
@@ -1563,46 +1631,51 @@ createnotify(struct wl_listener *listener, void *data)
 }
 
 void
-createpointer(struct wlr_pointer *pointer)
+configurepointer(struct wlr_pointer *pointer)
 {
 	struct libinput_device *device;
 	if (wlr_input_device_is_libinput(&pointer->base)
 			&& (device = wlr_libinput_get_device_handle(&pointer->base))) {
 
 		if (libinput_device_config_tap_get_finger_count(device)) {
-			libinput_device_config_tap_set_enabled(device, tap_to_click);
-			libinput_device_config_tap_set_drag_enabled(device, tap_and_drag);
-			libinput_device_config_tap_set_drag_lock_enabled(device, drag_lock);
-			libinput_device_config_tap_set_button_map(device, button_map);
+			libinput_device_config_tap_set_enabled(device, cfg->tap_to_click);
+			libinput_device_config_tap_set_drag_enabled(device, cfg->tap_and_drag);
+			libinput_device_config_tap_set_drag_lock_enabled(device, cfg->drag_lock);
+			libinput_device_config_tap_set_button_map(device, cfg->button_map);
 		}
 
 		if (libinput_device_config_scroll_has_natural_scroll(device))
-			libinput_device_config_scroll_set_natural_scroll_enabled(device, natural_scrolling);
+			libinput_device_config_scroll_set_natural_scroll_enabled(device, cfg->natural_scrolling);
 
 		if (libinput_device_config_dwt_is_available(device))
-			libinput_device_config_dwt_set_enabled(device, disable_while_typing);
+			libinput_device_config_dwt_set_enabled(device, cfg->disable_while_typing);
 
 		if (libinput_device_config_left_handed_is_available(device))
-			libinput_device_config_left_handed_set(device, left_handed);
+			libinput_device_config_left_handed_set(device, cfg->left_handed);
 
 		if (libinput_device_config_middle_emulation_is_available(device))
-			libinput_device_config_middle_emulation_set_enabled(device, middle_button_emulation);
+			libinput_device_config_middle_emulation_set_enabled(device, cfg->middle_button_emulation);
 
 		if (libinput_device_config_scroll_get_methods(device) != LIBINPUT_CONFIG_SCROLL_NO_SCROLL)
-			libinput_device_config_scroll_set_method(device, scroll_method);
+			libinput_device_config_scroll_set_method(device, cfg->scroll_method);
 
 		if (libinput_device_config_click_get_methods(device) != LIBINPUT_CONFIG_CLICK_METHOD_NONE)
-			libinput_device_config_click_set_method(device, click_method);
+			libinput_device_config_click_set_method(device, cfg->click_method);
 
 		if (libinput_device_config_send_events_get_modes(device))
-			libinput_device_config_send_events_set_mode(device, send_events_mode);
+			libinput_device_config_send_events_set_mode(device, cfg->send_events_mode);
 
 		if (libinput_device_config_accel_is_available(device)) {
-			libinput_device_config_accel_set_profile(device, accel_profile);
-			libinput_device_config_accel_set_speed(device, accel_speed);
+			libinput_device_config_accel_set_profile(device, cfg->accel_profile);
+			libinput_device_config_accel_set_speed(device, cfg->accel_speed);
 		}
 	}
+}
 
+void
+createpointer(struct wlr_pointer *pointer)
+{
+	configurepointer(pointer);
 	wlr_cursor_attach_input_device(cursor, &pointer->base);
 }
 
@@ -1888,7 +1961,7 @@ drawbar(Monitor *m)
 
 	/*draw status first so it can be overdrawn by tags later*/
 	if (m == selmon) { // status is only drawn on selected monitor
-		drwl_setscheme(m->drw, colors[SchemeNorm]);
+		drwl_setscheme(m->drw, schemes[SchemeNorm]);
 		tw = 0;
 		drwl_text(m->drw, m->b.width - tw, 0, tw, m->b.height, 0, "", 0);
 	}
@@ -2061,7 +2134,7 @@ focusclient(Client *c, int lift)
 		/* Don't change border color if there is an exclusive focus or we are
 		 * handling a drag operation */
 		if (!exclusive_focus && !seat->drag)
-			client_set_border_color(c, (float[])COLOR(colors[SchemeSel][ColBorder]));
+			client_set_border_color(c, (float[])COLOR(schemes[SchemeSel][ColBorder]));
 	}
 
 	/* Deactivate old client if focus is changing */
@@ -2078,7 +2151,7 @@ focusclient(Client *c, int lift)
 		/* Don't deactivate old client if the new one wants focus, as this causes issues with winecfg
 		 * and probably other clients */
 		} else if (old_c && !client_is_unmanaged(old_c) && (!c || !client_wants_focus(c))) {
-			client_set_border_color(old_c, (float[])COLOR(colors[SchemeNorm][ColBorder]));
+			client_set_border_color(old_c, (float[])COLOR(schemes[SchemeNorm][ColBorder]));
 			client_activate_surface(old, 0);
 		}
 	}
@@ -2376,9 +2449,11 @@ inputdevice(struct wl_listener *listener, void *data)
 	switch (device->type) {
 	case WLR_INPUT_DEVICE_KEYBOARD:
 		createkeyboard(wlr_keyboard_from_input_device(device));
+		trackinputdevice(device);
 		break;
 	case WLR_INPUT_DEVICE_POINTER:
 		createpointer(wlr_pointer_from_input_device(device));
+		trackinputdevice(device);
 		break;
 	default:
 		/* TODO handle other input device types */
@@ -2404,7 +2479,7 @@ keybinding(uint32_t mods, xkb_keysym_t sym)
 	 * processing.
 	 */
 	const Key *k;
-	for (k = keys; k < END(keys); k++) {
+	for (k = cfg->keys; k < cfg->keys + cfg->n_keys; k++) {
 		if (CLEANMASK(mods) == CLEANMASK(k->mod)
 				&& sym == k->keysym && k->func) {
             // logprintf( "keybinding: (mod:%u key:%u func:%p arg:%li)\n", k->mod, k->keysym, k->func, k->arg.v );
@@ -2560,7 +2635,7 @@ mapnotify(struct wl_listener *listener, void *data)
 
 	for (i = 0; i < 4; i++) {
 		c->border[i] = wlr_scene_rect_create(c->scene, 0, 0,
-			(float[])COLOR(colors[c->isurgent ? SchemeUrg : SchemeNorm][ColBorder]));
+			(float[])COLOR(schemes[c->isurgent ? SchemeUrg : SchemeNorm][ColBorder]));
 		c->border[i]->node.data = c;
 	}
 
@@ -2700,7 +2775,7 @@ motionnotify(uint32_t time, struct wlr_input_device *device, double dx, double d
 		wlr_idle_notifier_v1_notify_activity(idle_notifier, seat);
 
 		/* Update selmon (even while dragging a window) */
-		if (sloppyfocus)
+		if (cfg->sloppyfocus)
 			selmon = xytomon(cursor->x, cursor->y);
 	}
 
@@ -2856,7 +2931,7 @@ pointerfocus(Client *c, struct wlr_surface *surface, double sx, double sy,
 	struct timespec now;
 
 	if (surface != seat->pointer_state.focused_surface &&
-			sloppyfocus && time && c && !client_is_unmanaged(c))
+			cfg->sloppyfocus && time && c && !client_is_unmanaged(c))
 		focusclient(c, 0);
 
 	/* If surface is NULL, clear pointer focus */
@@ -3063,6 +3138,7 @@ run(char *startup_cmd)
 
     // autostart goes in here
     for (unsigned i=0; i<LENGTH(Autostarts); ++i) {
+        if (!Autostarts[i][0]) continue; /* { NULL }: an empty list */
         pid_t pid = spawn_pid( &(const Arg){.v=Autostarts[i]} );
         /* a failed spawn returns -1; never let that reach kill()/waitpid() */
         if (pid > 0) Autostarted_pids[Autostarted_pids_sz++] = pid;
@@ -3152,7 +3228,7 @@ setfullscreen(Client *c, int fullscreen)
 	c->isfullscreen = fullscreen;
 	if (!c->mon || !client_surface(c)->mapped)
 		return;
-	c->bw = fullscreen ? 0 : borderpx;
+	c->bw = fullscreen ? 0 : cfg->borderpx;
 	client_set_fullscreen(c, fullscreen);
 	wlr_scene_node_reparent(&c->scene->node, layers[c->isfullscreen
 			? LyrFS : c->isfloating ? LyrFloat : LyrTile]);
@@ -3169,29 +3245,59 @@ setfullscreen(Client *c, int fullscreen)
 	drawbars();
 }
 
+/* l's index in config.h's layouts, -1 if it isn't one of them */
+static int
+layoutindex(const Layout *l)
+{
+	uintptr_t p = (uintptr_t)l, first = (uintptr_t)cfg->layouts;
+	if (p < first || p >= first + cfg->n_layouts * sizeof(Layout))
+		return -1;
+	return (int)((p - first) / sizeof(Layout));
+}
+
+/* the next (arg->i > 0) or previous (< 0) of config.h's layouts on selmon */
 void
 cycle_layout(const Arg* arg)
 {
-    if (!selmon)
-        return;
-    if (!arg)
-        return;
+	int i, n = (int)cfg->n_layouts;
+	if (!selmon || !arg || !arg->i)
+		return;
+	i = layoutindex(selmon->lt[selmon->sellt]) + (arg->i > 0 ? 1 : -1);
+	setlayout(&(Arg){.v = &cfg->layouts[(i % n + n) % n]});
+}
 
-    if (arg->i > 0)
-        layout_idx++;
-    else if (arg->i < 0)
-        layout_idx--;
-    else
-        return;
+/* like dwm: arg->v, one of config.h's layouts (&layouts[n]), for selmon;
+ * without one (or with the one it has), back to its previous layout */
+void
+setlayout(const Arg *arg)
+{
+	const Layout *l = arg ? arg->v : NULL;
+	if (!selmon || (l && layoutindex(l) < 0))
+		return;
+	if (!l || l != selmon->lt[selmon->sellt])
+		selmon->sellt ^= 1;
+	if (l)
+		selmon->lt[selmon->sellt] = l;
+	strncpy(selmon->ltsymbol, selmon->lt[selmon->sellt]->symbol, LENGTH(selmon->ltsymbol)-1);
+	arrange(selmon);
+	drawbar(selmon);
+}
 
-    if (layout_idx < 0) layout_idx = LENGTH(layouts)-1;
-    if (layout_idx >= (int)LENGTH(layouts)) layout_idx = 0;
-
-    selmon->lt[selmon->sellt] = &layouts[layout_idx];
-
-    strncpy(selmon->ltsymbol, selmon->lt[selmon->sellt]->symbol, LENGTH(selmon->ltsymbol)-1);
-    arrange(selmon);
-    drawbar(selmon);
+/* After cfg changed: the monitors' layouts point into the old table (which
+ * may be about to be unloaded); same index in the new one, or its first */
+static void
+layoutsmoved(const Layout *old, size_t n_old)
+{
+	Monitor *m;
+	size_t i, idx;
+	wl_list_for_each(m, &mons, link) {
+		for (i = 0; i < LENGTH(m->lt); i++) {
+			idx = m->lt[i] >= old && m->lt[i] < old + n_old ? (size_t)(m->lt[i] - old) : 0;
+			m->lt[i] = &cfg->layouts[MIN(idx, cfg->n_layouts - 1)];
+		}
+		strncpy(m->ltsymbol, m->lt[m->sellt]->symbol, LENGTH(m->ltsymbol)-1);
+		arrange(m);
+	}
 }
 
 void
@@ -3275,6 +3381,10 @@ setup(void)
 	struct sigaction sa = {.sa_flags = SA_RESTART, .sa_handler = handlesig};
 	sigemptyset(&sa.sa_mask);
 
+	/* until the library is loaded */
+	cfg = builtinconfig();
+	wl_list_init(&inputdevices);
+
 	for (i = 0; i < (int)LENGTH(sig); i++)
 		sigaction(sig[i], &sa, NULL);
 
@@ -3303,7 +3413,7 @@ setup(void)
 
 	/* Initialize the scene graph used to lay out windows */
 	scene = wlr_scene_create();
-	root_bg = wlr_scene_rect_create(&scene->tree, 0, 0, rootcolor);
+	root_bg = wlr_scene_rect_create(&scene->tree, 0, 0, cfg->rootcolor);
 	for (i = 0; i < NUM_LAYERS; i++) {
 		layers[i] = wlr_scene_tree_create(&scene->tree);
     }
@@ -3313,8 +3423,8 @@ setup(void)
 	desktop_tree = wlr_scene_tree_create(&scene->tree);
 	wlr_scene_node_place_above(&desktop_tree->node, &layers[LyrBg]->node);
 	desktop_init(desktop_tree, &(desktop_config_t){
-			.blur = blur_launcher, .radius = blur_launcher_radius,
-			.blur_strength = locked_blur_config[0], .blur_alpha = locked_blur_config[1] });
+			.blur = cfg->blur_launcher, .radius = cfg->blur_launcher_radius,
+			.blur_strength = cfg->blur[0], .blur_alpha = cfg->blur[1] });
 
 	/* Autocreates a renderer, either Pixman, GLES2 or Vulkan for us. The user
 	 * can also specify a renderer using the WLR_RENDERER env var.
@@ -3421,8 +3531,8 @@ setup(void)
         locked_bg_blur = wlr_scene_blur_create( layers[LyrBlock], sgeom.width, sgeom.height );
         wlr_scene_node_set_position(&locked_bg_blur->node, sgeom.x, sgeom.y);
         wlr_scene_blur_set_size(locked_bg_blur, sgeom.width, sgeom.height);
-        wlr_scene_blur_set_strength( locked_bg_blur, locked_blur_config[0] );
-        wlr_scene_blur_set_alpha( locked_bg_blur, locked_blur_config[1] );
+        wlr_scene_blur_set_strength( locked_bg_blur, cfg->blur[0] );
+        wlr_scene_blur_set_alpha( locked_bg_blur, cfg->blur[1] );
         wlr_scene_blur_set_should_only_blur_bottom_layer( locked_bg_blur, 0 );
         wlr_scene_node_set_enabled(&locked_bg_blur->node, 0);
         wlr_scene_node_lower_to_bottom(&locked_bg_blur->node);
@@ -3504,6 +3614,7 @@ setup(void)
 	/*wlr_scene_set_presentation(scene, wlr_presentation_create(dpy, backend));*/
 
     awl_plugins_load(0);
+	configuse();
 	drwl_init();
     if (awl_redraw_init() >= 0)
         redraw_source = wl_event_loop_add_fd(event_loop, awl_redraw_fd(),
@@ -3668,7 +3779,7 @@ togglebw(const Arg *arg)
 {
     Client* sel = focustop(selmon);
     if (sel && !sel->isfullscreen) {
-        sel->bw = sel->bw ? 0 : borderpx;
+        sel->bw = sel->bw ? 0 : cfg->borderpx;
         arrange(selmon);
     }
 }
@@ -3928,7 +4039,7 @@ updatebar(Monitor *m)
 	drwl_destroy_font(m->drw->font);
 	snprintf(fontattrs, sizeof(fontattrs), "dpi=%.2f", 96. * 2. * m->wlr_output->scale);
     char _font[128] = {0};
-    sprintf( _font, "%s%.0f", font, (float)fontsize*m->wlr_output->scale );
+    snprintf( _font, sizeof(_font), "%s%.0f", cfg->font, (float)cfg->fontsize*m->wlr_output->scale );
     const char* _pfont = _font;
 	if (!(drwl_load_font(m->drw, 1, &_pfont, fontattrs)))
 		die("Could not load font");
@@ -3972,7 +4083,7 @@ urgent(struct wl_listener *listener, void *data)
 	drawbars();
 
 	if (client_surface(c)->mapped)
-		client_set_border_color(c, (float[])COLOR(colors[SchemeUrg][ColBorder]));
+		client_set_border_color(c, (float[])COLOR(schemes[SchemeUrg][ColBorder]));
 }
 
 void
@@ -4070,6 +4181,157 @@ maximize(const Arg* arg)
     drawbars();
 }
 
+static int
+streqnull(const char *a, const char *b)
+{
+	return a == b || (a && b && !strcmp(a, b));
+}
+
+static char *
+strdupnull(const char *s)
+{
+	return s ? strdup(s) : NULL;
+}
+
+/* Brings everything that was set up from config.h's reloadable half up to
+ * date with cfg, after it changed. What's only read when it's needed (key
+ * and button bindings, rules, focus behaviour, which new layer surfaces get
+ * blurred) needs nothing here. */
+void
+configapply(void)
+{
+	Monitor *m;
+	Client *c, *sel = focustop(selmon);
+	LayerSurface *l;
+	InputDevice *d;
+	struct xkb_keymap *keymap;
+	const char *xkb[5] = { cfg->xkb_rules->rules, cfg->xkb_rules->model,
+		cfg->xkb_rules->layout, cfg->xkb_rules->variant, cfg->xkb_rules->options };
+	int i, changed;
+
+	/* keyboards: the virtual ones keep the keymaps their clients gave them */
+	for (i = changed = 0; i < (int)LENGTH(xkb); i++)
+		changed |= !streqnull(xkb[i], applied.xkb[i]);
+	if (changed && !(keymap = compilekeymap())) {
+		fprintf(stderr, "config.h: can't compile the keymap, keeping the old one\n");
+	} else if (changed) {
+		wlr_keyboard_set_keymap(&kb_group->wlr_group->keyboard, keymap);
+		wl_list_for_each(d, &inputdevices, link)
+			if (d->device->type == WLR_INPUT_DEVICE_KEYBOARD)
+				wlr_keyboard_set_keymap(wlr_keyboard_from_input_device(d->device), keymap);
+		xkb_keymap_unref(keymap);
+		for (i = 0; i < (int)LENGTH(xkb); i++) {
+			free(applied.xkb[i]);
+			applied.xkb[i] = strdupnull(xkb[i]);
+		}
+	}
+	if (cfg->repeat_rate != applied.repeat_rate || cfg->repeat_delay != applied.repeat_delay) {
+		wlr_keyboard_set_repeat_info(&kb_group->wlr_group->keyboard,
+				cfg->repeat_rate, cfg->repeat_delay);
+		applied.repeat_rate = cfg->repeat_rate;
+		applied.repeat_delay = cfg->repeat_delay;
+	}
+
+	wl_list_for_each(d, &inputdevices, link)
+		if (d->device->type == WLR_INPUT_DEVICE_POINTER)
+			configurepointer(wlr_pointer_from_input_device(d->device));
+
+	/* the bars' font, and with it their height */
+	if (!streqnull(cfg->font, applied.font) || cfg->fontsize != applied.fontsize) {
+		free(applied.font);
+		applied.font = strdupnull(cfg->font);
+		applied.fontsize = cfg->fontsize;
+		wl_list_for_each(m, &mons, link) {
+			if (!m->drw)
+				continue;
+			m->b.scale = 0; /* updatebar() reloads it */
+			updatebar(m);
+			arrangelayers(m);
+		}
+	}
+
+	/* borders: those at the old default width get the new one */
+	if (cfg->borderpx != applied.borderpx) {
+		wl_list_for_each(c, &clients, link) {
+			if (c->isfullscreen || c->bw != applied.borderpx)
+				continue;
+			c->bw = cfg->borderpx;
+			if (c->mon)
+				resize(c, c->geom, 0);
+		}
+		applied.borderpx = cfg->borderpx;
+		wl_list_for_each(m, &mons, link)
+			arrange(m);
+	}
+
+	memcpy(schemes, cfg->colors, sizeof(schemes));
+	wl_list_for_each(c, &clients, link)
+		if (c->border[0])
+			client_set_border_color(c, (float[])COLOR(schemes[c->isurgent ? SchemeUrg
+					: c == sel ? SchemeSel : SchemeNorm][ColBorder]));
+	wlr_scene_rect_set_color(root_bg, cfg->rootcolor);
+
+	/* blur */
+	wl_list_for_each(c, &clients, link) {
+		if (!c->blur)
+			continue;
+		wlr_scene_blur_set_strength(c->blur, cfg->blur[0]);
+		wlr_scene_blur_set_alpha(c->blur, cfg->blur[1]);
+	}
+	wl_list_for_each(m, &mons, link) {
+		wlr_scene_rect_set_color(m->fullscreen_bg, cfg->fullscreen_bg);
+		for (i = 0; i < (int)LENGTH(m->layers); i++) {
+			wl_list_for_each(l, &m->layers[i], link) {
+				if (!l->blur)
+					continue;
+				wlr_scene_blur_set_strength(l->blur, cfg->blur[0]);
+				wlr_scene_blur_set_alpha(l->blur, cfg->blur[1]);
+				wlr_scene_blur_set_corner_radius(l->blur, l->is_notification
+						? cfg->blur_notifications_radius : cfg->blur_launcher_radius);
+			}
+		}
+	}
+	if (locked_bg_blur) {
+		wlr_scene_blur_set_strength(locked_bg_blur, cfg->blur[0]);
+		wlr_scene_blur_set_alpha(locked_bg_blur, cfg->blur[1]);
+	}
+	desktop_configure(&(desktop_config_t){
+			.blur = cfg->blur_launcher, .radius = cfg->blur_launcher_radius,
+			.blur_strength = cfg->blur[0], .blur_alpha = cfg->blur[1] });
+
+	drawbars();
+}
+
+/* switches to the loaded library's config.h, or the built-in one */
+static void
+configuse(void)
+{
+	const awl_plugin_api_t *api = awl_plugins_api();
+	const Layout *old = cfg->layouts;
+	size_t n_old = cfg->n_layouts;
+	cfg = api ? api->config() : builtinconfig();
+	layoutsmoved(old, n_old);
+	configapply();
+}
+
+static void
+untrackinputdevice(struct wl_listener *listener, void *data)
+{
+	InputDevice *d = wl_container_of(listener, d, destroy);
+	wl_list_remove(&d->destroy.link);
+	wl_list_remove(&d->link);
+	free(d);
+}
+
+void
+trackinputdevice(struct wlr_input_device *device)
+{
+	InputDevice *d = ecalloc(1, sizeof(*d));
+	d->device = device;
+	LISTEN(&device->events.destroy, &d->destroy, untrackinputdevice);
+	wl_list_insert(&inputdevices, &d->link);
+}
+
 /* awl_plugins_reload(): the bars' widgets come from the library */
 static void
 pluginsdetach(void)
@@ -4087,6 +4349,11 @@ pluginsdetach(void)
 	wl_list_for_each(m, &mons, link)
 		if (m->drw)
 			drwl_widgets_clear(m->drw);
+	/* cfg points into the library */
+	const Layout *old = cfg->layouts;
+	size_t n_old = cfg->n_layouts;
+	cfg = builtinconfig();
+	layoutsmoved(old, n_old);
 }
 
 static void
@@ -4094,6 +4361,7 @@ pluginsattach(void)
 {
 	Monitor *m;
 
+	configuse();
 	wl_list_for_each(m, &mons, link)
 		if (m->drw)
 			awl_plugins_bar_widgets(m->drw);
@@ -4101,10 +4369,10 @@ pluginsattach(void)
 	desktop_reloaded();
 }
 
-void
-plugin_restart(const Arg* arg)
+static void
+pluginrestart(void *data)
 {
-    (void)arg;
+    plugin_restart_source = NULL;
     /* picks up a rebuilt libawlplugins.so; with an unchanged (or broken)
      * one this is a plain restart of the plugin threads */
     awl_plugins_reload(pluginsdetach, pluginsattach);
@@ -4117,6 +4385,16 @@ plugin_restart(const Arg* arg)
      * Gtk::Main cannot safely be constructed a second time in one process),
      * so it's fire-and-forget, not a blocking shutdown/join/init cycle. */
     awl_tray_reload();
+}
+
+void
+plugin_restart(const Arg* arg)
+{
+    (void)arg;
+    /* Not from here: this is usually called through a key binding, from the
+     * library's code the reload unloads */
+    if (!plugin_restart_source)
+        plugin_restart_source = wl_event_loop_add_idle(event_loop, pluginrestart, NULL);
 }
 
 void
@@ -4241,7 +4519,7 @@ createnotifyx11(struct wl_listener *listener, void *data)
 	c = xsurface->data = ecalloc(1, sizeof(*c));
 	c->surface.xwayland = xsurface;
 	c->type = X11;
-	c->bw = client_is_unmanaged(c) ? 0 : borderpx;
+	c->bw = client_is_unmanaged(c) ? 0 : cfg->borderpx;
     c->isvisible = 1;
 
 	/* Listen to the various events it can emit */
@@ -4275,7 +4553,7 @@ sethints(struct wl_listener *listener, void *data)
 	drawbars();
 
 	if (c->isurgent && surface && surface->mapped)
-		client_set_border_color(c, (float[])COLOR(colors[SchemeUrg][ColBorder]));
+		client_set_border_color(c, (float[])COLOR(schemes[SchemeUrg][ColBorder]));
 }
 
 void

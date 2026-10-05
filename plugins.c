@@ -251,6 +251,7 @@ static const awl_plugin_api_t api = {
     .desktop_measure = awl_desktop_measure,
     .desktop_draw = awl_desktop_draw,
     .desktop_click = awl_desktop_click,
+    .config = awl_config,
 };
 
 __attribute__((visibility("default")))

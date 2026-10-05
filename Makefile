@@ -21,7 +21,7 @@ LDLIBS    = `$(PKG_CONFIG) --libs $(PKGS)` -lm $(LIBS) \
 # plugin_host.c and reloaded with plugin_restart (see awl_plugin_abi.h).
 # plugins/redraw.c stays in dwl, which owns the redraw eventfd.
 PLUGINS_SRC := $(filter-out plugins/redraw.c,$(wildcard plugins/*.c))
-PLUGINS_OBJ := $(patsubst %.c,%.o,$(PLUGINS_SRC)) plugins.o widgets.o desktop_panel.o
+PLUGINS_OBJ := $(patsubst %.c,%.o,$(PLUGINS_SRC)) plugins.o widgets.o desktop_panel.o awl_config.o
 PLUGINS_PKGS = libpulse libsystemd libpng pixman-1
 # --as-needed drops config.mk's -lscenefx, which only dwl uses
 PLUGINS_LIBS = -Wl,--as-needed `$(PKG_CONFIG) --libs $(PLUGINS_PKGS)` -lm -pthread
@@ -84,7 +84,7 @@ dist: clean
 	mkdir -p dwl-$(VERSION)/plugins dwl-$(VERSION)/tray
 	cp -R LICENSE* Makefile CHANGELOG.md README.md client.h config.def.h \
 		config.mk protocols dwl.1 dwl.c dwl.h dwl-log.c dwl-log.h util.c util.h \
-		drwl.c drwl.h plugins.c plugins.h widgets.c plugin_host.c plugin_host.h desktop.c desktop.h desktop_panel.c \
+		drwl.c drwl.h plugins.c plugins.h widgets.c plugin_host.c plugin_host.h desktop.c desktop.h desktop_panel.c awl_config.c \
 		awl_plugin_abi.h dwl.desktop \
 		dwl-$(VERSION)
 	cp plugins/*.c plugins/*.h dwl-$(VERSION)/plugins

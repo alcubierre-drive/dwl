@@ -1,9 +1,9 @@
 #pragma once
 
 /* The boundary between dwl and libawlplugins.so, the live-reloadable part of
- * the bar: the plugin threads (plugins.c, plugins/), the bar widgets
- * (widgets.c) and the desktop file list (desktop_panel.c; dwl's desktop.c
- * only places it). dwl dlopen()s the library and looks up a single symbol,
+ * dwl: the plugin threads (plugins.c, plugins/), the bar widgets
+ * (widgets.c), the desktop file list (desktop_panel.c; dwl's desktop.c only
+ * places it) and the reloadable half of config.h (awl_config.c). dwl dlopen()s the library and looks up a single symbol,
  * AWL_PLUGIN_ENTRY; everything else goes through the two tables below, so
  * the library has no unresolved references into dwl (no -rdynamic).
  *
@@ -16,8 +16,94 @@
 #include <stdint.h>
 #include "drwl.h"
 
-#define AWL_PLUGIN_ABI 2
+#define AWL_PLUGIN_ABI 4
 #define AWL_PLUGIN_ENTRY "awl_plugin_entry"
+
+/* Every dwl function config.h can bind to a key or button. The library binds
+ * them through same-named wrappers around awl_host_t.actions. */
+#define AWL_ACTIONS( X ) \
+    X( changebw ) X( chvt ) X( cycle_layout ) X( cycle_view ) X( focusmon ) \
+    X( focusstack ) X( incnmaster ) X( killclient ) X( maximize ) X( minimize ) \
+    X( moveresize ) X( movestack ) X( plugin_restart ) X( quit ) X( setlayout ) X( setmfact ) \
+    X( spawn ) X( tag ) X( tagmon ) X( togglebar ) X( togglebw ) X( togglefloating ) \
+    X( togglefullscreen ) X( toggleontop ) X( toggletag ) X( toggleview ) \
+    X( transluce ) X( unminimize ) X( view )
+
+#define AWL_ACTION_FIELD( name ) void (*name)( const Arg* arg );
+typedef struct awl_actions_t {
+    AWL_ACTIONS( AWL_ACTION_FIELD )
+} awl_actions_t;
+#undef AWL_ACTION_FIELD
+
+/* dwl's layouts' arrange functions, likewise */
+#define AWL_ARRANGES( X ) X( bstack ) X( gaplessgrid ) X( monocle ) X( tile )
+
+#define AWL_ARRANGE_FIELD( name ) void (*name)( Monitor* m );
+typedef struct awl_arranges_t {
+    AWL_ARRANGES( AWL_ARRANGE_FIELD )
+} awl_arranges_t;
+#undef AWL_ARRANGE_FIELD
+
+/* The reloadable half of config.h (see there), as dwl reads it. Built by
+ * AWL_CONFIG_TABLE from config.h's names, in the library and, as the
+ * fallback while none is loaded, in dwl. Everything points into whoever built
+ * it, so dwl copies what it keeps past a reload. */
+typedef struct awl_config_t {
+    const Key* keys;
+    size_t n_keys;
+    const Button* buttons;
+    size_t n_buttons;
+    const Rule* rules;
+    size_t n_rules;
+    const Layout* layouts; /* at least one */
+    size_t n_layouts;
+    const MonitorRule* monrules; /* their lt points into layouts */
+    size_t n_monrules;
+    const uint32_t (*colors)[3]; /* [SchemeNorm..SchemeUrg][ColFg..ColBorder] */
+    uint32_t modkey;
+
+    int sloppyfocus, bypass_surface_visibility;
+    unsigned int borderpx;
+    const char* font;
+    int fontsize;
+    const float *rootcolor, *fullscreen_bg; /* 4 floats each */
+    const float* blur;                      /* strength, alpha */
+    int blur_notifications, blur_notifications_radius;
+    int blur_launcher, blur_launcher_radius;
+
+    const struct xkb_rule_names* xkb_rules;
+    int repeat_rate, repeat_delay;
+    int tap_to_click, tap_and_drag, drag_lock, natural_scrolling, disable_while_typing,
+        left_handed, middle_button_emulation;
+    enum libinput_config_scroll_method scroll_method;
+    enum libinput_config_click_method click_method;
+    uint32_t send_events_mode;
+    enum libinput_config_accel_profile accel_profile;
+    double accel_speed;
+    enum libinput_config_tap_button_map button_map;
+} awl_config_t;
+
+#define AWL_CONFIG_TABLE (awl_config_t){ \
+    .keys = keys, .n_keys = LENGTH( keys ), \
+    .buttons = buttons, .n_buttons = LENGTH( buttons ), \
+    .rules = rules, .n_rules = LENGTH( rules ), \
+    .layouts = layouts, .n_layouts = LENGTH( layouts ), \
+    .monrules = monrules, .n_monrules = LENGTH( monrules ), \
+    .colors = (const uint32_t (*)[3])colors, .modkey = MODKEY, \
+    .sloppyfocus = sloppyfocus, .bypass_surface_visibility = bypass_surface_visibility, \
+    .borderpx = borderpx, .font = font, .fontsize = fontsize, \
+    .rootcolor = rootcolor, .fullscreen_bg = fullscreen_bg, .blur = locked_blur_config, \
+    .blur_notifications = blur_notifications, \
+    .blur_notifications_radius = blur_notifications_radius, \
+    .blur_launcher = blur_launcher, .blur_launcher_radius = blur_launcher_radius, \
+    .xkb_rules = &xkb_rules, .repeat_rate = repeat_rate, .repeat_delay = repeat_delay, \
+    .tap_to_click = tap_to_click, .tap_and_drag = tap_and_drag, .drag_lock = drag_lock, \
+    .natural_scrolling = natural_scrolling, .disable_while_typing = disable_while_typing, \
+    .left_handed = left_handed, .middle_button_emulation = middle_button_emulation, \
+    .scroll_method = scroll_method, .click_method = click_method, \
+    .send_events_mode = send_events_mode, .accel_profile = accel_profile, \
+    .accel_speed = accel_speed, .button_map = button_map, \
+}
 
 /* What dwl provides to the library. All functions are main-thread only,
  * except redraw_request, which any thread may call. */
@@ -34,12 +120,8 @@ typedef struct awl_host_t {
     unsigned int (*font_getwidth)( Drwl* drwl, const char* text );
 
     /* actions */
-    void (*view)( const Arg* arg );
-    void (*toggleview)( const Arg* arg );
-    void (*cycle_view)( const Arg* arg );
-    void (*cycle_layout)( const Arg* arg );
-    void (*focusstack)( const Arg* arg );
-    void (*spawn)( const Arg* arg );
+    const awl_actions_t* actions;
+    const awl_arranges_t* arranges;
     void (*focusclient)( Client* c, int lift );
     void (*arrange)( Monitor* m );
     /* whatever MOD+w is bound to */
@@ -83,6 +165,9 @@ typedef struct awl_plugin_api_t {
                           float scale );
     /* a click on the bare desktop; returns whether it was taken */
     int (*desktop_click)( int button );
+
+    /* the reloadable half of config.h; valid until the library is unloaded */
+    const awl_config_t* (*config)( void );
 } awl_plugin_api_t;
 
 /* The library's only exported symbol. Returns NULL if the library can't run

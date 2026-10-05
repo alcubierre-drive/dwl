@@ -31,6 +31,12 @@ void awl_plugins_set_paused( int paused );
 /* Fills an empty bar's widget lists; no-op without a loaded library. */
 void awl_plugins_bar_widgets( Drwl* bar );
 
+/* dwl.c's functions config.h binds keys and layouts to, for the library */
+typedef struct awl_actions_t awl_actions_t;
+extern const awl_actions_t dwl_actions;
+typedef struct awl_arranges_t awl_arranges_t;
+extern const awl_arranges_t dwl_arranges;
+
 /* The loaded library's table, NULL if none. Changes on reload, so don't
  * keep it (or anything from it) across one. */
 typedef struct awl_plugin_api_t awl_plugin_api_t;

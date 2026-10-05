@@ -22,6 +22,9 @@ typedef struct {
 /* tree: an empty scene tree, already placed in the stacking order */
 void desktop_init( struct wlr_scene_tree* tree, const desktop_config_t* cfg );
 
+/* config.h was reloaded */
+void desktop_configure( const desktop_config_t* cfg );
+
 /* m->drw must have its font loaded */
 void desktop_addmon( Monitor* m );
 void desktop_removemon( Monitor* m );
