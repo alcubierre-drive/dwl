@@ -59,6 +59,8 @@ static const Rule rules[] = {
 };
 
 static const char* Autostarts[][8] = {
+    { "ls", NULL }, // TODO
+    /*
     { "fnott", NULL },
     { "nm-applet", NULL },
     { "blueman-applet", NULL },
@@ -66,11 +68,12 @@ static const char* Autostarts[][8] = {
     { "random_wallpaper.sh", "-s", NULL },
     { "Telegram", NULL },
     { "evolution", NULL },
+    */
 };
 static const int AutostartTray = 0;
-static const int ScreenLockServiceAtStart = 1;
-static const int SwwwAtStart = 1;
-static const char* ScreenLockService[] = { "systemd-lock-handler", "--", "swaylock", "-c", "00000000", "-p", NULL };
+static const int ScreenLockServiceAtStart = 0; //TODO
+static const int SwwwAtStart = 0; //TODO
+static const char* ScreenLockService[] = { "systemd-lock-handler", "--", "swaylock", "-c", "00000000", NULL };
 
 /* layout(s) */
 static const Layout layouts[] = {
@@ -158,8 +161,8 @@ LIBINPUT_CONFIG_TAP_MAP_LMR -- 1/2/3 finger tap maps to left/middle/right
 static const enum libinput_config_tap_button_map button_map = LIBINPUT_CONFIG_TAP_MAP_LRM;
 
 /* If you want to use the windows key for MODKEY, use WLR_MODIFIER_LOGO */
-#define MODKEY WLR_MODIFIER_LOGO
-// #define MODKEY WLR_MODIFIER_ALT
+// #define MODKEY WLR_MODIFIER_LOGO
+#define MODKEY WLR_MODIFIER_ALT // TODO
 
 #define TAGKEYS(KEY,SKEY,TAG) \
 	{ MODKEY,                    KEY,            view,            {.ui = 1ul << TAG} }, \
@@ -185,7 +188,7 @@ static const char *speakerT[] = { "pulse_port_switch", NULL };
 static const char *grimslurp[] = { "grim_slurp", NULL };
 static const char *wdisplays[] = { "wdisplays", NULL };
 // static const char *swaylock[] = { "hyprlock", NULL };
-static const char* swaylock[] = { "swaylock", "-c", "00000000", "-p", NULL };
+static const char* swaylock[] = { "swaylock", "-c", "00000000", NULL };
 static const char *docked_r[] = { "docked", "reset", NULL };
 static const char *docked_d[] = { "docked", "dock", NULL };
 static const char *docked_z[] = { "docked", "zoom", NULL };

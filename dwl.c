@@ -7,6 +7,10 @@
 #include "plugins/colors.h" /* config.h */
 #include "plugins/redraw.h"
 #include "tray/awl_tray.h"
+#include <wlr/backend/headless.h>
+#include <wlr/backend/multi.h>
+#include <wlr/backend/wayland.h>
+#include <wlr/interfaces/wlr_output.h>
 
 /* vfork(2) is a glibc/BSD extension not declared under the strict
  * -D_POSIX_C_SOURCE=200809L this file is built with, though it's present
@@ -138,6 +142,8 @@ static void setup(void);
 static void startdrag(struct wl_listener *listener, void *data);
 static void tag(const Arg *arg);
 static void tagmon(const Arg *arg);
+static int testoutputadd(int signo, void *data);
+static int testoutputremove(int signo, void *data);
 static void tile(Monitor *m);
 static void togglebar_mon(Monitor* m);
 static void togglebar(const Arg *arg);
@@ -3288,6 +3294,12 @@ setup(void)
 	 * if an X11 server is running. */
 	if (!(backend = wlr_backend_autocreate(event_loop, &session)))
 		die("couldn't create backend");
+	/* for testing (test/live.sh): SIGUSR1 adds an output, SIGUSR2 removes
+	 * the newest one; headless and nested (wayland) backends only */
+	if (getenv("DWL_TEST_OUTPUTS")) {
+		wl_event_loop_add_signal(event_loop, SIGUSR1, testoutputadd, NULL);
+		wl_event_loop_add_signal(event_loop, SIGUSR2, testoutputremove, NULL);
+	}
 
 	/* Initialize the scene graph used to lay out windows */
 	scene = wlr_scene_create();
@@ -3572,6 +3584,35 @@ tagmon(const Arg *arg)
 	if (sel)
 		// setmon(sel, dirtomon(arg->i), 0);
 		setmon(sel, nextmon(arg->i), 0);
+}
+
+static void
+testoutputadd_backend(struct wlr_backend *b, void *data)
+{
+	if (wlr_backend_is_headless(b))
+		wlr_headless_add_output(b, 1280, 720);
+	else if (wlr_backend_is_wl(b))
+		wlr_wl_output_create(b);
+}
+
+/* the DWL_TEST_OUTPUTS hooks, see setup() */
+int
+testoutputadd(int signo, void *data)
+{
+	wlr_multi_for_each_backend(backend, testoutputadd_backend, NULL);
+	return 0;
+}
+
+int
+testoutputremove(int signo, void *data)
+{
+	/* the newest monitor, createmon() inserts at the head; never the last one */
+	Monitor *m;
+	if (wl_list_length(&mons) > 1) {
+		m = wl_container_of(mons.next, m, link);
+		wlr_output_destroy(m->wlr_output);
+	}
+	return 0;
 }
 
 void
