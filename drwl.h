@@ -67,9 +67,9 @@ typedef struct drwl_window_t {
 } drwl_window_t;
 
 struct Drwl {
-	pixman_image_t *pix;
-	struct fcft_font *font;
-	uint32_t *scheme;
+    pixman_image_t *pix;
+    struct fcft_font *font;
+    uint32_t *scheme;
 
     widget_t widgets_left[32];
     int n_widgets_left;
@@ -99,69 +99,63 @@ static const uint32_t utfmax[UTF_SIZ + 1] = {0x10FFFF, 0x7F, 0x7FF, 0xFFFF, 0x10
 static inline uint32_t
 utf8decodebyte(const char c, size_t *i)
 {
-	for (*i = 0; *i < (UTF_SIZ + 1); ++(*i))
-		if (((unsigned char)c & utfmask[*i]) == utfbyte[*i])
-			return (unsigned char)c & ~utfmask[*i];
-	return 0;
+    for (*i = 0; *i < (UTF_SIZ + 1); ++(*i))
+        if (((unsigned char)c & utfmask[*i]) == utfbyte[*i])
+            return (unsigned char)c & ~utfmask[*i];
+    return 0;
 }
 
 static inline size_t
 utf8decode(const char *c, uint32_t *u)
 {
-	size_t i, j, len, type;
-	uint32_t udecoded;
+    size_t i, j, len, type;
+    uint32_t udecoded;
 
-	*u = UTF_INVALID;
-	udecoded = utf8decodebyte(c[0], &len);
-	if (!BETWEEN(len, 1, UTF_SIZ))
-		return 1;
-	for (i = 1, j = 1; i < UTF_SIZ && j < len; ++i, ++j) {
-		udecoded = (udecoded << 6) | utf8decodebyte(c[i], &type);
-		if (type)
-			return j;
-	}
-	if (j < len)
-		return 0;
-	*u = udecoded;
-	if (!BETWEEN(*u, utfmin[len], utfmax[len]) || BETWEEN(*u, 0xD800, 0xDFFF))
-		*u = UTF_INVALID;
-	for (i = 1; *u > utfmax[i]; ++i)
-		;
-	return len;
+    *u = UTF_INVALID;
+    udecoded = utf8decodebyte(c[0], &len);
+    if (!BETWEEN(len, 1, UTF_SIZ))
+        return 1;
+    for (i = 1, j = 1; i < UTF_SIZ && j < len; ++i, ++j) {
+        udecoded = (udecoded << 6) | utf8decodebyte(c[i], &type);
+        if (type)
+            return j;
+    }
+    if (j < len)
+        return 0;
+    *u = udecoded;
+    if (!BETWEEN(*u, utfmin[len], utfmax[len]) || BETWEEN(*u, 0xD800, 0xDFFF))
+        *u = UTF_INVALID;
+    for (i = 1; *u > utfmax[i]; ++i)
+        ;
+    return len;
 }
 
 static inline pixman_color_t
 convert_color(uint32_t clr)
 {
-	return (pixman_color_t){
-		((clr >> 24) & 0xFF) * 0x101,
-		((clr >> 16) & 0xFF) * 0x101,
-		((clr >> 8) & 0xFF) * 0x101,
-		(clr & 0xFF) * 0x101
-	};
+    return (pixman_color_t){
+        ((clr >> 24) & 0xFF) * 0x101,
+        ((clr >> 16) & 0xFF) * 0x101,
+        ((clr >> 8) & 0xFF) * 0x101,
+        (clr & 0xFF) * 0x101
+    };
 }
 
 static inline int
 drwl_stride(unsigned int width)
 {
-	return (((PIXMAN_FORMAT_BPP(PIXMAN_a8r8g8b8) * width + 7) / 8 + 4 - 1) & -4);
+    return (((PIXMAN_FORMAT_BPP(PIXMAN_a8r8g8b8) * width + 7) / 8 + 4 - 1) & -4);
 }
 
 int drwl_init(void);
 Drwl * drwl_create(Monitor* m);
-void drwl_setfont(Drwl *drwl, struct fcft_font *font);
 struct fcft_font * drwl_load_font(Drwl *drwl, size_t fontcount,
         const char *fonts[static fontcount], const char *attributes);
 void drwl_destroy_font(struct fcft_font *font);
 void drwl_setscheme(Drwl *drwl, uint32_t *scm);
 void drwl_prepare_drawing(Drwl *drwl, unsigned int w, unsigned int h, uint32_t *bits, int stride);
-void drwl_rect(Drwl *drwl, int x, int y, unsigned int w, unsigned int h, int filled, int invert);
 int drwl_text(Drwl *drwl, int x, int y, unsigned int w, unsigned int h, unsigned int lpad,
         const char *text, int invert);
-void drwl_rect_color(Drwl *drwl, int x, int y, unsigned int w, unsigned int h, int filled, uint32_t color);
-void drwl_rect_color2(Drwl *drwl, int x, int y, unsigned int w, unsigned int h, int filled, pixman_color_t color);
-int drwl_text_color(Drwl *drwl, int x, int y, unsigned int w, unsigned int h,
-        unsigned int lpad, const char *text, uint32_t fg, uint32_t bg);
 int drwl_text_color2(Drwl *drwl, int x, int y, unsigned int w, unsigned int h,
         unsigned int lpad, const char *text, pixman_color_t fg, pixman_color_t bg);
 unsigned int drwl_font_getwidth(Drwl *drwl, const char *text);

@@ -16,9 +16,6 @@
 #include "plugins/sem_time.h"
 #include "plugins/colors.h"
 
-typedef struct awl_calendar_t awl_calendar_t;
-typedef struct awl_wallpaper_data_t awl_wallpaper_data_t;
-
 typedef struct awl_plugin_data_t {
     float refresh_sec;
 
@@ -33,11 +30,7 @@ typedef struct awl_plugin_data_t {
     awl_poller_t* poller;
     int paused;
 
-    /*awl_wallpaper_data_t* wp;*/
-
     struct awl_colors awl_colors;
-
-    pthread_t wp_thread;
 } awl_plugin_data_t;
 
 /* dwl's side of the boundary, set by awl_plugin_entry() */

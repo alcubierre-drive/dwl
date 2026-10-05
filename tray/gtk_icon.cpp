@@ -10,16 +10,16 @@
 std::mutex DefaultGtkIconThemeWrapper::default_theme_mutex;
 
 bool DefaultGtkIconThemeWrapper::has_icon(const std::string& value) {
-  const std::lock_guard<std::mutex> lock(default_theme_mutex);
+    const std::lock_guard<std::mutex> lock(default_theme_mutex);
 
-  return Gtk::IconTheme::get_default()->has_icon(value);
+    return Gtk::IconTheme::get_default()->has_icon(value);
 }
 
 Glib::RefPtr<Gdk::Pixbuf> DefaultGtkIconThemeWrapper::load_icon(const char* name, int tmp_size,
                                                                 Gtk::IconLookupFlags flags) {
-  const std::lock_guard<std::mutex> lock(default_theme_mutex);
+    const std::lock_guard<std::mutex> lock(default_theme_mutex);
 
-  auto default_theme = Gtk::IconTheme::get_default();
-  default_theme->rescan_if_needed();
-  return default_theme->load_icon(name, tmp_size, flags);
+    auto default_theme = Gtk::IconTheme::get_default();
+    default_theme->rescan_if_needed();
+    return default_theme->load_icon(name, tmp_size, flags);
 }

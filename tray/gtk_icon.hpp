@@ -5,10 +5,10 @@
 #include <string>
 
 class DefaultGtkIconThemeWrapper {
- private:
-  static std::mutex default_theme_mutex;
+private:
+    static std::mutex default_theme_mutex;
 
- public:
-  static bool has_icon(const std::string&);
-  static Glib::RefPtr<Gdk::Pixbuf> load_icon(const char*, int, Gtk::IconLookupFlags);
+public:
+    static bool has_icon(const std::string&);
+    static Glib::RefPtr<Gdk::Pixbuf> load_icon(const char*, int, Gtk::IconLookupFlags);
 };

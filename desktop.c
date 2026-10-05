@@ -12,7 +12,6 @@ typedef struct {
     int enabled;
     struct wlr_box w;
     float scale;
-    struct fcft_font* font;
 } DesktopKey;
 
 typedef struct DesktopView {
@@ -165,14 +164,20 @@ void desktop_update( Monitor* m ) {
     key.enabled = m->wlr_output->enabled;
     key.w = m->w;
     key.scale = m->wlr_output->scale;
-    key.font = m->drw ? m->drw->font : NULL;
     if (v->drawn && !memcmp( &key, &v->key, sizeof(key) )) return;
     v->key = key;
     v->drawn = 1;
 
-    int on = key.version && key.enabled && key.font && m->w.width > 0 && m->w.height > 0
+    int on = key.version && key.enabled && m->drw && m->drw->font && m->w.width > 0 && m->w.height > 0
           && draw( v, api );
     wlr_scene_node_set_enabled( &v->tree->node, on );
+}
+
+void desktop_fontchanged( Monitor* m ) {
+    DesktopView* v = view_of( m );
+    if (!v) return;
+    v->drawn = 0;
+    desktop_update( m );
 }
 
 void desktop_update_all( void ) {

@@ -31,6 +31,10 @@ void desktop_removemon( Monitor* m );
 /* redraws m's panel if anything it shows changed (the library's content,
  * usable area, scale), hides it if m is disabled; cheap otherwise */
 void desktop_update( Monitor* m );
+/* m->drw's font was reloaded (scale or config change). Not part of
+ * desktop_update()'s check: a new font can land at the old one's address, and
+ * on a scale change the layout is arranged before updatebar() reloads it */
+void desktop_fontchanged( Monitor* m );
 /* for every monitor; on each redraw request, which is also how the library
  * reports changed files */
 void desktop_update_all( void );

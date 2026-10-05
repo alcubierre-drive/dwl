@@ -6,3 +6,4 @@ dwl
 .ccls-cache
 config.h
 libawlplugins.so
+test/vptr

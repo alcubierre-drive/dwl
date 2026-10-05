@@ -14,7 +14,6 @@ static const uint32_t molokai_dark_gray = 0x1b1d1eff;
 static const uint32_t molokai_light_gray = 0x455354ff;
 
 static const pixman_color_t white = {.red = 0xFFFF, .green = 0xFFFF, .blue = 0xFFFF, .alpha = 0xFFFF};
-static const pixman_color_t black = {.red = 0x0000, .green = 0x0000, .blue = 0x0000, .alpha = 0xFFFF};
 
 static inline uint32_t color_16bit_to_8bit( pixman_color_t c ) {
     return (c.red >> 8) << 24 |
@@ -46,8 +45,4 @@ struct awl_colors {
                    bg_stats, fg_stats_cpu, fg_stats_mem, fg_stats_swp;
 };
 struct awl_colors awl_colors( void );
-
-#define COLOR_16BIT_QUICK( R, G, B, A ) { \
-    .red = 0x##R##R, .green = 0x##G##G, .blue = 0x##B##B, .alpha = 0x##A##A, \
-}
 

@@ -12,7 +12,7 @@ DWLCPPFLAGS = -I. -DWLR_USE_UNSTABLE -D_POSIX_C_SOURCE=200809L \
 	-Wfloat-conversion
 
 # CFLAGS / LDFLAGS
-PKGS      = wlroots-0.20 wayland-server libpng libpulse xkbcommon libinput pixman-1 fcft libsystemd $(XLIBS)
+PKGS      = wlroots-0.20 wayland-server libpulse xkbcommon libinput pixman-1 fcft libsystemd $(XLIBS)
 DWLCFLAGS = `$(PKG_CONFIG) --cflags $(PKGS)` $(DWLCPPFLAGS) $(DWLDEVCFLAGS) $(CFLAGS)
 LDLIBS    = `$(PKG_CONFIG) --libs $(PKGS)` -lm $(LIBS) \
 	-Ltray -Wl,-rpath,'$$ORIGIN/tray' -lawltray
@@ -22,7 +22,7 @@ LDLIBS    = `$(PKG_CONFIG) --libs $(PKGS)` -lm $(LIBS) \
 # plugins/redraw.c stays in dwl, which owns the redraw eventfd.
 PLUGINS_SRC := $(filter-out plugins/redraw.c,$(wildcard plugins/*.c))
 PLUGINS_OBJ := $(patsubst %.c,%.o,$(PLUGINS_SRC)) plugins.o widgets.o desktop_panel.o awl_config.o
-PLUGINS_PKGS = libpulse libsystemd libpng pixman-1
+PLUGINS_PKGS = libpulse libsystemd pixman-1
 # --as-needed drops config.mk's -lscenefx, which only dwl uses
 PLUGINS_LIBS = -Wl,--as-needed `$(PKG_CONFIG) --libs $(PLUGINS_PKGS)` -lm -pthread
 

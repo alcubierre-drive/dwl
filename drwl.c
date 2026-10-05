@@ -15,7 +15,7 @@ Drwl * drwl_create(Monitor* m) {
     return drwl;
 }
 
-void drwl_setfont(Drwl *drwl, struct fcft_font *font) {
+static void drwl_setfont(Drwl *drwl, struct fcft_font *font) {
     if (drwl)
         drwl->font = font;
 }
@@ -49,13 +49,7 @@ void drwl_prepare_drawing(Drwl *drwl, unsigned int w, unsigned int h, uint32_t *
     pixman_region32_fini(&clip);
 }
 
-void drwl_rect(Drwl *drwl, int x, int y, unsigned int w, unsigned int h, int filled, int invert) {
-    if (!drwl || !drwl->scheme || !drwl->pix)
-        return;
-    drwl_rect_color(drwl, x, y, w, h, filled, drwl->scheme[invert ? ColBg : ColFg]);
-}
-
-void drwl_rect_color(Drwl *drwl, int x, int y, unsigned int w, unsigned int h, int filled, uint32_t color) {
+static void drwl_rect_color(Drwl *drwl, int x, int y, unsigned int w, unsigned int h, int filled, uint32_t color) {
     pixman_color_t clr;
     if (!drwl || !drwl->scheme || !drwl->pix)
         return;
@@ -73,16 +67,11 @@ void drwl_rect_color(Drwl *drwl, int x, int y, unsigned int w, unsigned int h, i
                 { x + w - 1, y,         1, h }});
 }
 
-/*int drwl_text(Drwl *drwl, int x, int y, unsigned int w, unsigned int h, unsigned int lpad,*/
-/*        const char *text, int invert) {*/
-/*    int render = x || y || w || h;*/
-/*    if (!drwl || (render && (!drwl->scheme || !w || !drwl->pix)) || !text || !drwl->font)*/
-/*        return 0;*/
-/*    if (!render)*/
-/*        w = invert ? invert : ~invert;*/
-/*    return drwl_text_color(drwl, x, y, w, h, lpad, text, drwl->scheme[!invert?ColFg:ColBg],*/
-/*            drwl->scheme[!invert?ColBg:ColFg] );*/
-/*}*/
+static void drwl_rect(Drwl *drwl, int x, int y, unsigned int w, unsigned int h, int filled, int invert) {
+    if (!drwl || !drwl->scheme || !drwl->pix)
+        return;
+    drwl_rect_color(drwl, x, y, w, h, filled, drwl->scheme[invert ? ColBg : ColFg]);
+}
 
 int drwl_text(Drwl *drwl, int x, int y, unsigned int w, unsigned int h, unsigned int lpad,
         const char *text, int invert) {
@@ -170,16 +159,7 @@ int drwl_text(Drwl *drwl, int x, int y, unsigned int w, unsigned int h, unsigned
     return x + (render ? w : 0);
 }
 
-int drwl_text_color2(Drwl *drwl, int x, int y, unsigned int w, unsigned int h,
-        unsigned int lpad, const char *text, pixman_color_t fg, pixman_color_t bg) {
-    return drwl_text_color(drwl, x, y, w, h, lpad, text, color_16bit_to_8bit(fg), color_16bit_to_8bit(bg));
-}
-
-void drwl_rect_color2(Drwl *drwl, int x, int y, unsigned int w, unsigned int h, int filled, pixman_color_t color) {
-    drwl_rect_color(drwl, x, y, w, h, filled, color_16bit_to_8bit(color));
-}
-
-int drwl_text_color(Drwl *drwl, int x, int y, unsigned int w, unsigned int h,
+static int drwl_text_color(Drwl *drwl, int x, int y, unsigned int w, unsigned int h,
         unsigned int lpad, const char *text, uint32_t fg, uint32_t bg) {
     int ty;
     int utf8charlen, render = x || y || w || h;
@@ -263,6 +243,11 @@ int drwl_text_color(Drwl *drwl, int x, int y, unsigned int w, unsigned int h,
         pixman_image_unref(fg_pix);
 
     return x + (render ? w : 0);
+}
+
+int drwl_text_color2(Drwl *drwl, int x, int y, unsigned int w, unsigned int h,
+        unsigned int lpad, const char *text, pixman_color_t fg, pixman_color_t bg) {
+    return drwl_text_color(drwl, x, y, w, h, lpad, text, color_16bit_to_8bit(fg), color_16bit_to_8bit(bg));
 }
 
 unsigned int drwl_font_getwidth(Drwl *drwl, const char *text) {

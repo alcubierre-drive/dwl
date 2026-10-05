@@ -45,8 +45,6 @@ CFLAGS = -std=c11 -Wall -Wextra -pedantic -Wno-unused-parameter
 CFLAGS += -Ofast -march=native -mtune=native -flto
 LDFLAGS += -flto=12
 
-CFLAGS += -DUSLEEP_NOT_DEFINED
-
 DWL_LIBS := $(HOME)/Desktop/dwl-libs
 CFLAGS += -I$(DWL_LIBS)/include/scenefx-0.5
 LDFLAGS += -L$(DWL_LIBS)/lib -Wl,-rpath=$(DWL_LIBS)/lib -lscenefx-0.5

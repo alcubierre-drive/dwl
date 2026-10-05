@@ -2,6 +2,11 @@
 
 #include <stdint.h>
 
+/* Background of the tray windows, 0xRRGGBBAA. The bar fills the systray
+ * widget's slot with it too: the window can only sit on whole logical
+ * pixels, so at fractional scales it misses the slot by up to a pixel. */
+#define AWL_TRAY_BG 0x859394ffu
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -42,8 +47,8 @@ int awl_tray_join(void);
  * constructed a second time after a previous one in the same process was
  * destroyed -- its global type-wrapper registration tables don't come
  * back, and the next D-Bus proxy object the tray tries to wrap crashes.)
- * Wire this into whatever already re-runs on wake/suspend recovery, e.g.
- * alongside awl_plugin_restart(). No-op if the tray was never started. */
+ * dwl calls it from plugin_restart, after reloading libawlplugins.so.
+ * No-op if the tray was never started. */
 void awl_tray_reload(void);
 
 /* Registers a function the tray calls (from its own thread) whenever the
