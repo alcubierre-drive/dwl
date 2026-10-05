@@ -1,21 +1,19 @@
 #pragma once
 
 #include <stdatomic.h>
-#include <semaphore.h>
+#include <pulse/mainloop-api.h>
 
-typedef struct pulse_test_thread_t pulse_test_thread_t;
+typedef struct PulseAudio PulseAudio;
 
 typedef struct pulse_test_t {
     _Atomic float value;
     atomic_int muted;
 
-    int ret;
-    sem_t sem;
-    char name[256];
-
-    pulse_test_thread_t* h;
+    PulseAudio* pa; // loop thread only
 } pulse_test_t;
 
-pulse_test_t* start_pulse_thread( void );
-void stop_pulse_thread( pulse_test_t* p );
-
+/* Tracks the default sink on the loop behind api (poller.h); NULL on
+ * failure. */
+pulse_test_t* pulse_init( pa_mainloop_api* api );
+/* Only once the loop thread has stopped. No-op for NULL. */
+void pulse_free( pulse_test_t* p );

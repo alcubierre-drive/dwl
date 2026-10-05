@@ -40,21 +40,32 @@ static void awl_plugin_start( awl_plugin_data_t* p ) {
 
     p->bat = bat_init();
     p->date = date_init();
-    p->poller = poller_start( p->stats, p->temp, p->date, p->bat, p->ip );
+    // one thread for all of them, see plugins/poller.h
+    p->poller = poller_new( p->stats, p->temp, p->date, p->bat, p->ip );
+    if (!p->poller) return;
+    p->pulse = pulse_init( poller_api( p->poller ) );
+    p->backlight = backlight_init( poller_api( p->poller ) );
     poller_set_paused( p->poller, p->paused );
-    p->pulse = start_pulse_thread();
-    p->backlight = start_backlight_thread();
+    if (poller_start( p->poller )) {
+        pulse_free( p->pulse );
+        backlight_free( p->backlight );
+        poller_free( p->poller );
+        p->pulse = NULL;
+        p->backlight = NULL;
+        p->poller = NULL;
+    }
 }
 
 static void awl_plugin_stop( awl_plugin_data_t* p ) {
     poller_stop(p->poller);
+    pulse_free(p->pulse);
+    backlight_free(p->backlight);
+    poller_free(p->poller);
     ip_free(p->ip);
     stats_free(p->stats);
     free(p->temp);
     bat_free(p->bat);
     date_free(p->date);
-    stop_pulse_thread(p->pulse);
-    stop_backlight_thread(p->backlight);
 }
 
 /* everything below is the library's side of awl_plugin_abi.h */

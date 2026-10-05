@@ -2,27 +2,22 @@
  * do. dwl's desktop.c owns the panels' buffers and scene nodes and asks for
  * the pixels through awl_plugin_api_t (see awl_plugin_abi.h). */
 
-/* pthread_timedjoin_np() */
-#define _GNU_SOURCE
-
 #include "plugins.h"
 #include "plugins/colors.h"
 #include "plugins/readdir.h"
+#include "plugins/redraw.h"
+#include "plugins/thread.h"
 
 #include <errno.h>
 #include <limits.h>
 #include <linux/input-event-codes.h>
 #include <math.h>
 #include <poll.h>
-#include <pthread.h>
-#include <signal.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/eventfd.h>
 #include <sys/inotify.h>
-#include <time.h>
 #include <unistd.h>
 
 /* calendar style (tray/calendar.cpp) */
@@ -48,7 +43,7 @@ typedef struct {
  * hung (e.g. remote) mount any file system call can block indefinitely,
  * which must not freeze the compositor. */
 static struct {
-    /* main thread's copy of sc->files, what the panels show */
+    /* main thread's copy of the scanner's last list, what the panels show */
     Filename files[NFILES];
     int n_files;
     uint64_t version; /* see desktop_version() */
@@ -65,11 +60,11 @@ static struct {
  * mapped too, the library stays loaded (api fini() reports it). */
 typedef struct {
     char path[PATH_MAX];  /* set before the thread starts, then read-only */
-    DesktopFiles files;   /* files.sem guards files.files/n_files */
-    int wake_fd;          /* main -> scanner: rescan (eventfd) */
-    atomic_int changed;   /* scanner -> main: files changed */
-    atomic_int quit;
-    pthread_t thread;
+    DesktopFiles files;   /* scanner only: its last list */
+    /* scanner -> main: a copy of a changed list, NULL if there is none yet.
+     * Handed over whole, so neither side ever waits for the other. */
+    _Atomic(DesktopFiles*) pending;
+    awl_thread_t thread;  /* waking it (main -> scanner) means rescan */
 } Scanner;
 
 /* the running scanner, NULL if none */
@@ -81,18 +76,12 @@ static const int scan_settle_ms = 50, scan_settle_max_ms = 500;
 /* without a watch (no directory yet, or it vanished), retry this often */
 static const int rewatch_ms = 5000;
 
-static void drain( int fd ) {
-    char buf[64];
-    while (read( fd, buf, sizeof(buf) ) > 0)
-        ;
-}
-
 static void* scanner( void* data ) {
     Scanner* sc = data;
-    int ifd = inotify_init1( IN_NONBLOCK | IN_CLOEXEC ), watch = -1, first = 1;
+    int ifd = inotify_init1( IN_NONBLOCK | IN_CLOEXEC ), watch = -1, unsent = 1;
     char buf[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
 
-    while (!atomic_load( &sc->quit )) {
+    while (1) {
         /* the directory may have been (re)created since */
         if (ifd >= 0 && watch < 0)
             watch = inotify_add_watch( ifd, sc->path,
@@ -100,19 +89,25 @@ static void* scanner( void* data ) {
                     IN_DELETE_SELF | IN_MOVE_SELF | IN_ONLYDIR );
         /* the first result goes out even if it's empty, which findfiles()
          * doesn't count as a change */
-        if (findfiles( &sc->files, sc->path ) || first) {
-            atomic_store( &sc->changed, 1 );
-            awl_host->redraw_request();
+        unsent |= findfiles( &sc->files, sc->path );
+        if (unsent) {
+            DesktopFiles* copy = malloc( sizeof(*copy) );
+            if (copy) {
+                *copy = sc->files;
+                /* replaces one the main thread hasn't taken yet */
+                free( atomic_exchange( &sc->pending, copy ) );
+                awl_redraw_request();
+                unsent = 0;
+            }
         }
-        first = 0;
 
         struct pollfd fds[2] = {
-            { .fd = sc->wake_fd, .events = POLLIN },
+            { .fd = sc->thread.wake_fd, .events = POLLIN },
             { .fd = ifd, .events = POLLIN },
         };
         int r = poll( fds, 2, watch < 0 ? rewatch_ms : -1 );
         if (r < 0 && errno != EINTR) break;
-        if (fds[0].revents & POLLIN) drain( sc->wake_fd );
+        if ((fds[0].revents & POLLIN) && awl_thread_woken( &sc->thread )) break;
         if (fds[1].revents & POLLIN) {
             for (int waited = 0; waited < scan_settle_max_ms; waited += scan_settle_ms) {
                 ssize_t len;
@@ -134,7 +129,7 @@ static void* scanner( void* data ) {
 
 /* asks the scanner to look again, e.g. for a directory that appeared */
 static void rescan( void ) {
-    if (sc) eventfd_write( sc->wake_fd, 1 );
+    if (sc) awl_thread_wake( &sc->thread );
 }
 
 void awl_desktop_start( void ) {
@@ -146,23 +141,8 @@ void awl_desktop_start( void ) {
     if (!n) return;
     const char* home = getenv( "HOME" );
     snprintf( n->path, sizeof(n->path), "%s/Desktop", home ? home : "" );
-    sem_init( &n->files.sem, 0, 1 );
-    n->wake_fd = eventfd( 0, EFD_NONBLOCK | EFD_CLOEXEC );
-    if (n->wake_fd < 0) {
-        fprintf( stderr, "desktop: eventfd: %s\n", strerror( errno ) );
-        free( n );
-        return;
-    }
-
-    /* signals stay with the main thread */
-    sigset_t all, old;
-    sigfillset( &all );
-    pthread_sigmask( SIG_SETMASK, &all, &old );
-    int err = pthread_create( &n->thread, NULL, scanner, n );
-    pthread_sigmask( SIG_SETMASK, &old, NULL );
-    if (err) {
-        fprintf( stderr, "desktop: can't start the scanner thread\n" );
-        close( n->wake_fd );
+    atomic_init( &n->pending, NULL );
+    if (awl_thread_start( &n->thread, "desktop", scanner, n )) {
         free( n );
         return;
     }
@@ -174,40 +154,28 @@ int awl_desktop_stop( void ) {
     Scanner* old = sc;
     sc = NULL;
 
-    atomic_store( &old->quit, 1 );
-    eventfd_write( old->wake_fd, 1 );
     /* a scanner blocked on a dead mount can't be woken or cancelled; leave
      * it behind instead of hanging dwl */
-    struct timespec until;
-    clock_gettime( CLOCK_REALTIME, &until );
-    until.tv_nsec += 500 * 1000 * 1000;
-    if (until.tv_nsec >= 1000 * 1000 * 1000) {
-        until.tv_sec++;
-        until.tv_nsec -= 1000 * 1000 * 1000;
-    }
-    if (pthread_timedjoin_np( old->thread, NULL, &until )) {
+    if (awl_thread_stop( &old->thread, 500 )) {
         fprintf( stderr, "desktop: scanner thread stuck (in %s?), not waiting for it\n",
                  old->path );
-        pthread_detach( old->thread );
         return -1; /* old stays allocated, the thread may still use it */
     }
-    close( old->wake_fd );
-    sem_destroy( &old->files.sem );
+    free( atomic_load( &old->pending ) );
     free( old );
     return 0;
 }
 
 uint64_t awl_desktop_version( void ) {
-    if (sc && atomic_exchange( &sc->changed, 0 )) {
-        /* the scanner holds the lock only while copying */
-        sem_wait( &sc->files.sem );
-        int changed = desk.n_files != sc->files.n_files
-                   || memcmp( desk.files, sc->files.files, sizeof(desk.files) );
+    DesktopFiles* f = sc ? atomic_exchange( &sc->pending, NULL ) : NULL;
+    if (f) {
+        int changed = desk.n_files != f->n_files
+                   || memcmp( desk.files, f->files, sizeof(desk.files) );
         if (changed) {
-            memcpy( desk.files, sc->files.files, sizeof(desk.files) );
-            desk.n_files = sc->files.n_files;
+            memcpy( desk.files, f->files, sizeof(desk.files) );
+            desk.n_files = f->n_files;
         }
-        sem_post( &sc->files.sem );
+        free( f );
         if (changed || !desk.scanned) desk.version++;
         desk.scanned = 1;
     }

@@ -28,6 +28,9 @@
 
 #include <pthread.h>
 
+#include <cstdio>
+#include <cstring>
+
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -535,8 +538,17 @@ extern "C" {
 
 void awl_tray_init(void) {
     if (SNI::g_running.load()) return;
+    // g_running before the thread exists: the thread's first calls into
+    // dwl (shared_for(), via geometry pushes) check it
     SNI::g_running = true;
-    pthread_create(&SNI::g_thread, nullptr, SNI::thread_main, nullptr);
+    int err = pthread_create(&SNI::g_thread, nullptr, SNI::thread_main, nullptr);
+    if (err) {
+        fprintf(stderr, "awl: can't start the tray thread: %s\n", strerror(err));
+        SNI::g_running = false;
+        return;
+    }
+    pthread_setname_np(SNI::g_thread, "awl-tray");
+    fprintf(stderr, "awl: tray thread started\n");
 }
 
 void awl_tray_shutdown(void) {

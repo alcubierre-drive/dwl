@@ -286,7 +286,8 @@ Popup::Popup() {
     list_.set_selection_mode(Gtk::SELECTION_NONE);
     scroll_.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC);
     scroll_.set_propagate_natural_height(true);
-    scroll_.set_max_content_height(300);
+    scroll_.set_min_content_height(120);
+    scroll_.set_max_content_height(200);
     scroll_.add(list_);
     evo_btn_.set_image_from_icon_name("window-new-symbolic", Gtk::ICON_SIZE_MENU);
     evo_btn_.set_relief(Gtk::RELIEF_NONE);

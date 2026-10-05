@@ -1,17 +1,11 @@
 #include "poller.h"
-#include "pthread_wrap.h"
 #include "redraw.h"
-#include <errno.h>
-#include <stdio.h>
-#include <string.h>
+#include "thread.h"
 #include <stdatomic.h>
-#include <poll.h>
-#include <stdint.h>
 #include <stdlib.h>
-#include <time.h>
-#include <unistd.h>
-#include <sys/eventfd.h>
 #include <sys/prctl.h>
+#include <sys/time.h>
+#include <pulse/mainloop.h>
 
 /* Lets the kernel delay the 1 s tick by this much to batch it with other
  * wakeups; nobody sees the clock or the graph being 20 ms late. */
@@ -29,17 +23,18 @@ struct awl_poller_t {
     awl_battery_t* bat;
     awl_ipaddr_t* ip;
 
-    pthread_t me;
-    int wake_fd; // eventfd; written by poller_stop() and poller_set_paused()
-    atomic_int stop, paused;
-};
+    awl_thread_t thread;
+    int started;
+    atomic_int paused;
 
-/* poll() timeout until the next full wall-clock second, rounded up so it
- * never expires before it */
-static int ms_to_next_second( const struct timespec* now ) {
-    long ns = 1000000000L - now->tv_nsec;
-    return (int)((ns + 999999L) / 1000000L);
-}
+    /* loop thread only (once started) */
+    pa_mainloop* ml;
+    pa_mainloop_api* api;
+    pa_io_event *wake, *bat_io, *ip_io;
+    pa_time_event* tick; /* NULL while paused */
+    int fresh;           /* the next tick re-reads everything */
+    unsigned long ticks;
+};
 
 static void update_all( awl_poller_t* p ) {
     stats_update( p->stats );
@@ -50,73 +45,80 @@ static void update_all( awl_poller_t* p ) {
     awl_redraw_request();
 }
 
+static void tick_callback( pa_mainloop_api* a, pa_time_event* e, const struct timeval* tv, void* userdata ) {
+    (void)tv;
+    awl_poller_t* p = userdata;
+    if (p->fresh) {
+        p->fresh = 0;
+        update_all( p );
+    } else {
+        p->ticks++;
+        stats_update( p->stats );
+        temp_update( p->temp );
+        date_update( p->date );
+        if (p->ticks % BAT_REREAD_TICKS == 0)
+            bat_update( p->bat );
+        if (p->ip->nl_fd < 0 && p->ticks % IP_FALLBACK_TICKS == 0)
+            ip_update( p->ip );
+        /* the graph moves every second */
+        awl_redraw_request();
+    }
+    /* the next full wall-clock second */
+    struct timeval next;
+    gettimeofday( &next, NULL );
+    next.tv_sec++;
+    next.tv_usec = 0;
+    a->time_restart( e, &next );
+}
+
+/* starts or stops the tick to match p->paused */
+static void sync_paused( awl_poller_t* p ) {
+    int paused = atomic_load( &p->paused );
+    if (paused && p->tick) {
+        p->api->time_free( p->tick );
+        p->tick = NULL;
+    } else if (!paused && !p->tick) {
+        /* the bar is visible again: catch up on everything at once */
+        struct timeval now;
+        gettimeofday( &now, NULL );
+        p->fresh = 1;
+        p->tick = p->api->time_new( p->api, &now, tick_callback, p );
+    }
+}
+
+static void wake_callback( pa_mainloop_api* a, pa_io_event* e, int fd, pa_io_event_flags_t f, void* userdata ) {
+    (void)e; (void)fd; (void)f;
+    awl_poller_t* p = userdata;
+    if (awl_thread_woken( &p->thread ))
+        a->quit( a, 0 );
+    else
+        sync_paused( p );
+}
+
+static void bat_callback( pa_mainloop_api* a, pa_io_event* e, int fd, pa_io_event_flags_t f, void* userdata ) {
+    (void)a; (void)e; (void)fd; (void)f;
+    awl_poller_t* p = userdata;
+    if (bat_dispatch( p->bat ) && !atomic_load( &p->paused )) awl_redraw_request();
+}
+
+static void ip_callback( pa_mainloop_api* a, pa_io_event* e, int fd, pa_io_event_flags_t f, void* userdata ) {
+    (void)a; (void)e; (void)fd; (void)f;
+    awl_poller_t* p = userdata;
+    if (ip_dispatch( p->ip ) && !atomic_load( &p->paused )) awl_redraw_request();
+}
+
 static void* poller_run( void* arg ) {
     awl_poller_t* p = arg;
     prctl( PR_SET_TIMERSLACK, TIMER_SLACK_NS, 0, 0, 0 );
-
-    update_all( p );
-    int was_paused = 0;
-
-    struct pollfd fds[3] = {
-        { .fd = p->wake_fd, .events = POLLIN },
-        { .fd = p->bat->uevent_fd, .events = POLLIN }, // poll() skips fd -1
-        { .fd = p->ip->nl_fd, .events = POLLIN },
-    };
-    struct timespec now;
-    clock_gettime( CLOCK_REALTIME, &now );
-    time_t last_tick = now.tv_sec;
-    unsigned long ticks = 0;
-
-    while (1) {
-        // paused: no tick, only the battery and IP events (rare) keep their
-        // state current
-        int paused = atomic_load( &p->paused );
-        if (was_paused && !paused) {
-            // the bar is visible again: catch up on everything at once
-            update_all( p );
-            clock_gettime( CLOCK_REALTIME, &now );
-            last_tick = now.tv_sec;
-        }
-        was_paused = paused;
-
-        clock_gettime( CLOCK_REALTIME, &now );
-        if (poll( fds, 3, paused ? -1 : ms_to_next_second( &now ) ) < 0) {
-            if (errno == EINTR) continue;
-            break;
-        }
-        if (fds[0].revents) {
-            uint64_t n;
-            if (read( p->wake_fd, &n, sizeof n ) < 0 && errno != EAGAIN) break;
-            if (atomic_load( &p->stop )) break;
-        }
-
-        int changed = 0;
-        if (fds[1].revents) changed |= bat_dispatch( p->bat );
-        if (fds[2].revents) changed |= ip_dispatch( p->ip );
-
-        // tick whenever the wall-clock second changed, however we woke up
-        // (also covers clock jumps and resume from suspend)
-        clock_gettime( CLOCK_REALTIME, &now );
-        if (!paused && now.tv_sec != last_tick) {
-            last_tick = now.tv_sec;
-            ticks++;
-            stats_update( p->stats );
-            changed = 1;
-            changed |= temp_update( p->temp );
-            changed |= date_update( p->date );
-            if (ticks % BAT_REREAD_TICKS == 0)
-                changed |= bat_update( p->bat );
-            if (p->ip->nl_fd < 0 && ticks % IP_FALLBACK_TICKS == 0)
-                changed |= ip_update( p->ip );
-        }
-
-        if (changed && !paused) awl_redraw_request();
-    }
+    p->wake = p->api->io_new( p->api, p->thread.wake_fd, PA_IO_EVENT_INPUT, wake_callback, p );
+    if (!p->wake) return NULL;
+    sync_paused( p );
+    pa_mainloop_run( p->ml, NULL );
     return NULL;
 }
 
-awl_poller_t* poller_start( awl_stats_t* stats, awl_temperature_t* temp, awl_date_t* date,
-                            awl_battery_t* bat, awl_ipaddr_t* ip ) {
+awl_poller_t* poller_new( awl_stats_t* stats, awl_temperature_t* temp, awl_date_t* date,
+                          awl_battery_t* bat, awl_ipaddr_t* ip ) {
     awl_poller_t* p = calloc(1, sizeof(awl_poller_t));
     if (!p) return NULL;
     p->stats = stats;
@@ -124,40 +126,44 @@ awl_poller_t* poller_start( awl_stats_t* stats, awl_temperature_t* temp, awl_dat
     p->date = date;
     p->bat = bat;
     p->ip = ip;
-    atomic_init( &p->stop, 0 );
     atomic_init( &p->paused, 0 );
-    // the eventfd is the only way to stop the thread
-    p->wake_fd = eventfd( 0, EFD_CLOEXEC | EFD_NONBLOCK );
-    if (p->wake_fd < 0) {
-        perror( "poller: eventfd" );
+    if (!(p->ml = pa_mainloop_new())) {
         free( p );
         return NULL;
     }
-    int err = AWL_PTHREAD_CREATE( &p->me, NULL, poller_run, p );
-    if (err) {
-        fprintf( stderr, "poller: can't start the thread: %s\n", strerror( err ) );
-        close( p->wake_fd );
-        free( p );
-        return NULL;
-    }
+    p->api = pa_mainloop_get_api( p->ml );
+    if (bat->uevent_fd >= 0)
+        p->bat_io = p->api->io_new( p->api, bat->uevent_fd, PA_IO_EVENT_INPUT, bat_callback, p );
+    if (ip->nl_fd >= 0)
+        p->ip_io = p->api->io_new( p->api, ip->nl_fd, PA_IO_EVENT_INPUT, ip_callback, p );
     return p;
+}
+
+pa_mainloop_api* poller_api( awl_poller_t* p ) {
+    return p->api;
+}
+
+int poller_start( awl_poller_t* p ) {
+    if (awl_thread_start( &p->thread, "poller", poller_run, p )) return -1;
+    p->started = 1;
+    return 0;
 }
 
 void poller_set_paused( awl_poller_t* p, int paused ) {
     if (!p) return;
     if (atomic_exchange( &p->paused, !!paused ) == !!paused) return;
-    uint64_t one = 1;
-    // only fails if the counter is full, i.e. the thread is due to wake anyway
-    if (write( p->wake_fd, &one, sizeof one ) < 0) {}
+    if (p->started) awl_thread_wake( &p->thread );
 }
 
 void poller_stop( awl_poller_t* p ) {
+    if (!p || !p->started) return;
+    awl_thread_stop( &p->thread, -1 );
+    p->started = 0;
+}
+
+void poller_free( awl_poller_t* p ) {
     if (!p) return;
-    uint64_t one = 1;
-    atomic_store( &p->stop, 1 );
-    // only fails if the counter is full, i.e. the thread is due to wake anyway
-    if (write( p->wake_fd, &one, sizeof one ) < 0) {}
-    pthread_join( p->me, NULL );
-    close( p->wake_fd );
+    /* frees whatever event sources are left, ours included */
+    pa_mainloop_free( p->ml );
     free( p );
 }

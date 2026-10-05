@@ -32,7 +32,6 @@ private:
     static inline std::size_t nb_hosts_ = 0;
     SNI::Watcher::singleton watcher_;
     SNI::Host host_;
-    Glib::Dispatcher dp_;
 };
 
 }  // namespace SNI

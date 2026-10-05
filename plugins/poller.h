@@ -5,20 +5,28 @@
 #include "date.h"
 #include "bat.h"
 #include "ipaddr.h"
+#include <pulse/mainloop-api.h>
 
-/* One thread drives all of the plugins above: stats, temperature and clock
- * tick once per wall-clock second, battery and IP address only wake it when
- * the kernel reports a change. Every wakeup ends in at most one redraw
- * request. */
+/* One thread drives all of the plugins: a PulseAudio main loop, which also
+ * runs pulsetest.c's and backlight.c's event sources. Stats, temperature and
+ * clock tick once per wall-clock second, battery and IP address only wake
+ * it when the kernel reports a change. Every wakeup ends in at most one
+ * redraw request per plugin. */
 typedef struct awl_poller_t awl_poller_t;
 
-/* NULL if the thread can't be started. */
-awl_poller_t* poller_start( awl_stats_t* stats, awl_temperature_t* temp, awl_date_t* date,
-                            awl_battery_t* bat, awl_ipaddr_t* ip );
+/* Sets up the loop, not running yet. NULL on failure. */
+awl_poller_t* poller_new( awl_stats_t* stats, awl_temperature_t* temp, awl_date_t* date,
+                          awl_battery_t* bat, awl_ipaddr_t* ip );
+/* For the other plugins' event sources: from the calling thread until
+ * poller_start(), then only from callbacks on the loop. */
+pa_mainloop_api* poller_api( awl_poller_t* p );
+/* Starts the thread. Returns 0, or -1 if it can't. */
+int poller_start( awl_poller_t* p );
 /* Paused, the 1 s tick stops (battery and IP events are still handled);
  * resuming re-reads everything and requests a redraw. Any thread; no-op for
  * NULL. */
 void poller_set_paused( awl_poller_t* p, int paused );
-/* Returns once the thread has exited; the plugin data can be freed then.
- * No-op for NULL. */
+/* Returns once the thread has exited, if it was started. The other plugins
+ * free their event sources after this, then poller_free(). No-op for NULL. */
 void poller_stop( awl_poller_t* p );
+void poller_free( awl_poller_t* p );

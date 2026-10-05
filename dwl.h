@@ -227,7 +227,7 @@ struct Monitor {
     struct wlr_scene_output *scene_output;
     struct wlr_scene_buffer *scene_buffer; /* bar buffer */
     Buffer *bar_bufs[2]; /* bar render targets, reused; see barbuffer() */
-    uint64_t bar_hash; /* pixel hash of the buffer scene_buffer shows */
+    Buffer *bar_shown; /* the slot scene_buffer shows, NULL if unknown */
     struct wlr_scene_rect *fullscreen_bg; /* See createmon() for info */
     struct wl_listener frame;
     struct wl_listener destroy;

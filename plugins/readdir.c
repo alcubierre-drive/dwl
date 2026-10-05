@@ -38,7 +38,6 @@ closedir:
     qsort( files, n_files, sizeof(Filename), filename_sort );
 
     // update files/n_files
-    sem_wait( &wp->sem );
     int update = 0;
     if (wp->n_files != n_files) {
         update = 1;
@@ -49,7 +48,6 @@ closedir:
         memcpy(wp->files, files, sizeof(files));
         wp->n_files = n_files;
     }
-    sem_post( &wp->sem );
 
     return update;
 }

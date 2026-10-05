@@ -81,7 +81,7 @@ static void drawbar(Monitor *m);
 static void drawbars(void);
 static Buffer *barbuffer(Monitor *m);
 static Buffer *newbarbuffer(Monitor *m);
-static uint64_t barhash(const Buffer *buf);
+static int bardamage(const Buffer *buf, const Buffer *prev, pixman_region32_t *damage);
 
 /* bars are redrawn on demand: see plugins/redraw.h */
 static struct wl_event_source* redraw_source = NULL;
@@ -143,6 +143,7 @@ static void setsel(struct wl_listener *listener, void *data);
 static void setup(void);
 static void spawn(const Arg *arg);
 static pid_t spawn_pid(const Arg *arg);
+static void autostart(const char **argv);
 static void startdrag(struct wl_listener *listener, void *data);
 static void tag(const Arg *arg);
 static void tagmon(const Arg *arg);
@@ -158,6 +159,7 @@ static void togglefullscreen(const Arg *arg);
 static void toggletag(const Arg *arg);
 static void unlocksession(struct wl_listener *listener, void *data);
 static void unblocksignals(void);
+static void stopchildren(void);
 static void unmaplayersurfacenotify(struct wl_listener *listener, void *data);
 static void unmapnotify(struct wl_listener *listener, void *data);
 static void updatemons(struct wl_listener *listener, void *data);
@@ -183,6 +185,10 @@ static void cycle_view(const Arg* arg);
 static void toggleview(const Arg *arg);
 static void transluce(const Arg *arg);
 static void view(const Arg *arg);
+
+/* how long dwl waits on exit for the tray thread and for its children */
+#define TRAY_STOP_MS 5000
+#define CHILD_STOP_MS 3000
 
 /* variables */
 static pid_t child_pid = -1;
@@ -1010,6 +1016,9 @@ checkidleinhibitor(struct wlr_surface *exclude)
 void
 cleanup(void)
 {
+    struct timespec start, now;
+    sigset_t quitsigs;
+
     awl_tray_set_change_callback(NULL);
     if (redraw_source) wl_event_source_remove(redraw_source);
     if (hover_timer) {
@@ -1045,10 +1054,29 @@ cleanup(void)
      * roundtrip (e.g. GTK's gtk_main()-exit gdk_flush()) waits forever on
      * a reply that was generated but never actually written to its
      * socket. */
+    clock_gettime(CLOCK_MONOTONIC, &start);
     while (!awl_tray_join()) {
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        if ((now.tv_sec - start.tv_sec) * 1000 + (now.tv_nsec - start.tv_nsec) / 1000000
+                >= TRAY_STOP_MS) {
+            /* Tearing the display down under a GTK thread that still uses
+             * it could crash anywhere; the kernel cleans up just as well. */
+            fprintf(stderr, "dwl: tray thread did not stop within %d ms, exiting without cleanup\n",
+                    TRAY_STOP_MS);
+            stopchildren();
+            _exit(EXIT_FAILURE);
+        }
         wl_display_flush_clients(dpy);
         wl_event_loop_dispatch(event_loop, 10);
     }
+
+    /* That was the last time the event loop ran, so nothing reads the
+     * signalfd any more: let SIGINT and SIGTERM end dwl the usual way again
+     * instead of leaving it to SIGKILL should anything below hang. */
+    sigemptyset(&quitsigs);
+    sigaddset(&quitsigs, SIGINT);
+    sigaddset(&quitsigs, SIGTERM);
+    sigprocmask(SIG_UNBLOCK, &quitsigs, NULL);
 
     cleanuplisteners();
 #ifdef XWAYLAND
@@ -1056,10 +1084,7 @@ cleanup(void)
     xwayland = NULL;
 #endif
     wl_display_destroy_clients(dpy);
-    if (child_pid > 0) {
-        kill(-child_pid, SIGTERM);
-        waitpid(child_pid, NULL, 0);
-    }
+    stopchildren();
     wlr_xcursor_manager_destroy(cursor_mgr);
 
     destroykeyboardgroup(&kb_group->destroy, NULL);
@@ -1931,7 +1956,7 @@ drawbar(Monitor *m)
     Client *c;
     Buffer *buf;
     int oneoff;
-    uint64_t hash;
+    pixman_region32_t damage;
 
     Client* ct;
 
@@ -2003,14 +2028,17 @@ drawbar(Monitor *m)
         m->b.real_width, m->b.real_height);
     wlr_scene_node_set_position(&m->scene_buffer->node, m->m.x,
         m->m.y + (topbar ? 0 : m->m.height - m->b.real_height));
-    /* only hand the scene a new buffer (damaging the output) if the pixels
-     * actually changed; buf stays unlocked otherwise and is reused next time.
-     * bar_hash == 0 means "nothing valid shown", see gpureset(). */
-    hash = barhash(buf);
-    if (hash != m->bar_hash || !m->bar_hash) {
-        wlr_scene_buffer_set_buffer(m->scene_buffer, &buf->base);
-        m->bar_hash = hash;
+    /* only hand the scene a new buffer if the pixels actually changed, and
+     * only damage the output where they did (usually just the clock and the
+     * graphs); buf stays unlocked otherwise and is reused next time */
+    pixman_region32_init(&damage);
+    if (bardamage(buf, m->bar_shown, &damage)) {
+        wlr_scene_buffer_set_buffer_with_damage(m->scene_buffer, &buf->base,
+                m->bar_shown ? &damage : NULL);
+        /* a one-off buffer is gone once the scene has uploaded it */
+        m->bar_shown = oneoff ? NULL : buf;
     }
+    pixman_region32_fini(&damage);
     if (oneoff)
         wlr_buffer_drop(&buf->base);
 }
@@ -2032,15 +2060,15 @@ barbuffer(Monitor *m)
 {
     /* The scene locks a buffer from set_buffer until it has copied it into a
      * texture on the next rendered frame, then unlocks it again. Any unlocked
-     * slot is therefore free to draw into; the second slot covers redraws
-     * that happen before that upload (e.g. while the output renders no
-     * frames). The slots are only dropped in cleanupmon(). */
+     * slot is therefore free to draw into, except the one shown: drawbar()
+     * compares the new pixels with it. The slots are only dropped in
+     * cleanupmon(). */
     size_t i;
     Buffer *buf;
 
     for (i = 0; i < LENGTH(m->bar_bufs); i++) {
         buf = m->bar_bufs[i];
-        if (buf && buf->base.n_locks)
+        if (buf && (buf->base.n_locks || buf == m->bar_shown))
             continue;
         if (buf && (buf->w != (size_t)m->b.width || buf->h != (size_t)m->b.height)) {
             wlr_buffer_drop(&buf->base);
@@ -2053,22 +2081,47 @@ barbuffer(Monitor *m)
     return NULL;
 }
 
-uint64_t
-barhash(const Buffer *buf)
+int
+bardamage(const Buffer *buf, const Buffer *prev, pixman_region32_t *damage)
 {
-    /* FNV-1a over 64-bit words; only ever compared with the previous frame */
-    const unsigned char *p = (const unsigned char *)buf->data;
-    size_t size = buf->stride * buf->h, i;
-    uint64_t h = 0xcbf29ce484222325ull ^ ((uint64_t)buf->w << 32 | buf->h);
-    uint64_t word;
+    /* Collects the columns of buf that differ from prev, in BARTILE-pixel
+     * steps and over the full bar height, into damage; returns whether
+     * anything differs. Without a comparable prev, everything does. */
+    enum { BARTILE = 32 };
+    size_t x, y, x0, run = 0, w = buf->w, h = buf->h, ntiles = (w + BARTILE - 1) / BARTILE;
+    uint8_t dirty[ntiles ? ntiles : 1];
+    int any = 0;
 
-    for (i = 0; i + sizeof(word) <= size; i += sizeof(word)) {
-        memcpy(&word, p + i, sizeof(word));
-        h = (h ^ word) * 0x100000001b3ull;
+    if (!prev || prev->w != w || prev->h != h || prev->stride != buf->stride) {
+        pixman_region32_union_rect(damage, damage, 0, 0, w, h);
+        return 1;
     }
-    for (; i < size; i++)
-        h = (h ^ p[i]) * 0x100000001b3ull;
-    return h;
+    memset(dirty, 0, ntiles);
+    for (y = 0; y < h; y++) {
+        const uint32_t *a = (const uint32_t *)((const char *)buf->data + y * buf->stride);
+        const uint32_t *b = (const uint32_t *)((const char *)prev->data + y * prev->stride);
+        if (!memcmp(a, b, w * sizeof(*a)))
+            continue;
+        for (x = 0; x < ntiles; x++) {
+            size_t n = x + 1 < ntiles ? BARTILE : w - x * BARTILE;
+            if (!dirty[x] && memcmp(a + x * BARTILE, b + x * BARTILE, n * sizeof(*a)))
+                dirty[x] = any = 1;
+        }
+    }
+    /* one rectangle per run of changed tiles */
+    for (x = 0; x <= ntiles; x++) {
+        if (x < ntiles && dirty[x]) {
+            run++;
+            continue;
+        }
+        if (run) {
+            x0 = (x - run) * BARTILE;
+            pixman_region32_union_rect(damage, damage, x0, 0,
+                    (x * BARTILE < w ? x * BARTILE : w) - x0, h);
+            run = 0;
+        }
+    }
+    return any;
 }
 
 void
@@ -2293,7 +2346,7 @@ gpureset(struct wl_listener *listener, void *data)
         wlr_output_init_render(m->wlr_output, alloc, drw);
         /* the bar's texture dies with the old renderer, and the scene
          * no longer has the buffer to re-upload it from */
-        m->bar_hash = 0;
+        m->bar_shown = NULL;
     }
 
     wlr_allocator_destroy(old_alloc);
@@ -3131,9 +3184,7 @@ run(char *startup_cmd)
     // autostart goes in here
     for (unsigned i=0; i<LENGTH(Autostarts); ++i) {
         if (!Autostarts[i][0]) continue; /* { NULL }: an empty list */
-        pid_t pid = spawn_pid( &(const Arg){.v=Autostarts[i]} );
-        /* a failed spawn returns -1; never let that reach kill()/waitpid() */
-        if (pid > 0) Autostarted_pids[Autostarted_pids_sz++] = pid;
+        autostart(Autostarts[i]);
     }
 
     /* Mark stdout as non-blocking to avoid the startup script
@@ -3673,6 +3724,68 @@ spawn_pid(const Arg *arg)
 }
 
 void spawn(const Arg *arg) { spawn_pid(arg); }
+
+/* spawns argv and remembers it, so it is stopped when dwl exits; refuses to
+ * start it at all if there is no room left to remember it */
+void
+autostart(const char **argv)
+{
+    pid_t pid;
+    if (Autostarted_pids_sz >= (int)LENGTH(Autostarted_pids)) {
+        fprintf(stderr, "autostart: more than %d programs, not starting %s\n",
+                (int)LENGTH(Autostarted_pids), argv[0]);
+        return;
+    }
+    /* a failed spawn returns -1; never let that reach kill()/waitpid() */
+    if ((pid = spawn_pid(&(const Arg){.v=argv})) > 0)
+        Autostarted_pids[Autostarted_pids_sz++] = pid;
+}
+
+/* Sends SIGTERM to the startup command and every autostarted program (each
+ * leads its own process group), then waits for them; whatever is still
+ * running after CHILD_STOP_MS gets SIGKILL, so a child that ignores SIGTERM
+ * can't keep dwl from exiting. */
+void
+stopchildren(void)
+{
+    pid_t pids[LENGTH(Autostarted_pids) + 1], r;
+    struct timespec tick = {0, 20 * 1000 * 1000};
+    int i, n = 0, left, waited;
+
+    if (child_pid > 0)
+        pids[n++] = child_pid;
+    for (i = 0; i < Autostarted_pids_sz; i++)
+        if (Autostarted_pids[i] > 0)
+            pids[n++] = Autostarted_pids[i];
+    child_pid = -1;
+    Autostarted_pids_sz = 0;
+
+    for (i = 0; i < n; i++)
+        kill(-pids[i], SIGTERM);
+    for (waited = 0;; waited += 20) {
+        left = 0;
+        for (i = 0; i < n; i++) {
+            if (!pids[i])
+                continue;
+            /* ECHILD: handlesigchld() already reaped it */
+            if ((r = waitpid(pids[i], NULL, WNOHANG)) == pids[i] || (r < 0 && errno == ECHILD))
+                pids[i] = 0;
+            else
+                left++;
+        }
+        if (!left || waited >= CHILD_STOP_MS)
+            break;
+        nanosleep(&tick, NULL);
+    }
+    for (i = 0; i < n; i++) {
+        if (!pids[i])
+            continue;
+        fprintf(stderr, "dwl: pid %d still running %d ms after SIGTERM, sending SIGKILL\n",
+                (int)pids[i], CHILD_STOP_MS);
+        kill(-pids[i], SIGKILL);
+        waitpid(pids[i], NULL, 0);
+    }
+}
 
 void
 startdrag(struct wl_listener *listener, void *data)
@@ -4617,19 +4730,12 @@ main(int argc, char *argv[])
         die("XDG_RUNTIME_DIR must be set");
 
     setup();
-    if (ScreenLockServiceAtStart) {
-        pid_t lock_pid = spawn_pid( &(const Arg){.v=ScreenLockService} );
-        if (lock_pid > 0) Autostarted_pids[Autostarted_pids_sz++] = lock_pid;
-    }
+    if (ScreenLockServiceAtStart)
+        autostart(ScreenLockService);
 
     if (SwwwAtStart && !startup_cmd) startup_cmd = default_startup_cmd;
     run(startup_cmd);
     cleanup();
-    for (int i=0; i<Autostarted_pids_sz; ++i) {
-        if (Autostarted_pids[i] <= 0) continue;
-        kill(-Autostarted_pids[i], SIGTERM);
-        waitpid(Autostarted_pids[i], NULL, 0);
-    }
     return EXIT_SUCCESS;
 
 usage:

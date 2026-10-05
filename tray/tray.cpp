@@ -18,7 +18,6 @@ Tray::Tray(const std::string& id, Gtk::Window& win)
     win.add( box_ );
     if (!id.empty()) box_.get_style_context()->add_class(id);
     nb_hosts_ += 1;
-    dp_.emit();
 }
 
 void Tray::notifyChange() {
@@ -40,20 +39,17 @@ void Tray::onAdd(std::unique_ptr<Item>& item) {
                      G_CALLBACK(&Tray::onItemWidgetNotify), this);
     g_signal_connect(item->image.gobj(), "notify",
                      G_CALLBACK(&Tray::onItemWidgetNotify), this);
-    dp_.emit();
     notifyChange();
 }
 
 void Tray::onRemove(std::unique_ptr<Item>& item) {
     box_.remove(item->event_box);
-    dp_.emit();
     notifyChange();
 }
 
 void Tray::update() {
     box_.set_visible(1);
     /* box_.set_visible(!box_.get_children().empty()); */
-    dp_.emit();
 }
 
 }  // namespace SNI

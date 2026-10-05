@@ -1,7 +1,6 @@
 #pragma once
 
 #include <stdint.h>
-#include <semaphore.h>
 
 typedef struct {
     char name[127];
@@ -15,8 +14,7 @@ typedef struct {
 typedef struct {
     Filename files[128];
     int n_files;
-    sem_t sem; // caller is responsible for sem_init/sem_destroy
 } DesktopFiles;
 
-// returns whether the files have changed
+// fills wp from path's entries; returns whether they have changed
 int findfiles( DesktopFiles* wp, const char* path );
