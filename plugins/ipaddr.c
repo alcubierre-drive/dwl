@@ -82,7 +82,7 @@ int ip_update( awl_ipaddr_t* ip ) {
 
     if (!*new_addr) {
         is_online = 0;
-        strcpy(new_addr, "invalid");
+        strcpy(new_addr, "disconnected");
     }
 
     sem_wait( &ip->sem );

@@ -1,0 +1,38 @@
+#pragma once
+
+/* The files in $HOME/Desktop, listed in a panel over the wallpaper on every
+ * monitor. This side only places the panels and owns their buffers; what's in
+ * them -- the file list, its scanner thread (all file system access is
+ * there, so a hung mount can't block the compositor), the layout, the look
+ * and what clicks do -- is desktop_panel.c in libawlplugins.so, so it reloads
+ * with the plugins. Without the library, no panel. Main thread only.
+ *
+ * The panels live in their own scene tree right above LyrBg, so they cover
+ * the wallpaper (a background layer surface) but nothing else, and they're
+ * not part of layers[], so xytonode() and clicks go right through them. */
+
+#include "dwl.h"
+
+typedef struct {
+    int blur;            /* blur the wallpaper behind the panel */
+    float blur_strength, blur_alpha;
+    int radius;          /* corner radius, logical pixels */
+} desktop_config_t;
+
+/* tree: an empty scene tree, already placed in the stacking order */
+void desktop_init( struct wlr_scene_tree* tree, const desktop_config_t* cfg );
+
+/* m->drw must have its font loaded */
+void desktop_addmon( Monitor* m );
+void desktop_removemon( Monitor* m );
+/* redraws m's panel if anything it shows changed (the library's content,
+ * usable area, scale), hides it if m is disabled; cheap otherwise */
+void desktop_update( Monitor* m );
+/* for every monitor; on each redraw request, which is also how the library
+ * reports changed files */
+void desktop_update_all( void );
+/* after the library was (re)loaded */
+void desktop_reloaded( void );
+
+/* a click on the bare desktop; returns whether it was taken */
+int desktop_click( int button );

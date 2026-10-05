@@ -1,0 +1,372 @@
+/* The desktop file list's content: which files, how they look, what clicks
+ * do. dwl's desktop.c owns the panels' buffers and scene nodes and asks for
+ * the pixels through awl_plugin_api_t (see awl_plugin_abi.h). */
+
+/* pthread_timedjoin_np() */
+#define _GNU_SOURCE
+
+#include "plugins.h"
+#include "plugins/colors.h"
+#include "plugins/readdir.h"
+
+#include <errno.h>
+#include <limits.h>
+#include <linux/input-event-codes.h>
+#include <math.h>
+#include <poll.h>
+#include <pthread.h>
+#include <signal.h>
+#include <stdatomic.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/eventfd.h>
+#include <sys/inotify.h>
+#include <time.h>
+#include <unistd.h>
+
+/* calendar style (tray/calendar.cpp) */
+static const uint32_t panel_bg = 0x3c3c3c4c,
+                      col_file = 0xf8f8f2ff,
+                      col_dir = molokai_blue,
+                      col_broken = molokai_red;
+/* hidden entries, "(empty)" and "… N more" keep their color at this opacity */
+static const uint32_t hidden_alpha = 0xa0;
+static const float panel_margin = 10; /* logical pixels, to the usable area's corner */
+
+#define NFILES (sizeof(((DesktopFiles*)0)->files) / sizeof(Filename))
+
+/* the layout of the last measure, for drawing */
+typedef struct {
+    int idx[NFILES];   /* the visible entries, in order */
+    int n, shown;      /* visible ones, and how many of those fit */
+    int col_w[NFILES], ncols, rows, row_h, pad, gap;
+    char more[32];     /* "… N more" in place of the last that fits */
+} PanelLayout;
+
+/* Main thread state. The main thread never touches the file system: on a
+ * hung (e.g. remote) mount any file system call can block indefinitely,
+ * which must not freeze the compositor. */
+static struct {
+    /* main thread's copy of sc->files, what the panels show */
+    Filename files[NFILES];
+    int n_files;
+    uint64_t version; /* see desktop_version() */
+    int scanned;      /* the scanner reported at least once */
+    int show, hidden;
+
+    PanelLayout lay;
+} desk;
+
+/* Shared with a scanner thread, which does all the file system access
+ * (inotify_add_watch() resolves the path too). One per scanner: a scanner
+ * stuck in the kernel is abandoned rather than waited for, together with its
+ * Scanner, which is then never freed -- and since its code must stay
+ * mapped too, the library stays loaded (api fini() reports it). */
+typedef struct {
+    char path[PATH_MAX];  /* set before the thread starts, then read-only */
+    DesktopFiles files;   /* files.sem guards files.files/n_files */
+    int wake_fd;          /* main -> scanner: rescan (eventfd) */
+    atomic_int changed;   /* scanner -> main: files changed */
+    atomic_int quit;
+    pthread_t thread;
+} Scanner;
+
+/* the running scanner, NULL if none */
+static Scanner* sc;
+
+/* after an event, wait this long for more before scanning, so a burst
+ * (copying many files) costs one scan */
+static const int scan_settle_ms = 50, scan_settle_max_ms = 500;
+/* without a watch (no directory yet, or it vanished), retry this often */
+static const int rewatch_ms = 5000;
+
+static void drain( int fd ) {
+    char buf[64];
+    while (read( fd, buf, sizeof(buf) ) > 0)
+        ;
+}
+
+static void* scanner( void* data ) {
+    Scanner* sc = data;
+    int ifd = inotify_init1( IN_NONBLOCK | IN_CLOEXEC ), watch = -1, first = 1;
+    char buf[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
+
+    while (!atomic_load( &sc->quit )) {
+        /* the directory may have been (re)created since */
+        if (ifd >= 0 && watch < 0)
+            watch = inotify_add_watch( ifd, sc->path,
+                    IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO | IN_ATTRIB |
+                    IN_DELETE_SELF | IN_MOVE_SELF | IN_ONLYDIR );
+        /* the first result goes out even if it's empty, which findfiles()
+         * doesn't count as a change */
+        if (findfiles( &sc->files, sc->path ) || first) {
+            atomic_store( &sc->changed, 1 );
+            awl_host->redraw_request();
+        }
+        first = 0;
+
+        struct pollfd fds[2] = {
+            { .fd = sc->wake_fd, .events = POLLIN },
+            { .fd = ifd, .events = POLLIN },
+        };
+        int r = poll( fds, 2, watch < 0 ? rewatch_ms : -1 );
+        if (r < 0 && errno != EINTR) break;
+        if (fds[0].revents & POLLIN) drain( sc->wake_fd );
+        if (fds[1].revents & POLLIN) {
+            for (int waited = 0; waited < scan_settle_max_ms; waited += scan_settle_ms) {
+                ssize_t len;
+                while ((len = read( ifd, buf, sizeof(buf) )) > 0) {
+                    for (char* p = buf; p < buf + len; ) {
+                        const struct inotify_event* ev = (const struct inotify_event*)p;
+                        /* the directory is gone, the kernel dropped the watch */
+                        if (ev->mask & IN_IGNORED) watch = -1;
+                        p += sizeof(*ev) + ev->len;
+                    }
+                }
+                if (poll( &fds[1], 1, scan_settle_ms ) <= 0) break;
+            }
+        }
+    }
+    if (ifd >= 0) close( ifd );
+    return NULL;
+}
+
+/* asks the scanner to look again, e.g. for a directory that appeared */
+static void rescan( void ) {
+    if (sc) eventfd_write( sc->wake_fd, 1 );
+}
+
+void awl_desktop_start( void ) {
+    memset( &desk, 0, sizeof(desk) );
+    desk.show = 1;
+    desk.version = 1;
+
+    Scanner* n = calloc( 1, sizeof(*n) );
+    if (!n) return;
+    const char* home = getenv( "HOME" );
+    snprintf( n->path, sizeof(n->path), "%s/Desktop", home ? home : "" );
+    sem_init( &n->files.sem, 0, 1 );
+    n->wake_fd = eventfd( 0, EFD_NONBLOCK | EFD_CLOEXEC );
+    if (n->wake_fd < 0) {
+        fprintf( stderr, "desktop: eventfd: %s\n", strerror( errno ) );
+        free( n );
+        return;
+    }
+
+    /* signals stay with the main thread */
+    sigset_t all, old;
+    sigfillset( &all );
+    pthread_sigmask( SIG_SETMASK, &all, &old );
+    int err = pthread_create( &n->thread, NULL, scanner, n );
+    pthread_sigmask( SIG_SETMASK, &old, NULL );
+    if (err) {
+        fprintf( stderr, "desktop: can't start the scanner thread\n" );
+        close( n->wake_fd );
+        free( n );
+        return;
+    }
+    sc = n;
+}
+
+int awl_desktop_stop( void ) {
+    if (!sc) return 0;
+    Scanner* old = sc;
+    sc = NULL;
+
+    atomic_store( &old->quit, 1 );
+    eventfd_write( old->wake_fd, 1 );
+    /* a scanner blocked on a dead mount can't be woken or cancelled; leave
+     * it behind instead of hanging dwl */
+    struct timespec until;
+    clock_gettime( CLOCK_REALTIME, &until );
+    until.tv_nsec += 500 * 1000 * 1000;
+    if (until.tv_nsec >= 1000 * 1000 * 1000) {
+        until.tv_sec++;
+        until.tv_nsec -= 1000 * 1000 * 1000;
+    }
+    if (pthread_timedjoin_np( old->thread, NULL, &until )) {
+        fprintf( stderr, "desktop: scanner thread stuck (in %s?), not waiting for it\n",
+                 old->path );
+        pthread_detach( old->thread );
+        return -1; /* old stays allocated, the thread may still use it */
+    }
+    close( old->wake_fd );
+    sem_destroy( &old->files.sem );
+    free( old );
+    return 0;
+}
+
+uint64_t awl_desktop_version( void ) {
+    if (sc && atomic_exchange( &sc->changed, 0 )) {
+        /* the scanner holds the lock only while copying */
+        sem_wait( &sc->files.sem );
+        int changed = desk.n_files != sc->files.n_files
+                   || memcmp( desk.files, sc->files.files, sizeof(desk.files) );
+        if (changed) {
+            memcpy( desk.files, sc->files.files, sizeof(desk.files) );
+            desk.n_files = sc->files.n_files;
+        }
+        sem_post( &sc->files.sem );
+        if (changed || !desk.scanned) desk.version++;
+        desk.scanned = 1;
+    }
+    /* nothing until the first scan, rather than a wrong "(empty)" */
+    return desk.scanned && desk.show ? desk.version : 0;
+}
+
+static int visible( const Filename* f ) {
+    return desk.hidden || !f->ishidden;
+}
+
+static void label( const Filename* f, char* out, size_t n ) {
+    snprintf( out, n, "%s%s", f->name, f->isdir ? "/" : "" );
+}
+
+/* c at opacity a; pixman takes text colors premultiplied */
+static uint32_t fade( uint32_t c, uint32_t a ) {
+    uint32_t out = a;
+    for (int s = 8; s < 32; s += 8)
+        out |= (((c >> s) & 0xff) * a / 255) << s;
+    return out;
+}
+
+static uint32_t color( const Filename* f ) {
+    uint32_t c = f->isbroken ? col_broken : f->isdir ? col_dir : col_file;
+    return f->ishidden ? fade( c, hidden_alpha ) : c;
+}
+
+static int textw( Drwl* drw, const char* text ) {
+    return (int)awl_host->font_getwidth( drw, text );
+}
+
+void awl_desktop_measure( Drwl* drw, int avail_w, int avail_h, int radius, float s,
+                          int* x, int* y, int* w, int* h ) {
+    PanelLayout* l = &desk.lay;
+    const int fh = drw->font->height,
+              margin = (int)lroundf( panel_margin * s );
+    l->row_h = fh + (int)lroundf( 4 * s );
+    l->pad = MAX( fh / 2, radius / 2 );
+    l->gap = fh;
+    avail_w -= 2 * margin;
+    avail_h -= 2 * margin;
+    l->rows = MAX( 1, (avail_h - 2 * l->pad) / l->row_h );
+    const int max_col_w = MAX( 1, avail_w / 5 );
+
+    l->n = 0;
+    for (int i = 0; i < desk.n_files; i++)
+        if (visible( &desk.files[i] )) l->idx[l->n++] = i;
+
+    /* columns of `rows` entries, as many as fit */
+    char buf[sizeof(desk.files[0].name) + 2];
+    int width = 2 * l->pad;
+    l->ncols = l->shown = 0;
+    if (l->n == 0) {
+        l->col_w[l->ncols++] = textw( drw, "(empty)" );
+        width += l->col_w[0];
+    }
+    while (l->shown < l->n) {
+        int cw = 0, end = MIN( l->n, l->shown + l->rows );
+        for (int i = l->shown; i < end; i++) {
+            label( &desk.files[l->idx[i]], buf, sizeof(buf) );
+            cw = MAX( cw, textw( drw, buf ) );
+        }
+        cw = MIN( cw, max_col_w );
+        if (l->ncols && width + l->gap + cw > avail_w) break;
+        width += (l->ncols ? l->gap : 0) + cw;
+        l->col_w[l->ncols++] = cw;
+        l->shown = end;
+    }
+    /* the last entry that fits stands for the ones that don't */
+    l->more[0] = 0;
+    if (l->shown < l->n) {
+        snprintf( l->more, sizeof(l->more), "… %d more", l->n - l->shown + 1 );
+        int extra = textw( drw, l->more ) - l->col_w[l->ncols - 1];
+        extra = MIN( extra, avail_w - width );
+        if (extra > 0) {
+            l->col_w[l->ncols - 1] += extra;
+            width += extra;
+        }
+    }
+
+    *x = *y = margin;
+    *w = width;
+    *h = 2 * l->pad + MIN( MAX( l->n, 1 ), l->rows ) * l->row_h;
+}
+
+static inline float clampf( float x ) {
+    return x < 0 ? 0 : x > 1 ? 1 : x;
+}
+
+/* Puts a rounded panel (antialiased) under what is already drawn into the
+ * premultiplied ARGB buffer: dst = dst + src * (1 - dst.a). */
+static void panel_under( uint32_t* data, int stride, int w, int h, float r, uint32_t bg ) {
+    const float hw = w / 2.f, hh = h / 2.f;
+    const float bga = (bg & 0xff) / 255.f;
+    for (int y = 0; y < h; y++) {
+        uint32_t* row = (uint32_t*)((char*)data + (size_t)y * stride);
+        for (int x = 0; x < w; x++) {
+            /* signed distance to the rounded rect's outline */
+            float qx = fabsf( x + .5f - hw ) - (hw - r),
+                  qy = fabsf( y + .5f - hh ) - (hh - r);
+            float d = hypotf( fmaxf( qx, 0 ), fmaxf( qy, 0 ) ) + fminf( fmaxf( qx, qy ), 0 ) - r;
+            float sa = bga * clampf( .5f - d );
+            if (sa <= 0) continue;
+
+            uint32_t px = row[x];
+            float keep = 1 - (px >> 24) / 255.f;
+            uint32_t out = 0;
+            for (int s = 24; s >= 0; s -= 8) {
+                /* channel s of bg as 0..1, premultiplied */
+                float c = s == 24 ? sa : ((bg >> (s + 8)) & 0xff) / 255.f * sa;
+                float v = ((px >> s) & 0xff) + c * keep * 255.f;
+                out |= (uint32_t)(v > 255 ? 255 : v + .5f) << s;
+            }
+            row[x] = out;
+        }
+    }
+}
+
+static void text( Drwl* drw, int x, int y, int w, int h, const char* s, uint32_t fg ) {
+    awl_host->text( drw, x, y, w, h, 0, s, color_8bit_to_16bit( fg ), color_8bit_to_16bit( 0 ) );
+}
+
+void awl_desktop_draw( Drwl* drw, uint32_t* data, int stride, int w, int h, int radius,
+                       float s ) {
+    const PanelLayout* l = &desk.lay;
+    char buf[sizeof(desk.files[0].name) + 2];
+
+    if (l->n == 0)
+        text( drw, l->pad, l->pad, l->col_w[0], l->row_h, "(empty)", fade( col_file, hidden_alpha ) );
+    for (int c = 0, i = 0, x = l->pad; c < l->ncols && i < l->shown; x += l->col_w[c++] + l->gap) {
+        for (int r = 0; r < l->rows && i < l->shown; r++, i++) {
+            const Filename* f = &desk.files[l->idx[i]];
+            int is_more = l->more[0] && i == l->shown - 1;
+            label( f, buf, sizeof(buf) );
+            text( drw, x, l->pad + r * l->row_h, l->col_w[c], l->row_h,
+                  is_more ? l->more : buf, is_more ? fade( col_file, hidden_alpha ) : color( f ) );
+        }
+    }
+    panel_under( data, stride, w, h, radius, panel_bg );
+}
+
+int awl_desktop_click( int button ) {
+    switch (button) {
+    case BTN_LEFT:
+        desk.show = !desk.show;
+        break;
+    case BTN_MIDDLE:
+        /* also shows a hidden list */
+        if (desk.show) desk.hidden = !desk.hidden;
+        desk.show = 1;
+        break;
+    case BTN_RIGHT:
+        awl_host->wallpaper_next();
+        return 1;
+    default:
+        return 0;
+    }
+    desk.version++;
+    rescan();
+    return 1;
+}

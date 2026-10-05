@@ -316,6 +316,8 @@ void transluce(const Arg *arg);
 
 void arrange(Monitor *m);
 void focusclient(Client *c, int lift);
+/* runs whatever MOD+w is bound to in config.h */
+void wallpapernext(void);
 
 void drawroot_update_func( void (*func)( pixman_image_t* pix, uint64_t op ) );
 int drawroot_eventfd( void );

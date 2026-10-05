@@ -37,6 +37,7 @@ static const awl_host_t host = {
     .spawn = spawn,
     .focusclient = focusclient,
     .arrange = arrange,
+    .wallpaper_next = wallpapernext,
 
     .tray_width = awl_tray_width,
     .tray_set_widget_x = awl_tray_set_widget_x,
@@ -130,17 +131,28 @@ int awl_plugins_load( int p ) {
     return 0;
 }
 
+/* stops the plugins; unloads the library unless a thread of it is still
+ * running, which would then crash */
+static void stop( void* h ) {
+    if (api && api->fini()) {
+        fprintf( stderr, "awl plugins: a plugin thread is stuck, keeping its library loaded\n" );
+        return;
+    }
+    if (h) dlclose( h );
+}
+
 int awl_plugins_reload( void (*detach)( void ), void (*attach)( void ) ) {
     void* h = NULL;
     const awl_plugin_api_t* next = libopen( &h );
 
     // nothing may point into the old library past this
     detach();
-    if (api) api->fini();
     if (next) {
-        if (handle) dlclose( handle );
+        stop( handle );
         handle = h;
         api = next;
+    } else if (api) {
+        api->fini(); // restart in place; a stuck thread stays stuck either way
     }
     if (api) api->init( paused );
     attach();
@@ -148,8 +160,7 @@ int awl_plugins_reload( void (*detach)( void ), void (*attach)( void ) ) {
 }
 
 void awl_plugins_unload( void ) {
-    if (api) api->fini();
-    if (handle) dlclose( handle );
+    stop( handle );
     api = NULL;
     handle = NULL;
 }
@@ -161,4 +172,8 @@ void awl_plugins_set_paused( int p ) {
 
 void awl_plugins_bar_widgets( Drwl* bar ) {
     if (api) api->bar_widgets( bar );
+}
+
+const awl_plugin_api_t* awl_plugins_api( void ) {
+    return api;
 }

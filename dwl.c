@@ -3,6 +3,7 @@
 #include "util.h"
 #include "drwl.h"
 #include "plugin_host.h"
+#include "desktop.h"
 #include "plugins/colors.h" /* config.h */
 #include "plugins/redraw.h"
 #include "tray/awl_tray.h"
@@ -27,6 +28,7 @@ static void arrangelayer(Monitor *m, struct wl_list *list,
 static void arrangelayers(Monitor *m);
 static void axisnotify(struct wl_listener *listener, void *data);
 static bool bar_accepts_input(struct wlr_scene_buffer *buffer, double *sx, double *sy);
+static int desktopat(double x, double y);
 static void buffer_destroy(struct wlr_buffer *buffer);
 static bool buffer_begin_data_ptr_access(struct wlr_buffer *buffer, uint32_t flags, void **data, uint32_t *format, size_t *stride);
 static void buffer_end_data_ptr_access(struct wlr_buffer *buffer);
@@ -79,6 +81,7 @@ static int redraw_fire( int fd, uint32_t mask, void* data ) {
     (void)fd; (void)mask; (void)data;
     awl_redraw_drain();
     drawbars();
+    desktop_update_all();
     return 0;
 }
 
@@ -180,6 +183,7 @@ static struct wlr_backend *backend;
 static struct wlr_scene *scene;
 static struct wlr_scene_tree *layers[NUM_LAYERS];
 static struct wlr_scene_tree *drag_icon;
+static struct wlr_scene_tree *desktop_tree;
 /* Map from ZWLR_LAYER_SHELL_* constants to Lyr* enum */
 static const int layermap[] = { LyrBg, LyrBottom, LyrTop, LyrOverlay };
 static struct wlr_renderer *drw;
@@ -475,6 +479,8 @@ arrangelayers(Monitor *m)
 	for (i = 3; i >= 0; i--)
 		arrangelayer(m, &m->layers[i], &usable_area, 0);
 
+	desktop_update(m);
+
 	/* Find topmost keyboard interactive layer, if such a layer exists */
 	for (i = 0; i < (int)LENGTH(layers_above_shell); i++) {
 		wl_list_for_each_reverse(l, &m->layers[layers_above_shell[i]], link) {
@@ -741,6 +747,30 @@ buffer_end_data_ptr_access(struct wlr_buffer *buffer)
 {
 }
 
+int
+desktopat(double x, double y)
+{
+	/* only the wallpaper (LyrBg) and the desktop panels, which aren't in
+	 * layers[], are below; LyrBlock only matters while locked */
+	int i;
+	for (i = LyrBottom; i < LyrBlock; i++)
+		if (wlr_scene_node_at(&layers[i]->node, x, y, NULL, NULL))
+			return 0;
+	return xytomon(x, y) != NULL;
+}
+
+void
+wallpapernext(void)
+{
+	const Key *k;
+	for (k = keys; k < END(keys); k++) {
+		if (CLEANMASK(k->mod) == CLEANMASK(MODKEY) && k->keysym == XKB_KEY_w && k->func) {
+			k->func(&k->arg);
+			return;
+		}
+	}
+}
+
 void
 buttonpress(struct wl_listener *listener, void *data)
 {
@@ -862,6 +892,9 @@ buttonpress(struct wl_listener *listener, void *data)
 				}
 			}
 		}
+		if (click == ClkRoot && !CLEANMASK(mods) && !exclusive_focus
+				&& desktopat(cursor->x, cursor->y) && desktop_click(event->button))
+			return;
 		break;
 	case WL_POINTER_BUTTON_STATE_RELEASED:
 		/* If you released any buttons, we exit interactive move/resize mode. */
@@ -1028,6 +1061,7 @@ cleanupmon(struct wl_listener *listener, void *data)
 	closemon(m);
 	wlr_scene_node_destroy(&m->fullscreen_bg->node);
 	wlr_scene_node_destroy(&m->scene_buffer->node);
+	desktop_removemon(m);
 	for (i = 0; i < LENGTH(m->bar_bufs); i++)
 		if (m->bar_bufs[i])
 			wlr_buffer_drop(&m->bar_bufs[i]->base);
@@ -1469,6 +1503,7 @@ createmon(struct wl_listener *listener, void *data)
 	m->showbar = showbar;
 	updatebar(m);
     drawbar(m);
+	desktop_addmon(m);
 
 	wl_list_insert(&mons, &m->link);
 
@@ -3262,6 +3297,12 @@ setup(void)
     }
 	drag_icon = wlr_scene_tree_create(&scene->tree);
 	wlr_scene_node_place_below(&drag_icon->node, &layers[LyrBlock]->node);
+	/* the $HOME/Desktop panels, over the wallpaper (see desktop.h) */
+	desktop_tree = wlr_scene_tree_create(&scene->tree);
+	wlr_scene_node_place_above(&desktop_tree->node, &layers[LyrBg]->node);
+	desktop_init(desktop_tree, &(desktop_config_t){
+			.blur = blur_launcher, .radius = blur_launcher_radius,
+			.blur_strength = locked_blur_config[0], .blur_alpha = locked_blur_config[1] });
 
 	/* Autocreates a renderer, either Pixman, GLES2 or Vulkan for us. The user
 	 * can also specify a renderer using the WLR_RENDERER env var.
@@ -3732,6 +3773,7 @@ updatemons(struct wl_listener *listener, void *data)
 		wlr_output_layout_remove(output_layout, m->wlr_output);
 		closemon(m);
 		m->m = m->w = (struct wlr_box){0};
+		desktop_update(m);
 	}
 	/* Insert outputs that need to */
 	wl_list_for_each(m, &mons, link) {
@@ -4015,6 +4057,7 @@ pluginsattach(void)
 		if (m->drw)
 			awl_plugins_bar_widgets(m->drw);
 	drawbars();
+	desktop_reloaded();
 }
 
 void

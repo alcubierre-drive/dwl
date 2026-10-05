@@ -48,3 +48,14 @@ awl_plugin_data_t* awl_plugin_get( void );
 
 /* widgets.c */
 void awl_widgets_create( Drwl* bar );
+
+/* desktop_panel.c: the scanner thread, and the awl_plugin_api_t desktop_*
+ * entries. stop() returns nonzero if the scanner had to be left running. */
+void awl_desktop_start( void );
+int awl_desktop_stop( void );
+uint64_t awl_desktop_version( void );
+void awl_desktop_measure( Drwl* drw, int avail_w, int avail_h, int r, float scale,
+                          int* x, int* y, int* w, int* h );
+void awl_desktop_draw( Drwl* drw, uint32_t* data, int stride, int w, int h, int r,
+                       float scale );
+int awl_desktop_click( int button );

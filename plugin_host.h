@@ -30,3 +30,8 @@ void awl_plugins_set_paused( int paused );
 
 /* Fills an empty bar's widget lists; no-op without a loaded library. */
 void awl_plugins_bar_widgets( Drwl* bar );
+
+/* The loaded library's table, NULL if none. Changes on reload, so don't
+ * keep it (or anything from it) across one. */
+typedef struct awl_plugin_api_t awl_plugin_api_t;
+const awl_plugin_api_t* awl_plugins_api( void );

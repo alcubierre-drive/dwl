@@ -223,13 +223,16 @@ static void api_init( int paused ) {
     plugin_data = calloc(1,sizeof(awl_plugin_data_t));
     plugin_data->paused = paused;
     awl_plugin_start( plugin_data );
+    awl_desktop_start();
 }
 
-static void api_fini( void ) {
-    if (!plugin_data) return;
+static int api_fini( void ) {
+    if (!plugin_data) return 0;
+    int stuck = awl_desktop_stop();
     awl_plugin_stop( plugin_data );
     free( plugin_data );
     plugin_data = NULL;
+    return stuck;
 }
 
 static void api_set_paused( int paused ) {
@@ -244,6 +247,10 @@ static const awl_plugin_api_t api = {
     .fini = api_fini,
     .set_paused = api_set_paused,
     .bar_widgets = awl_widgets_create,
+    .desktop_version = awl_desktop_version,
+    .desktop_measure = awl_desktop_measure,
+    .desktop_draw = awl_desktop_draw,
+    .desktop_click = awl_desktop_click,
 };
 
 __attribute__((visibility("default")))
