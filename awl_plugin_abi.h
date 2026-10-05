@@ -15,8 +15,9 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "drwl.h"
+#include "tray/awl_tray.h"
 
-#define AWL_PLUGIN_ABI 5
+#define AWL_PLUGIN_ABI 6
 #define AWL_PLUGIN_ENTRY "awl_plugin_entry"
 
 /* Every dwl function config.h can bind to a key or button. The library binds
@@ -81,6 +82,8 @@ typedef struct awl_config_t {
     enum libinput_config_accel_profile accel_profile;
     double accel_speed;
     enum libinput_config_tap_button_map button_map;
+
+    const awl_tray_config_t* tray;
 } awl_config_t;
 
 #define AWL_CONFIG_TABLE (awl_config_t){ \
@@ -103,6 +106,7 @@ typedef struct awl_config_t {
     .scroll_method = scroll_method, .click_method = click_method, \
     .send_events_mode = send_events_mode, .accel_profile = accel_profile, \
     .accel_speed = accel_speed, .button_map = button_map, \
+    .tray = &tray_config, \
 }
 
 /* What dwl provides to the library. All functions are main-thread only,

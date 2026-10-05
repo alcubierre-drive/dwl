@@ -43,6 +43,8 @@ static const awl_host_t host = {
 };
 
 static void* handle = NULL;
+/* the memfd handle was loaded from, see libopen() */
+static int handle_fd = -1;
 static const awl_plugin_api_t* api = NULL;
 static int paused = 0;
 
@@ -85,7 +87,10 @@ out:
     return dst;
 }
 
-static const awl_plugin_api_t* libopen( void** out ) {
+/* The memfd stays open, in *out_fd, until the library is unloaded: dlopen()
+ * also hands back an already loaded library of the same name, and a closed
+ * one's fd number, i.e. its /proc/self/fd/N, is the next memfd's. */
+static const awl_plugin_api_t* libopen( void** out, int* out_fd ) {
     char path[PATH_MAX], fdpath[64];
     if (libpath( path, sizeof(path) )) {
         fprintf( stderr, "awl plugins: can't determine the library path\n" );
@@ -98,9 +103,9 @@ static const awl_plugin_api_t* libopen( void** out ) {
     }
     snprintf( fdpath, sizeof(fdpath), "/proc/self/fd/%d", fd );
     void* h = dlopen( fdpath, RTLD_NOW | RTLD_LOCAL );
-    close( fd ); // the mapping stays
     if (!h) {
         fprintf( stderr, "awl plugins: %s: %s\n", path, dlerror() );
+        close( fd );
         return NULL;
     }
 
@@ -113,15 +118,17 @@ static const awl_plugin_api_t* libopen( void** out ) {
         fprintf( stderr, "awl plugins: %s: %s\n", path, !entry ? "no entry point" :
                  "built against different headers than this dwl (rebuild both)" );
         dlclose( h );
+        close( fd );
         return NULL;
     }
     *out = h;
+    *out_fd = fd;
     return a;
 }
 
 int awl_plugins_load( int p ) {
     paused = p;
-    if (!(api = libopen( &handle )))
+    if (!(api = libopen( &handle, &handle_fd )))
         return -1;
     api->init( paused );
     return 0;
@@ -129,23 +136,26 @@ int awl_plugins_load( int p ) {
 
 /* stops the plugins; unloads the library unless a thread of it is still
  * running, which would then crash */
-static void stop( void* h ) {
+static void stop( void* h, int fd ) {
     if (api && api->fini()) {
         fprintf( stderr, "awl plugins: a plugin thread is stuck, keeping its library loaded\n" );
         return;
     }
     if (h) dlclose( h );
+    if (fd >= 0) close( fd );
 }
 
 int awl_plugins_reload( void (*detach)( void ), void (*attach)( void ) ) {
     void* h = NULL;
-    const awl_plugin_api_t* next = libopen( &h );
+    int fd = -1;
+    const awl_plugin_api_t* next = libopen( &h, &fd );
 
     // nothing may point into the old library past this
     detach();
     if (next) {
-        stop( handle );
+        stop( handle, handle_fd );
         handle = h;
+        handle_fd = fd;
         api = next;
     } else if (api) {
         api->fini(); // restart in place; a stuck thread stays stuck either way
@@ -156,9 +166,10 @@ int awl_plugins_reload( void (*detach)( void ), void (*attach)( void ) ) {
 }
 
 void awl_plugins_unload( void ) {
-    stop( handle );
+    stop( handle, handle_fd );
     api = NULL;
     handle = NULL;
+    handle_fd = -1;
 }
 
 void awl_plugins_set_paused( int p ) {

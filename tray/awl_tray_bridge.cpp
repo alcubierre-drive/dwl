@@ -75,6 +75,11 @@ struct Shared {
 // that width) instead of polling awl_tray_width().
 std::atomic<void (*)(void)> g_change_cb{nullptr};
 
+// The settings in effect. Written by awl_tray_init() before the GTK thread
+// exists, then only on the GTK thread (awl_tray_reload()), which is the only
+// one that reads it.
+awl_tray_config_t g_config;
+
 // Marshals `fn` onto the tray's GTK/GLib thread. Safe to call from any
 // thread (g_idle_add is documented thread-safe).
 template <typename F>
@@ -101,6 +106,7 @@ public:
     // Apply what dwl last sent (shared_).
     void reposition();
     void applyVisible();
+    void applyConfig();
     void reloadTray();
 
 private:
@@ -167,10 +173,7 @@ Bridge::Bridge(std::string monitor_id, std::shared_ptr<Shared> shared)
     // additionally reserve compositor exclusive zone space.
     gtk_layer_set_exclusive_zone(win_->gobj(), 0);
 
-    Gdk::RGBA bg;
-    bg.set_rgba_u((AWL_TRAY_BG >> 24 & 0xff) * 0x101, (AWL_TRAY_BG >> 16 & 0xff) * 0x101,
-                  (AWL_TRAY_BG >> 8 & 0xff) * 0x101, (AWL_TRAY_BG & 0xff) * 0x101);
-    win_->override_background_color(bg);
+    applyConfig();
 
     tray_ = std::make_unique<Tray>("", *win_);
     // The original main.cpp called this right after constructing Tray;
@@ -363,6 +366,16 @@ void Bridge::applyVisible() {
     }
 }
 
+// GTK thread only.
+void Bridge::applyConfig() {
+    if (!win_) return;
+    uint32_t c = g_config.bg;
+    Gdk::RGBA bg;
+    bg.set_rgba_u((c >> 24 & 0xff) * 0x101, (c >> 16 & 0xff) * 0x101,
+                  (c >> 8 & 0xff) * 0x101, (c & 0xff) * 0x101);
+    win_->override_background_color(bg);
+}
+
 void Bridge::reloadTray() {
     if (!win_ || !tray_) return;
     // Keep the process-wide Watcher singleton (SNI::Watcher, which actually
@@ -509,7 +522,7 @@ void *thread_main(void *) {
     //
     // The calendar popup is created right away (hidden), so it can connect to
     // evolution-data-server before the first click (see calendar.hpp).
-    awl::calendar_init();
+    awl::calendar_init(g_config);
 
     Gtk::Main::run();
 
@@ -536,8 +549,10 @@ void *thread_main(void *) {
 
 extern "C" {
 
-void awl_tray_init(void) {
+void awl_tray_init(const awl_tray_config_t *config) {
     if (SNI::g_running.load()) return;
+    // the thread doesn't exist yet; pthread_create() publishes this to it
+    SNI::g_config = *config;
     // g_running before the thread exists: the thread's first calls into
     // dwl (shared_for(), via geometry pushes) check it
     SNI::g_running = true;
@@ -607,9 +622,11 @@ void awl_tray_set_change_callback(void (*cb)(void)) {
     SNI::g_change_cb.store(cb);
 }
 
-void awl_tray_reload(void) {
+void awl_tray_reload(const awl_tray_config_t *config) {
     if (!SNI::g_running.load()) return;
-    SNI::run_on_gtk_thread([] {
+    SNI::run_on_gtk_thread([config = *config] {
+        SNI::g_config = config;
+        awl::calendar_configure(config);
         // reloadTray() is GTK work; don't hold the lock for it
         std::vector<SNI::Bridge *> bridges;
         {
@@ -617,7 +634,10 @@ void awl_tray_reload(void) {
             for (auto &kv : SNI::g_bridges)
                 if (kv.second.bridge) bridges.push_back(kv.second.bridge.get());
         }
-        for (SNI::Bridge *b : bridges) b->reloadTray();
+        for (SNI::Bridge *b : bridges) {
+            b->applyConfig();
+            b->reloadTray();
+        }
     });
 }
 

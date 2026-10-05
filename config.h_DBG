@@ -71,6 +71,27 @@ static const uint32_t bordercolors[BorderLast] = {
     [BorderUrg]  = molokai_orange,
 };
 
+/* the tray and the calendar popup: colors 0xRRGGBBAA, sizes logical pixels */
+static const awl_tray_config_t tray_config = {
+    .bg = 0x859394ff,
+    .calendar = {
+        .bg           = 0x3c3c3c4d, /* dwl blurs what is behind it */
+        .fg           = 0xf8f8f2ff,
+        .border       = molokai_green,
+        .today        = 0xb6ec52ff,
+        .dim          = 0xf8f8f259, /* the neighbouring months' days */
+        .selected     = 0xffffff33, /* the selected day's background */
+        .hover        = 0xffffff26, /* the buttons' background */
+        .pressed      = 0xffffff40,
+        .border_width = borderpx,
+        .radius       = blur_launcher_radius, /* the blur's corners */
+        .padding      = 8,
+        /* the event list, which scrolls beyond the maximum (0: none) */
+        .list_min_height = 120,
+        .list_max_height = 200,
+    },
+};
+
 /* NOTE: ALWAYS keep a rule declared even if you don't use rules (e.g leave at least one example) */
 static const Rule rules[] = {
     /* app_id             title       tags mask     isfloating   monitor w h blur 1-alpha*/

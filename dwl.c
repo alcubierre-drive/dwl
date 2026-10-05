@@ -3156,7 +3156,7 @@ run(char *startup_cmd)
      * client. Its startup runs in the background (it can't complete the
      * connection handshake until wl_display_run() below starts servicing
      * clients) -- awl_tray_init() must not block waiting for that. */
-    awl_tray_init();
+    awl_tray_init(cfg->tray);
 
     /* Start the backend. This will enumerate outputs and inputs, become the DRM
      * master, etc */
@@ -4517,8 +4517,9 @@ pluginrestart(void *data)
      * Unlike those, this does NOT tear down and restart the tray's GTK
      * thread itself (see awl_tray_reload()'s own comment for why: gtkmm's
      * Gtk::Main cannot safely be constructed a second time in one process),
-     * so it's fire-and-forget, not a blocking shutdown/join/init cycle. */
-    awl_tray_reload();
+     * so it's fire-and-forget, not a blocking shutdown/join/init cycle.
+     * It also applies the reloaded config.h's tray_config. */
+    awl_tray_reload(cfg->tray);
 }
 
 void

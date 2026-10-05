@@ -2,21 +2,38 @@
 
 #include <stdint.h>
 
-/* Background of the tray windows, 0xRRGGBBAA. The bar fills the systray
- * widget's slot with it too: the window can only sit on whole logical
- * pixels, so at fractional scales it misses the slot by up to a pixel. */
-#define AWL_TRAY_BG 0x859394ffu
-
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* The tray's settings, config.h's tray_config. Colors are 0xRRGGBBAA, sizes
+ * logical pixels. The tray keeps a copy, so the struct only has to live for
+ * the call that hands it over. */
+typedef struct awl_tray_config_t {
+    /* Background of the tray windows. The bar fills the systray widget's
+     * slot with it too: the window can only sit on whole logical pixels, so
+     * at fractional scales it misses the slot by up to a pixel. */
+    uint32_t bg;
+    /* the calendar popup */
+    struct {
+        uint32_t bg, fg, border;
+        uint32_t today;    /* today's date */
+        uint32_t dim;      /* the neighbouring months' days */
+        uint32_t selected; /* background of the selected day */
+        uint32_t hover, pressed; /* background of the buttons */
+        int border_width, radius, padding;
+        /* height of the event list, which scrolls beyond the maximum;
+         * a maximum of 0 means none */
+        int list_min_height, list_max_height;
+    } calendar;
+} awl_tray_config_t;
 
 /* Starts the tray's background thread: a GTK/GLib main loop hosting the
  * D-Bus StatusNotifierHost/Watcher and, per monitor, a real gtk-layer-shell
  * overlay window that renders that monitor's tray icons and owns their
  * input directly (so context-menu popups work like any normal GTK app).
  * Safe to call once during compositor startup. */
-void awl_tray_init(void);
+void awl_tray_init(const awl_tray_config_t *config);
 
 /* Requests the background thread to quit. Does NOT block until it has
  * exited -- see awl_tray_join(). (It can't safely block itself: the tray
@@ -48,8 +65,10 @@ int awl_tray_join(void);
  * destroyed -- its global type-wrapper registration tables don't come
  * back, and the next D-Bus proxy object the tray tries to wrap crashes.)
  * dwl calls it from plugin_restart, after reloading libawlplugins.so.
+ * Also applies `config` (colors, sizes and the calendar's CSS) to the
+ * windows that exist and those created later.
  * No-op if the tray was never started. */
-void awl_tray_reload(void);
+void awl_tray_reload(const awl_tray_config_t *config);
 
 /* Registers a function the tray calls (from its own thread) whenever the
  * value awl_tray_width() returns may have changed for some monitor, so the

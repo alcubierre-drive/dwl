@@ -8,6 +8,7 @@
 #endif
 
 #include <algorithm>
+#include <cstdio>
 #include <ctime>
 #include <signal.h>
 #include <map>
@@ -190,7 +191,9 @@ void worker(gpointer data, gpointer) {
 
 class Popup {
 public:
-    Popup();
+    explicit Popup(const awl_tray_config_t &config);
+    ~Popup();
+    void configure(const awl_tray_config_t &config);
     void toggle(const std::string &mon, bool top);
     void show(const std::string &mon, bool top);
     void hide();
@@ -205,6 +208,7 @@ private:
     void refresh();
     void launch(std::vector<std::string> argv);
 
+    Glib::RefPtr<Gtk::CssProvider> css_;
     Gtk::Window win_;
     Gtk::Box vbox_{Gtk::ORIENTATION_VERTICAL, 6};
     Gtk::Calendar cal_;
@@ -224,18 +228,31 @@ private:
 Popup *g_popup = nullptr;
 
 // dwl blurs what is behind the popup (scenefx, see createlayersurface()), so
-// every background is cleared and only the window itself gets a faint gray
+// every background is cleared and only the window itself gets a faint
 // tint. Adwaita paints white backgrounds on the calendar, list, rows and
 // viewport -- the wildcard clears all of them (and borders/shadows) at once,
 // then the few states that need a background get a translucent one back.
 // Scoped to #awl-calendar: the provider is screen-wide and the tray windows
-// live in the same process. border-radius matches dwl's blur_launcher_radius,
-// the border is borderpx wide in molokai_green (plugins/colors.h).
-const char *k_css = R"css(
+// live in the same process. The colors and sizes are config.h's
+// (tray_config.calendar).
+
+// 0xRRGGBBAA as CSS. Not printf's %f: GTK sets the user's locale, whose
+// decimal separator may be a comma.
+std::string css_color(uint32_t c) {
+    unsigned a = ((c & 0xff) * 1000 + 127) / 255;
+    char buf[48];
+    snprintf(buf, sizeof(buf), "rgba(%u, %u, %u, %u.%03u)", c >> 24, c >> 16 & 0xff,
+             c >> 8 & 0xff, a / 1000, a % 1000);
+    return buf;
+}
+
+std::string make_css(const awl_tray_config_t &config) {
+    const auto &c = config.calendar;
+    gchar *css = g_strdup_printf(R"css(
 #awl-calendar {
-  background-color: rgba(60, 60, 60, 0.3);
-  border: 2px solid #a6e22e;
-  border-radius: 15px;
+  background-color: %s;
+  border: %dpx solid %s;
+  border-radius: %dpx;
 }
 #awl-calendar * {
   background-color: transparent;
@@ -244,33 +261,36 @@ const char *k_css = R"css(
   box-shadow: none;
   text-shadow: none;
   -gtk-icon-shadow: none;
-  color: #f8f8f2;
+  color: %s;
 }
-#awl-calendar calendar:indeterminate { color: rgba(248, 248, 242, 0.35); }
-#awl-calendar calendar.highlight { color: #b6ec52; font-weight: bold; }
+#awl-calendar calendar:indeterminate { color: %s; }
+#awl-calendar calendar.highlight { color: %s; font-weight: bold; }
 #awl-calendar calendar:selected {
-  background-color: rgba(255, 255, 255, 0.2);
+  background-color: %s;
   border-radius: 4px;
 }
-#awl-calendar button:hover { background-color: rgba(255, 255, 255, 0.15); }
-#awl-calendar button:active { background-color: rgba(255, 255, 255, 0.25); }
-)css";
+#awl-calendar button:hover { background-color: %s; }
+#awl-calendar button:active { background-color: %s; }
+)css",
+        css_color(c.bg).c_str(), std::max(c.border_width, 0), css_color(c.border).c_str(),
+        std::max(c.radius, 0), css_color(c.fg).c_str(), css_color(c.dim).c_str(),
+        css_color(c.today).c_str(), css_color(c.selected).c_str(), css_color(c.hover).c_str(),
+        css_color(c.pressed).c_str());
+    std::string s = css;
+    g_free(css);
+    return s;
+}
 
-Popup::Popup() {
+Popup::Popup(const awl_tray_config_t &config) {
     win_.set_decorated(false);
     win_.set_name("awl-calendar");
-    // the window's own background is translucent (k_css); only matters on
+    // the window's own background is translucent (make_css()); only matters on
     // X11, Wayland surfaces always have alpha
     if (GdkVisual *visual = gdk_screen_get_rgba_visual(win_.get_screen()->gobj()))
         gtk_widget_set_visual(GTK_WIDGET(win_.gobj()), visual);
-    auto css = Gtk::CssProvider::create();
-    try {
-        css->load_from_data(k_css);
-        Gtk::StyleContext::add_provider_for_screen(win_.get_screen(), css,
-                                                   GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-    } catch (const Glib::Error &e) {
-        g_warning("awl calendar: css: %s", e.what().c_str());
-    }
+    css_ = Gtk::CssProvider::create();
+    Gtk::StyleContext::add_provider_for_screen(win_.get_screen(), css_,
+                                               GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
     gtk_layer_init_for_window(win_.gobj());
     gtk_layer_set_layer(win_.gobj(), GTK_LAYER_SHELL_LAYER_TOP);
     // exclusive while shown (dwl hands keyboard focus to keyboard-interactive
@@ -279,15 +299,12 @@ Popup::Popup() {
     gtk_layer_set_exclusive_zone(win_.gobj(), 0);
     gtk_layer_set_anchor(win_.gobj(), GTK_LAYER_SHELL_EDGE_RIGHT, true);
 
-    vbox_.set_border_width(8);
     cal_.set_display_options(Gtk::CALENDAR_SHOW_HEADING | Gtk::CALENDAR_SHOW_DAY_NAMES |
                              Gtk::CALENDAR_SHOW_WEEK_NUMBERS);
     day_label_.set_xalign(0);
     list_.set_selection_mode(Gtk::SELECTION_NONE);
     scroll_.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC);
     scroll_.set_propagate_natural_height(true);
-    scroll_.set_min_content_height(120);
-    scroll_.set_max_content_height(200);
     scroll_.add(list_);
     evo_btn_.set_image_from_icon_name("window-new-symbolic", Gtk::ICON_SIZE_MENU);
     evo_btn_.set_relief(Gtk::RELIEF_NONE);
@@ -306,6 +323,7 @@ Popup::Popup() {
     vbox_.pack_start(scroll_, Gtk::PACK_EXPAND_WIDGET);
     win_.add(vbox_);
     vbox_.show_all();
+    configure(config);
 
     cal_.signal_month_changed().connect([this] {
         request(shownKey());
@@ -324,6 +342,31 @@ Popup::Popup() {
     struct tm t;
     localtime_r(&now, &t);
     request(month_key(t.tm_year + 1900, t.tm_mon));
+}
+
+Popup::~Popup() {
+    Gtk::StyleContext::remove_provider_for_screen(win_.get_screen(), css_);
+}
+
+// Also on reload: a provider whose data is replaced restyles everything it
+// applies to.
+void Popup::configure(const awl_tray_config_t &config) {
+    const auto &c = config.calendar;
+    try {
+        css_->load_from_data(make_css(config));
+    } catch (const Glib::Error &e) {
+        g_warning("awl calendar: css: %s", e.what().c_str());
+    }
+    vbox_.set_border_width(std::max(c.padding, 0));
+    // GTK refuses a minimum above the maximum, also in passing
+    int min = std::max(c.list_min_height, 0);
+    int max = c.list_max_height > 0 ? std::max(c.list_max_height, min) : -1;
+    scroll_.set_min_content_height(-1);
+    scroll_.set_max_content_height(max);
+    scroll_.set_min_content_height(min);
+    // a mapped window keeps its size when its content shrinks; this snaps it
+    // back to the natural size
+    win_.resize(1, 1);
 }
 
 int Popup::shownKey() {
@@ -499,13 +542,13 @@ gboolean deliver(gpointer data) {
 
 }  // namespace
 
-void calendar_init() {
+void calendar_init(const awl_tray_config_t &config) {
     if (g_popup) return;
 #ifdef AWL_HAVE_ECAL
     g_cancel = g_cancellable_new();
     g_pool = g_thread_pool_new(worker, nullptr, 1, FALSE, nullptr);
 #endif
-    g_popup = new Popup();
+    g_popup = new Popup(config);
 }
 
 void calendar_fini() {
@@ -524,6 +567,10 @@ void calendar_fini() {
     // results still queued as idles find g_popup == nullptr and are dropped
     delete g_popup;
     g_popup = nullptr;
+}
+
+void calendar_configure(const awl_tray_config_t &config) {
+    if (g_popup) g_popup->configure(config);
 }
 
 void calendar_toggle(const std::string &monitor_id, bool bar_on_top) {

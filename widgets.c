@@ -303,7 +303,7 @@ static uint32_t systray_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {
     // the tray is a separate window; put it where the bar left room, and
     // paint the slot in its color for the sub-pixel it doesn't cover
     awl_host->tray_set_widget_x( w->bar->m->wlr_output->name, x );
-    pixman_color_t bg = color_8bit_to_16bit( AWL_TRAY_BG );
+    pixman_color_t bg = color_8bit_to_16bit( awl_config()->tray->bg );
     pixman_image_fill_boxes( PIXMAN_OP_SRC, pix, &bg, 1, &(pixman_box32_t){
         .x1 = x, .x2 = x + w->width, .y1 = 0, .y2 = w->bar->m->b.height } );
     return w->width;
