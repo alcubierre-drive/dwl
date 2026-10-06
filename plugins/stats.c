@@ -8,7 +8,7 @@
 #include <string.h>
 #include <fcntl.h>
 
-static float cpu_idle( uint64_t* sizes_table );
+static float cpu_idle( uint64_t* sizes_table, float* io );
 static void getmem( float* mem, float* swp );
 
 awl_stats_t* stats_init( int nval_cpu, int nval_mem, int nval_swp ) {
@@ -21,6 +21,7 @@ awl_stats_t* stats_init( int nval_cpu, int nval_mem, int nval_swp ) {
         atomic_init( &st->cpu[i], 0 );
         atomic_init( &st->mem[i], 0 );
         atomic_init( &st->swp[i], 0 );
+        atomic_init( &st->io[i], 0 );
     }
     atomic_init( &st->samples, 0 );
     st->sizes_table = calloc(20, sizeof(uint64_t));
@@ -35,16 +36,20 @@ void stats_free( awl_stats_t* st ) {
 void stats_update( awl_stats_t* st ) {
     float mem = 0, swp = 0;
     getmem( &mem, &swp );
-    float cpu = 1. - cpu_idle(st->sizes_table);
+    float io = 0;
+    float cpu = 1. - cpu_idle(st->sizes_table, &io);
     // the slot after the head is the oldest sample; it becomes the newest
     unsigned next = atomic_load( &st->samples ) + 1;
     if (st->ncpu) atomic_store( &st->cpu[next % st->ncpu], cpu );
+    if (st->ncpu) atomic_store( &st->io[next % st->ncpu], io );
     if (st->nmem) atomic_store( &st->mem[next % st->nmem], mem );
     if (st->nswp) atomic_store( &st->swp[next % st->nswp], swp );
     atomic_store( &st->samples, next );
 }
 
-static float cpu_idle( uint64_t* sizes_table ) {
+/* the idle fraction since the last call; *io: the part of it spent waiting
+ * for I/O (left 0 if unknown) */
+static float cpu_idle( uint64_t* sizes_table, float* io ) {
     // copy old values
     memcpy( sizes_table+10, sizes_table, sizeof(uint64_t)*10 );
     // read only the aggregate "cpu " line (first line of /proc/stat)
@@ -58,16 +63,20 @@ static float cpu_idle( uint64_t* sizes_table ) {
     uint64_t* s = sizes_table;
     sscanf(buf, "cpu %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu", s+0, s+1, s+2, s+3, s+4, s+5, s+6, s+7, s+8, s+9);
 
-    // calculate differences
-    float diffs[10] = {0};
-    for (int i=0; i<10; ++i) {
-        diffs[i] = (s[i] - (s+10)[i]);
-        if (i != 0) diffs[0] += diffs[i];
-    }
+    // calculate differences: 0=user 1=nice 2=system 3=idle 4=iowait 5=irq
+    // 6=softirq 7=steal; 8=guest 9=guest_nice are already part of user and
+    // nice, so they stay out of the total. Waiting for I/O counts as idle.
+    uint64_t total = 0;
+    for (int i=0; i<8; ++i)
+        total += s[i] - (s+10)[i];
+    uint64_t idle = (s[3] - (s+10)[3]) + (s[4] - (s+10)[4]);
+    // no tick since the last read: nothing to tell, call it idle
+    if (total == 0) return 1.0;
+    *io = (float)(s[4] - (s+10)[4])/(float)total;
 
     // return idle percentage
     #ifndef AWL_STATS_FORCE_CPU_MULT
-    float result = diffs[3]/diffs[0];
+    float result = (float)idle/(float)total;
     #else
     // #cpus, determined once
     static float ncpus = 0.0;
@@ -75,7 +84,7 @@ static float cpu_idle( uint64_t* sizes_table ) {
         long n = sysconf( _SC_NPROCESSORS_ONLN );
         ncpus = n > 0 ? (float)n : 1.0;
     }
-    float result = diffs[3]/diffs[0] * ncpus;
+    float result = (float)idle/(float)total * ncpus;
     #endif
     return result > 0.0 ? (result < 1.0 ? result : 1.0) : 0.0;
 }

@@ -333,12 +333,18 @@ static void notify_toggle( int show, int hidden ) {
 
 int awl_desktop_click( int button, uint32_t mods ) {
     if (!mods) {
+        WallpaperMode mode;
         switch (button) {
-        case BTN_LEFT: awl_wallpaper_step( -1 ); return 1;
-        case BTN_RIGHT: awl_wallpaper_step( +1 ); return 1;
-        case BTN_MIDDLE: awl_wallpaper_random(); return 1;
+        case BTN_LEFT: mode = WallpaperPrev; break;
+        case BTN_RIGHT: mode = WallpaperNext; break;
+        case BTN_MIDDLE: mode = WallpaperRand; break;
         default: return 0;
         }
+        /* before the switch: it's where the wallpaper goes from */
+        awl_notify_wallpaper( "Wallpaper", mode, "" );
+        if (mode == WallpaperRand) awl_wallpaper_random();
+        else awl_wallpaper_step( mode == WallpaperNext ? +1 : -1 );
+        return 1;
     }
     if (mods != WLR_MODIFIER_SHIFT) return 0;
     int show = desk.show, hidden = desk.hidden;

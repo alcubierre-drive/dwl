@@ -41,6 +41,8 @@ awl_plugin_data_t* awl_plugin_get( void );
 
 /* plugins.c: a desktop notification (notify-send, spawned); main thread */
 void awl_notify( const char* title, const char* body );
+/* plugins.c: which wallpaper mode switches from and to, notified; main thread */
+void awl_notify_wallpaper( const char* title, WallpaperMode mode, const char* suffix );
 
 /* widgets.c */
 void awl_widgets_create( Drwl* bar );

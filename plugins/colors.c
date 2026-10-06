@@ -69,6 +69,12 @@ struct awl_colors awl_colors( void ) {
     // widget colors
     c.bg_stats = c.bg_tags;
     c.fg_stats_cpu = color_8bit_to_16bit( molokai_blue );
+    // the CPU's blue, faded: mixed with black
+    c16 = c.fg_stats_cpu;
+    c16.red = c16.red * 5 / 10;
+    c16.green = c16.green * 5 / 10;
+    c16.blue = c16.blue * 5 / 10;
+    c.fg_stats_io = c16;
     c.fg_stats_mem = color_8bit_to_16bit( molokai_orange );
     c.fg_stats_swp = color_8bit_to_16bit( molokai_green );
 

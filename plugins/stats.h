@@ -11,6 +11,7 @@
  * oldest sample replaced by the newest. */
 typedef struct awl_stats_t {
     _Atomic float cpu[AWL_STATS_MAX], mem[AWL_STATS_MAX], swp[AWL_STATS_MAX];
+    _Atomic float io[AWL_STATS_MAX]; // waiting for I/O, on top of cpu; ncpu samples
     atomic_uint samples; // number of updates so far
     int ncpu, nmem, nswp; // set by stats_init(), then read-only
 

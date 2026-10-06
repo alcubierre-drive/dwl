@@ -41,7 +41,7 @@ struct awl_colors {
                    bg_lay, fg_lay, // also bg/fg for al standard widgets
                    bg_status, fg_status,
                    bg_win, bg_win_min, bg_win_act, bg_win_urg, fg_win,
-                   bg_stats, fg_stats_cpu, fg_stats_mem, fg_stats_swp;
+                   bg_stats, fg_stats_cpu, fg_stats_io, fg_stats_mem, fg_stats_swp;
 };
 struct awl_colors awl_colors( void );
 

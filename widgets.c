@@ -325,7 +325,7 @@ static uint32_t pulsewidget_measure( widget_t* w ) {
 }
 
 typedef struct {
-    pixman_box32_t fg[AWL_STATS_MAX], bg[AWL_STATS_MAX]; // one graph at a time
+    pixman_box32_t fg[AWL_STATS_MAX], bg[AWL_STATS_MAX], io[AWL_STATS_MAX]; // one graph at a time
 } statuswidget_userdata_t;
 
 static uint32_t statuswidget_measure( widget_t* w ) {
@@ -360,13 +360,20 @@ static uint32_t statuswidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix 
     for (int g=0; g<3; ++g) {
         // newest sample first
         for (int i=0; i<n[g]; ++i) {
-            int ydiv = bar_height - stats_sample( graph[g], n[g], samples, i ) * bar_height;
+            float val = stats_sample( graph[g], n[g], samples, i );
+            int ydiv = bar_height - val * bar_height;
+            // the CPU graph stacks the time spent waiting for I/O on top
+            float io = g == 0 ? stats_sample( st->io, n[g], samples, i ) : 0;
+            int yio = bar_height - (val + io < 1 ? val + io : 1) * bar_height;
             float next_x = xx + w->bar->m->wlr_output->scale;
-            u->bg[i] = (pixman_box32_t){.x1=x+(int32_t)xx,.x2=x+(int32_t)next_x,.y1=0, .y2=ydiv};
+            u->bg[i] = (pixman_box32_t){.x1=x+(int32_t)xx,.x2=x+(int32_t)next_x,.y1=0, .y2=yio};
+            u->io[i] = (pixman_box32_t){.x1=x+(int32_t)xx,.x2=x+(int32_t)next_x,.y1=yio,.y2=ydiv};
             u->fg[i] = (pixman_box32_t){.x1=x+(int32_t)xx,.x2=x+(int32_t)next_x,.y1=ydiv,.y2=bar_height};
             xx = next_x;
         }
         pixman_image_fill_boxes(PIXMAN_OP_SRC, pix, &P->awl_colors.bg_stats, n[g], u->bg);
+        if (g == 0)
+            pixman_image_fill_boxes(PIXMAN_OP_SRC, pix, &P->awl_colors.fg_stats_io, n[g], u->io);
         pixman_image_fill_boxes(PIXMAN_OP_SRC, pix, fg[g], n[g], u->fg);
     }
 

@@ -116,28 +116,32 @@ static void api_wallpaper( WallpaperMode mode ) {
     }
 }
 
-/* the wallpaper timer's mode changed (wallpapermode): which one it goes
- * from and to, counted from 1 */
 void awl_notify( const char* title, const char* body ) {
     awl_host->actions->spawn( &(Arg){ .v = (const char*[]){
             "notify-send", "-a", "dwl", title, body, NULL } } );
 }
 
-static void api_wallpaper_mode( WallpaperMode mode ) {
+/* which wallpaper mode switches from and to, counted from 1; suffix goes after */
+void awl_notify_wallpaper( const char* title, WallpaperMode mode, const char* suffix ) {
     static const char* names[] = {
         [WallpaperRand] = "rand", [WallpaperNext] = "next", [WallpaperPrev] = "prev" };
-    const char* off = awl_config()->wallpaper->interval ? "" : " (timer off)";
     char body[96];
     int cur, n, rand_next;
     if (awl_wallpaper_position( &cur, &n, &rand_next )) {
         int to = mode == WallpaperNext ? (cur + 1) % n
                : mode == WallpaperPrev ? (cur + n - 1) % n
                : rand_next;
-        snprintf( body, sizeof(body), "%s: %d → %d of %d%s", names[mode], cur + 1, to + 1, n, off );
+        snprintf( body, sizeof(body), "%s: %d → %d of %d%s", names[mode], cur + 1, to + 1, n, suffix );
     } else {
-        snprintf( body, sizeof(body), "%s%s", names[mode], off );
+        snprintf( body, sizeof(body), "%s%s", names[mode], suffix );
     }
-    awl_notify( "Wallpaper timer", body );
+    awl_notify( title, body );
+}
+
+/* the wallpaper timer's mode changed (wallpapermode) */
+static void api_wallpaper_mode( WallpaperMode mode ) {
+    awl_notify_wallpaper( "Wallpaper timer", mode,
+                          awl_config()->wallpaper->interval ? "" : " (timer off)" );
 }
 
 static const awl_plugin_api_t api = {
