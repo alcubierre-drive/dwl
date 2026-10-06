@@ -14,6 +14,11 @@
  * own: some firmware doesn't send a uevent for every capacity step, and
  * without the netlink socket the IP address would never update. */
 #define BAT_REREAD_TICKS 60
+/** After any kernel uevent, the battery is re-read on this many more ticks:
+ * the events of plugging in come first, and the firmware moves the battery
+ * from "Discharging" over "Not charging" to "Charging" about 2 s later,
+ * without an event of its own. */
+#define BAT_SETTLE_TICKS 10
 #define IP_FALLBACK_TICKS 5
 
 struct awl_poller_t {
@@ -33,6 +38,7 @@ struct awl_poller_t {
     pa_io_event *wake, *bat_io, *ip_io;
     pa_time_event* tick; /* NULL while paused */
     int fresh;           /* the next tick re-reads everything */
+    int bat_settle;      /* ticks left that re-read the battery */
     unsigned long ticks;
 };
 
@@ -56,7 +62,10 @@ static void tick_callback( pa_mainloop_api* a, pa_time_event* e, const struct ti
         stats_update( p->stats );
         temp_update( p->temp );
         date_update( p->date );
-        if (p->ticks % BAT_REREAD_TICKS == 0)
+        if (p->bat_settle > 0) {
+            p->bat_settle--;
+            bat_update( p->bat );
+        } else if (p->ticks % BAT_REREAD_TICKS == 0)
             bat_update( p->bat );
         if (p->ip->nl_fd < 0 && p->ticks % IP_FALLBACK_TICKS == 0)
             ip_update( p->ip );
@@ -99,6 +108,7 @@ static void bat_callback( pa_mainloop_api* a, pa_io_event* e, int fd, pa_io_even
     (void)a; (void)e; (void)fd; (void)f;
     awl_poller_t* p = userdata;
     if (bat_dispatch( p->bat ) && !atomic_load( &p->paused )) awl_redraw_request();
+    p->bat_settle = BAT_SETTLE_TICKS;
 }
 
 static void ip_callback( pa_mainloop_api* a, pa_io_event* e, int fd, pa_io_event_flags_t f, void* userdata ) {
