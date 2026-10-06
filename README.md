@@ -25,7 +25,7 @@ Dependencies:
 - the tray (`tray/`): gtkmm 3, gtk-layer-shell, dbusmenu-gtk3, jsoncpp,
   spdlog, and optionally libecal for calendar events
 
-scenefx is looked up under `~/Desktop/dwl-libs` (`AWL_LIBS` in config.mk).
+scenefx is looked up under `~/Desktop/awl-libs` (`AWL_LIBS` in config.mk).
 Then:
 
     make
@@ -53,8 +53,8 @@ blur, input devices, the keymap, and the tray and wallpaper settings.
 
 Like dwl, awl runs on any wlroots backend: nested in an X11 or Wayland
 session, or directly on a VT. On a VT you need a seat, either from
-logind with polkit, or from seatd. Install `awl.desktop` to start it from a
-display manager.
+logind with polkit, or from seatd. To start it from a display
+manager, copy `awl.desktop` to `/usr/share/wayland-sessions/`.
 
 `test/live.sh` runs a headless instance for testing, see the comment at its
 top.

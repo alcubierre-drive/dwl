@@ -95,18 +95,6 @@ dist: clean
 	tar -caf awl-$(VERSION).tar.gz awl-$(VERSION)
 	rm -rf awl-$(VERSION)
 
-install: awl
-	mkdir -p $(DESTDIR)$(PREFIX)/bin
-	rm -f $(DESTDIR)$(PREFIX)/bin/awl
-	cp -f awl $(DESTDIR)$(PREFIX)/bin
-	chmod 755 $(DESTDIR)$(PREFIX)/bin/awl
-	mkdir -p $(DESTDIR)$(DATADIR)/wayland-sessions
-	cp -f awl.desktop $(DESTDIR)$(DATADIR)/wayland-sessions/awl.desktop
-	chmod 644 $(DESTDIR)$(DATADIR)/wayland-sessions/awl.desktop
-uninstall:
-	rm -f $(DESTDIR)$(PREFIX)/bin/awl \
-		$(DESTDIR)$(DATADIR)/wayland-sessions/awl.desktop
-
 .SUFFIXES: .c .o
 .c.o:
 	$(CC) $(CPPFLAGS) $(AWLCFLAGS) -MMD -MP -o $@ -c $<

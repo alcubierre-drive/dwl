@@ -29,7 +29,7 @@ hawkmoth_clang = [
     '-std=c11',
     '-I' + hawkmoth_root,
     '-DWLR_USE_UNSTABLE', '-D_POSIX_C_SOURCE=200809L', '-DXWAYLAND',
-    '-I' + os.path.expanduser('~/Desktop/dwl-libs/include/scenefx-0.5'),
+    '-I' + os.path.expanduser('~/Desktop/awl-libs/include/scenefx-0.5'),
     # every header is also parsed on its own
     '-Wno-pragma-once-outside-header',
     # libclang can't take gcc's x86 intrinsics headers, which Wuffs pulls in
