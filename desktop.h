@@ -8,7 +8,8 @@
  * with the plugins. Without the library, no panel. Main thread only.
  *
  * The panels live in their own scene tree right above LyrBg, so they cover
- * the wallpaper (a background layer surface) but nothing else, and they're
+ * the wallpaper (background.h) and background layer surfaces but nothing
+ * else, and they're
  * not part of layers[], so xytonode() and clicks go right through them. */
 
 #include "dwl.h"
@@ -41,5 +42,6 @@ void desktop_update_all( void );
 /* after the library was (re)loaded */
 void desktop_reloaded( void );
 
-/* a click on the bare desktop; returns whether it was taken */
-int desktop_click( int button );
+/* a click on the bare desktop, mods as WLR_MODIFIER_* without the ignored
+ * ones; returns whether it was taken */
+int desktop_click( int button, uint32_t mods );

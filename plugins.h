@@ -12,6 +12,7 @@
 #include "plugins/date.h"
 #include "plugins/pulsetest.h"
 #include "plugins/poller.h"
+#include "plugins/wallpaper.h"
 
 #include "plugins/colors.h"
 
@@ -38,6 +39,9 @@ extern const awl_host_t* awl_host;
 /* NULL while the plugins aren't running */
 awl_plugin_data_t* awl_plugin_get( void );
 
+/* plugins.c: a desktop notification (notify-send, spawned); main thread */
+void awl_notify( const char* title, const char* body );
+
 /* widgets.c */
 void awl_widgets_create( Drwl* bar );
 
@@ -50,7 +54,7 @@ void awl_desktop_measure( Drwl* drw, int avail_w, int avail_h, int r, float scal
                           int* x, int* y, int* w, int* h );
 void awl_desktop_draw( Drwl* drw, uint32_t* data, int stride, int w, int h, int r,
                        float scale );
-int awl_desktop_click( int button );
+int awl_desktop_click( int button, uint32_t mods );
 
 /* awl_config.c */
 const awl_config_t* awl_config( void );

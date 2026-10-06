@@ -318,7 +318,30 @@ void awl_desktop_draw( Drwl* drw, uint32_t* data, int stride, int w, int h, int 
     panel_under( data, stride, w, h, radius, panel_bg );
 }
 
-int awl_desktop_click( int button ) {
+/* plain clicks change the wallpaper, Shift+clicks the panel and the timer */
+/* what a toggle changed, from show/hidden before it to now */
+static void notify_toggle( int show, int hidden ) {
+    char body[128];
+    int len = 0;
+    if (show != desk.show)
+        len += snprintf( body + len, sizeof(body) - len, "%svisible", desk.show ? "" : "not " );
+    if (hidden != desk.hidden)
+        snprintf( body + len, sizeof(body) - len, "%s%s hidden files",
+                  len ? ", " : "", desk.hidden ? "show" : "hide" );
+    awl_notify( "Desktop files", body );
+}
+
+int awl_desktop_click( int button, uint32_t mods ) {
+    if (!mods) {
+        switch (button) {
+        case BTN_LEFT: awl_wallpaper_step( -1 ); return 1;
+        case BTN_RIGHT: awl_wallpaper_step( +1 ); return 1;
+        case BTN_MIDDLE: awl_wallpaper_random(); return 1;
+        default: return 0;
+        }
+    }
+    if (mods != WLR_MODIFIER_SHIFT) return 0;
+    int show = desk.show, hidden = desk.hidden;
     switch (button) {
     case BTN_LEFT:
         desk.show = !desk.show;
@@ -329,12 +352,13 @@ int awl_desktop_click( int button ) {
         desk.show = 1;
         break;
     case BTN_RIGHT:
-        awl_host->wallpaper_next();
+        awl_host->actions->wallpapermode( &(Arg){ .i = +1 } );
         return 1;
     default:
         return 0;
     }
     desk.version++;
     rescan();
+    notify_toggle( show, hidden );
     return 1;
 }

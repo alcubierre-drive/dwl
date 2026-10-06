@@ -37,13 +37,11 @@ static const char* Autostarts[][8] = {
     { "nm-applet", NULL },
     { "blueman-applet", NULL },
     { "system-config-printer-applet", NULL },
-    { "random_wallpaper.sh", "-s", NULL },
     { "Telegram", NULL },
     { "evolution", NULL },
     */
 };
 static const int ScreenLockServiceAtStart = 0; //TODO
-static const int SwwwAtStart = 0; //TODO
 static const char* ScreenLockService[] = { "systemd-lock-handler", "--", "swaylock", "-c", "00000000", NULL };
 
 #endif /* AWL_CONFIG_RELOADABLE_ONLY */
@@ -90,6 +88,14 @@ static const awl_tray_config_t tray_config = {
         .list_min_height = 120,
         .list_max_height = 200,
     },
+};
+
+/* the wallpaper action ({.i = WallpaperNext, WallpaperPrev or WallpaperRand})
+ * shows one of dir's *.png files, scaled to cover each monitor; so does a
+ * timer every interval seconds (0: never), going where mode says
+ * (wallpapermode cycles it) */
+static const WallpaperConfig wallpaper_config = {
+    .dir = "Wallpapers", .fade_ms = 500, .interval = 7200, .mode = WallpaperRand,
 };
 
 /* NOTE: ALWAYS keep a rule declared even if you don't use rules (e.g leave at least one example) */
@@ -225,8 +231,6 @@ static const char* swaylock[] = { "swaylock", "-c", "00000000", NULL };
 static const char *docked_r[] = { "docked", "reset", NULL };
 static const char *docked_d[] = { "docked", "dock", NULL };
 static const char *docked_z[] = { "docked", "zoom", NULL };
-static const char *rand_wallpaper_cmd[] = { "random_wallpaper.sh", "-r", NULL };
-static const char *next_wallpaper_cmd[] = { "random_wallpaper.sh", "-n", NULL };
 static const char *notification_action[] = { "fnottctl", "actions", NULL };
 static const char *garfield[] = { "garfield", NULL };
 static const char *backlight_tooler_disable_cmd[] = {"systemctl", "--user", "stop", "backlight-tooler.timer", NULL};
@@ -261,8 +265,8 @@ static const Key keys[] = {
     { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_space,      togglefloating,   {0} },
     { MODKEY,                    XKB_KEY_t,          toggleontop,      {0} },
     { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_r,          plugin_restart,   {0} },
-    { MODKEY,                    XKB_KEY_w,          spawn,            {.v = rand_wallpaper_cmd} },
-    { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_W,          spawn,            {.v = next_wallpaper_cmd} },
+    { MODKEY,                    XKB_KEY_w,          wallpaper,        {.i = WallpaperRand} },
+    { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_W,          wallpaper,        {.i = WallpaperNext} },
     { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_N,          spawn,            {.v = notification_action} },
     { MODKEY,                    XKB_KEY_g,          spawn,            {.v = garfield} },
     { MODKEY,                    XKB_KEY_b,          togglebw,         {0} },

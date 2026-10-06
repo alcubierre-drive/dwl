@@ -33,7 +33,6 @@ static const awl_host_t host = {
     .arranges = &dwl_arranges,
     .focusclient = focusclient,
     .arrange = arrange,
-    .wallpaper_next = wallpapernext,
 
     .tray_width = awl_tray_width,
     .tray_set_widget_x = awl_tray_set_widget_x,

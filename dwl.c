@@ -4,10 +4,12 @@
 #include "drwl.h"
 #include "plugin_host.h"
 #include "awl_plugin_abi.h"
+#include "background.h"
 #include "desktop.h"
 #include "plugins/colors.h" /* config.h */
 #include "plugins/redraw.h"
 #include "tray/awl_tray.h"
+#include <limits.h>
 #include <wlr/backend/headless.h>
 #include <wlr/backend/multi.h>
 #include <wlr/backend/wayland.h>
@@ -83,6 +85,8 @@ static Buffer *barbuffer(Monitor *m);
 static Buffer *newbarbuffer(Monitor *m);
 static int bardamage(const Buffer *buf, const Buffer *prev, pixman_region32_t *damage);
 
+static void wallpapertake(void);
+
 /* bars are redrawn on demand: see plugins/redraw.h */
 static struct wl_event_source* redraw_source = NULL;
 static int redraw_fire( int fd, uint32_t mask, void* data ) {
@@ -90,6 +94,7 @@ static int redraw_fire( int fd, uint32_t mask, void* data ) {
     awl_redraw_drain();
     drawbars();
     desktop_update_all();
+    wallpapertake();
     return 0;
 }
 
@@ -152,6 +157,9 @@ static int testoutputremove(int signo, void *data);
 static void tile(Monitor *m);
 static void togglebar_mon(Monitor* m);
 static void togglebar(const Arg *arg);
+static void wallpaper(const Arg *arg);
+static void wallpapernext(WallpaperMode mode);
+static void wallpapermode(const Arg *arg);
 static void togglebw(const Arg *arg);
 static void changebw(const Arg *arg);
 static void togglefloating(const Arg *arg);
@@ -205,6 +213,7 @@ static struct wlr_scene *scene;
 static struct wlr_scene_tree *layers[NUM_LAYERS];
 static struct wlr_scene_tree *drag_icon;
 static struct wlr_scene_tree *desktop_tree;
+static struct wlr_scene_tree *background_tree;
 /* Map from ZWLR_LAYER_SHELL_* constants to Lyr* enum */
 static const int layermap[] = { LyrBg, LyrBottom, LyrTop, LyrOverlay };
 static struct wlr_renderer *drw;
@@ -324,6 +333,8 @@ static struct {
     char *font;
     int fontsize;
     unsigned int borderpx;
+    unsigned int wallpaper_interval;
+    WallpaperMode wallpaper_mode;
 } applied;
 
 /* the keyboards and pointers, to apply a reloaded config.h to */
@@ -539,6 +550,7 @@ arrangelayers(Monitor *m)
         arrangelayer(m, &m->layers[i], &usable_area, 0);
 
     desktop_update(m);
+    background_update(m);
 
     /* Find topmost keyboard interactive layer, if such a layer exists */
     for (i = 0; i < (int)LENGTH(layers_above_shell); i++) {
@@ -575,6 +587,10 @@ arrangelayers(Monitor *m)
  * that leave_delay_ms after the pointer left both it and its popup (at once
  * for a delay of 0). */
 static struct wl_event_source *hover_timer, *leave_timer;
+/* config.h's wallpaper_config.interval */
+static struct wl_event_source *wallpaper_timer;
+/* what the timer switches to: config.h's mode, until wallpapermode() */
+static WallpaperMode wallpaper_mode;
 static widget_t *hover_widget, *hover_active;
 static int leave_pending;
 
@@ -809,8 +825,9 @@ buffer_end_data_ptr_access(struct wlr_buffer *buffer)
 int
 desktopat(double x, double y)
 {
-    /* only the wallpaper (LyrBg) and the desktop panels, which aren't in
-     * layers[], are below; LyrBlock only matters while locked */
+    /* only the wallpaper, background layer surfaces (LyrBg) and the desktop
+     * panels, which aren't in layers[], are below; LyrBlock only matters
+     * while locked */
     int i;
     for (i = LyrBottom; i < LyrBlock; i++)
         if (wlr_scene_node_at(&layers[i]->node, x, y, NULL, NULL))
@@ -818,16 +835,58 @@ desktopat(double x, double y)
     return xytomon(x, y) != NULL;
 }
 
+/* the library's thread does it (plugins/wallpaper.c), off the main thread */
 void
-wallpapernext(void)
+wallpapernext(WallpaperMode mode)
 {
-    const Key *k;
-    for (k = cfg->keys; k < cfg->keys + cfg->n_keys; k++) {
-        if (CLEANMASK(k->mod) == CLEANMASK(cfg->modkey) && k->keysym == XKB_KEY_w && k->func) {
-            k->func(&k->arg);
-            return;
-        }
-    }
+    const awl_plugin_api_t *api = awl_plugins_api();
+    if (api)
+        api->wallpaper(mode);
+}
+
+void wallpaper(const Arg *arg) { wallpapernext(arg->i); }
+
+/* shows a wallpaper the library has decoded since, if any */
+void
+wallpapertake(void)
+{
+    const awl_plugin_api_t *api = awl_plugins_api();
+    awl_image_t *img = api ? api->wallpaper_take() : NULL;
+    if (img)
+        background_set(img, cfg->wallpaper->fade_ms);
+}
+
+/* cycles the timer's mode by arg->i (+1: random, next, previous, random...);
+ * the library tells the user */
+void
+wallpapermode(const Arg *arg)
+{
+    static const WallpaperMode order[] = { WallpaperRand, WallpaperNext, WallpaperPrev };
+    const awl_plugin_api_t *api = awl_plugins_api();
+    const int n = LENGTH(order);
+    int i;
+
+    for (i = 0; i < n && order[i] != wallpaper_mode; i++);
+    wallpaper_mode = order[((i + arg->i) % n + n) % n];
+    if (api)
+        api->wallpaper_mode(wallpaper_mode);
+}
+
+/* (re)starts the countdown to the next timed wallpaper change */
+static void
+wallpaperarm(void)
+{
+    unsigned int s = MIN(cfg->wallpaper->interval, (unsigned int)INT_MAX / 1000);
+    if (wallpaper_timer)
+        wl_event_source_timer_update(wallpaper_timer, (int)(s * 1000));
+}
+
+static int
+wallpapertimeout(void *data)
+{
+    wallpapernext(wallpaper_mode);
+    wallpaperarm();
+    return 0;
 }
 
 void
@@ -963,8 +1022,9 @@ buttonpress(struct wl_listener *listener, void *data)
                 }
             }
         }
-        if (click == ClkRoot && !CLEANMASK(mods) && !exclusive_focus
-                && desktopat(cursor->x, cursor->y) && desktop_click(event->button))
+        /* the library declines the modified clicks it has no use for */
+        if (click == ClkRoot && !exclusive_focus && desktopat(cursor->x, cursor->y)
+                && desktop_click(event->button, CLEANMASK(mods)))
             return;
         break;
     case WL_POINTER_BUTTON_STATE_RELEASED:
@@ -1031,6 +1091,11 @@ cleanup(void)
         leave_timer = NULL;
         hover_active = NULL;
     }
+    if (wallpaper_timer) {
+        wl_event_source_remove(wallpaper_timer);
+        wallpaper_timer = NULL;
+    }
+    background_fini();
     redraw_source = NULL;
 
     /* Tear down the tray's own client connection to us before we start
@@ -1153,6 +1218,7 @@ cleanupmon(struct wl_listener *listener, void *data)
     wlr_scene_node_destroy(&m->fullscreen_bg->node);
     wlr_scene_node_destroy(&m->scene_buffer->node);
     desktop_removemon(m);
+    background_removemon(m);
     for (i = 0; i < LENGTH(m->bar_bufs); i++)
         if (m->bar_bufs[i])
             wlr_buffer_drop(&m->bar_bufs[i]->base);
@@ -1612,6 +1678,7 @@ createmon(struct wl_listener *listener, void *data)
     updatebar(m);
     drawbar(m);
     desktop_addmon(m);
+    background_addmon(m);
 
     wl_list_insert(&mons, &m->link);
 
@@ -3455,6 +3522,7 @@ setup(void)
     wl_event_loop_add_signal(event_loop, SIGTERM, handlesigquit, NULL);
     hover_timer = wl_event_loop_add_timer(event_loop, hovertimeout, NULL);
     leave_timer = wl_event_loop_add_timer(event_loop, leavetimeout, NULL);
+    wallpaper_timer = wl_event_loop_add_timer(event_loop, wallpapertimeout, NULL);
 
     /* The backend is a wlroots feature which abstracts the underlying input and
      * output hardware. The autocreate option will choose the most suitable
@@ -3477,6 +3545,10 @@ setup(void)
     }
     drag_icon = wlr_scene_tree_create(&scene->tree);
     wlr_scene_node_place_below(&drag_icon->node, &layers[LyrBlock]->node);
+    /* the wallpaper, under background layer surfaces (see background.h) */
+    background_tree = wlr_scene_tree_create(&scene->tree);
+    wlr_scene_node_place_below(&background_tree->node, &layers[LyrBg]->node);
+    background_init(background_tree, event_loop);
     /* the $HOME/Desktop panels, over the wallpaper (see desktop.h) */
     desktop_tree = wlr_scene_tree_create(&scene->tree);
     wlr_scene_node_place_above(&desktop_tree->node, &layers[LyrBg]->node);
@@ -4059,6 +4131,7 @@ updatemons(struct wl_listener *listener, void *data)
         closemon(m);
         m->m = m->w = (struct wlr_box){0};
         desktop_update(m);
+        background_update(m);
     }
     /* Insert outputs that need to */
     wl_list_for_each(m, &mons, link) {
@@ -4429,6 +4502,14 @@ configapply(void)
         wlr_scene_blur_set_strength(locked_bg_blur, cfg->blur[0]);
         wlr_scene_blur_set_alpha(locked_bg_blur, cfg->blur[1]);
     }
+    /* a new interval starts counting now; an unchanged one keeps counting */
+    if (cfg->wallpaper->interval != applied.wallpaper_interval) {
+        applied.wallpaper_interval = cfg->wallpaper->interval;
+        wallpaperarm();
+    }
+    /* a new config.h mode replaces wallpapermode()'s; an unchanged one doesn't */
+    if (cfg->wallpaper->mode != applied.wallpaper_mode)
+        wallpaper_mode = applied.wallpaper_mode = cfg->wallpaper->mode;
     desktop_configure(&(desktop_config_t){
             .blur = cfg->blur_launcher, .radius = cfg->blur_launcher_radius,
             .blur_strength = cfg->blur[0], .blur_alpha = cfg->blur[1] });
@@ -4709,7 +4790,6 @@ xwaylandready(struct wl_listener *listener, void *data)
 int
 main(int argc, char *argv[])
 {
-    char default_startup_cmd[] = "awww-daemon";
     char *startup_cmd = NULL;
     int c;
 
@@ -4734,7 +4814,6 @@ main(int argc, char *argv[])
     if (ScreenLockServiceAtStart)
         autostart(ScreenLockService);
 
-    if (SwwwAtStart && !startup_cmd) startup_cmd = default_startup_cmd;
     run(startup_cmd);
     cleanup();
     return EXIT_SUCCESS;

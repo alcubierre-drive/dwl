@@ -186,9 +186,9 @@ void desktop_reloaded( void ) {
     desktop_update_all();
 }
 
-int desktop_click( int button ) {
+int desktop_click( int button, uint32_t mods ) {
     const awl_plugin_api_t* api = awl_plugins_api();
-    if (!api || !api->desktop_click( button )) return 0;
+    if (!api || !api->desktop_click( button, mods )) return 0;
     desktop_update_all();
     return 1;
 }

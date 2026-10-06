@@ -10,6 +10,7 @@
 #include "plugins/redraw.h"
 
 #include <stddef.h>
+#include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
@@ -87,11 +88,14 @@ static void api_init( int paused ) {
     plugin_data->paused = paused;
     awl_plugin_start( plugin_data );
     awl_desktop_start();
+    const WallpaperConfig* wp = awl_config()->wallpaper;
+    awl_wallpaper_start( wp->dir );
 }
 
 static int api_fini( void ) {
     if (!plugin_data) return 0;
     int stuck = awl_desktop_stop();
+    stuck |= awl_wallpaper_stop();
     awl_plugin_stop( plugin_data );
     free( plugin_data );
     plugin_data = NULL;
@@ -104,6 +108,38 @@ static void api_set_paused( int paused ) {
     if (plugin_data->poller) poller_set_paused( plugin_data->poller, paused );
 }
 
+static void api_wallpaper( WallpaperMode mode ) {
+    switch (mode) {
+    case WallpaperNext: awl_wallpaper_step( +1 ); break;
+    case WallpaperPrev: awl_wallpaper_step( -1 ); break;
+    case WallpaperRand: awl_wallpaper_random(); break;
+    }
+}
+
+/* the wallpaper timer's mode changed (wallpapermode): which one it goes
+ * from and to, counted from 1 */
+void awl_notify( const char* title, const char* body ) {
+    awl_host->actions->spawn( &(Arg){ .v = (const char*[]){
+            "notify-send", "-a", "dwl", title, body, NULL } } );
+}
+
+static void api_wallpaper_mode( WallpaperMode mode ) {
+    static const char* names[] = {
+        [WallpaperRand] = "rand", [WallpaperNext] = "next", [WallpaperPrev] = "prev" };
+    const char* off = awl_config()->wallpaper->interval ? "" : " (timer off)";
+    char body[96];
+    int cur, n, rand_next;
+    if (awl_wallpaper_position( &cur, &n, &rand_next )) {
+        int to = mode == WallpaperNext ? (cur + 1) % n
+               : mode == WallpaperPrev ? (cur + n - 1) % n
+               : rand_next;
+        snprintf( body, sizeof(body), "%s: %d → %d of %d%s", names[mode], cur + 1, to + 1, n, off );
+    } else {
+        snprintf( body, sizeof(body), "%s%s", names[mode], off );
+    }
+    awl_notify( "Wallpaper timer", body );
+}
+
 static const awl_plugin_api_t api = {
     .abi = AWL_PLUGIN_ABI,
     .init = api_init,
@@ -114,6 +150,9 @@ static const awl_plugin_api_t api = {
     .desktop_measure = awl_desktop_measure,
     .desktop_draw = awl_desktop_draw,
     .desktop_click = awl_desktop_click,
+    .wallpaper = api_wallpaper,
+    .wallpaper_take = awl_wallpaper_take,
+    .wallpaper_mode = api_wallpaper_mode,
     .config = awl_config,
 };
 

@@ -301,5 +301,11 @@ typedef struct {
 
 void arrange(Monitor *m);
 void focusclient(Client *c, int lift);
-/* runs whatever MOD+w is bound to in config.h */
-void wallpapernext(void);
+/* which wallpaper the wallpaper action (Arg.i) and the timer switch to */
+typedef enum { WallpaperNext, WallpaperPrev, WallpaperRand } WallpaperMode;
+typedef struct {
+    const char *dir;         /* its *.png files; relative to $HOME unless absolute */
+    unsigned int fade_ms;    /* from one to the next, 0: switch at once */
+    unsigned int interval;   /* seconds between the timer's changes, 0: none */
+    WallpaperMode mode;      /* what the timer switches to, until wallpapermode */
+} WallpaperConfig;

@@ -34,7 +34,6 @@ static const char* Autostarts[][8] = {
     { NULL }, /* e.g. { "nm-applet", NULL }, */
 };
 static const int ScreenLockServiceAtStart = 0; /* spawn ScreenLockService */
-static const int SwwwAtStart = 0;              /* awww-daemon as the startup command (-s) */
 static const char* ScreenLockService[] = { "systemd-lock-handler", "--", "swaylock", "-c", "00000000", NULL };
 
 #endif /* AWL_CONFIG_RELOADABLE_ONLY */
@@ -86,6 +85,14 @@ static const awl_tray_config_t tray_config = {
         .list_min_height = 120,
         .list_max_height = 200,
     },
+};
+
+/* the wallpaper action ({.i = WallpaperNext, WallpaperPrev or WallpaperRand})
+ * shows one of dir's *.png files, scaled to cover each monitor; so does a
+ * timer every interval seconds (0: never), going where mode says
+ * (wallpapermode cycles it) */
+static const WallpaperConfig wallpaper_config = {
+    .dir = "Wallpapers", .fade_ms = 500, .interval = 7200, .mode = WallpaperRand,
 };
 
 /* NOTE: ALWAYS keep a rule declared even if you don't use rules (e.g leave at least one example) */
@@ -190,8 +197,6 @@ static const enum libinput_config_tap_button_map button_map = LIBINPUT_CONFIG_TA
 /* commands */
 static const char *termcmd[] = { "foot", NULL };
 static const char *menucmd[] = { "wmenu-run", NULL };
-/* MOD+w; a right click on the bare desktop runs it too */
-static const char *wallpaper_cmd[] = { "random_wallpaper.sh", "-r", NULL };
 
 /* the functions keys and buttons can call are listed in AWL_ACTIONS
  * (awl_plugin_abi.h); config.h may define its own on top, like this one */
@@ -202,7 +207,7 @@ static const Key keys[] = {
     /* modifier                  key                 function          argument */
     { MODKEY,                    XKB_KEY_p,          spawn,            {.v = menucmd} },
     { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_Return,     spawn,            {.v = termcmd} },
-    { MODKEY,                    XKB_KEY_w,          spawn,            {.v = wallpaper_cmd} },
+    { MODKEY,                    XKB_KEY_w,          wallpaper,        {.i = WallpaperRand} },
     { MODKEY,                    XKB_KEY_b,          togglebar,        {0} },
     { MODKEY,                    XKB_KEY_j,          focusstack,       {.i = +1} },
     { MODKEY,                    XKB_KEY_k,          focusstack,       {.i = -1} },
@@ -255,7 +260,8 @@ static const Key keys[] = {
 };
 
 /* Clicks on the bar go to its widgets, clicks on the bare desktop to the
- * desktop file list (left: show/hide, middle: hidden files, right: MOD+w);
+ * desktop (left/right/middle: previous/next/random wallpaper; with Shift:
+ * show/hide the file list, cycle the wallpaper timer, hidden files);
  * bindings here take precedence. */
 static const Button buttons[] = {
     { ClkClient,   MODKEY, BTN_LEFT,   moveresize,     {.ui = CurMove} },

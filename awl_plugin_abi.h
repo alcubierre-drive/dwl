@@ -3,7 +3,9 @@
 /* The boundary between dwl and libawlplugins.so, the live-reloadable part of
  * dwl: the plugin threads (plugins.c, plugins/), the bar widgets
  * (widgets.c), the desktop file list (desktop_panel.c; dwl's desktop.c only
- * places it) and the reloadable half of config.h (awl_config.c). dwl dlopen()s the library and looks up a single symbol,
+ * places it), picking and decoding the wallpaper (plugins/wallpaper.c; dwl's
+ * background.c shows it) and the reloadable half of config.h (awl_config.c).
+ * dwl dlopen()s the library and looks up a single symbol,
  * AWL_PLUGIN_ENTRY; everything else goes through the two tables below, so
  * the library has no unresolved references into dwl (no -rdynamic).
  *
@@ -16,8 +18,9 @@
 #include <stdint.h>
 #include "drwl.h"
 #include "tray/awl_tray.h"
+#include "plugins/wallpaper.h"
 
-#define AWL_PLUGIN_ABI 6
+#define AWL_PLUGIN_ABI 12
 #define AWL_PLUGIN_ENTRY "awl_plugin_entry"
 
 /* Every dwl function config.h can bind to a key or button. The library binds
@@ -28,7 +31,7 @@
     X( moveresize ) X( movestack ) X( plugin_restart ) X( quit ) X( setlayout ) X( setmfact ) \
     X( spawn ) X( tag ) X( tagmon ) X( togglebar ) X( togglebw ) X( togglefloating ) \
     X( togglefullscreen ) X( toggleontop ) X( toggletag ) X( toggleview ) \
-    X( transluce ) X( unminimize ) X( view )
+    X( transluce ) X( unminimize ) X( view ) X( wallpaper ) X( wallpapermode )
 
 #define AWL_ACTION_FIELD( name ) void (*name)( const Arg* arg );
 typedef struct awl_actions_t {
@@ -84,6 +87,7 @@ typedef struct awl_config_t {
     enum libinput_config_tap_button_map button_map;
 
     const awl_tray_config_t* tray;
+    const WallpaperConfig* wallpaper;
 } awl_config_t;
 
 #define AWL_CONFIG_TABLE (awl_config_t){ \
@@ -106,7 +110,7 @@ typedef struct awl_config_t {
     .scroll_method = scroll_method, .click_method = click_method, \
     .send_events_mode = send_events_mode, .accel_profile = accel_profile, \
     .accel_speed = accel_speed, .button_map = button_map, \
-    .tray = &tray_config, \
+    .tray = &tray_config, .wallpaper = &wallpaper_config, \
 }
 
 /* What dwl provides to the library. All functions are main-thread only,
@@ -128,8 +132,6 @@ typedef struct awl_host_t {
     const awl_arranges_t* arranges;
     void (*focusclient)( Client* c, int lift );
     void (*arrange)( Monitor* m );
-    /* whatever MOD+w is bound to */
-    void (*wallpaper_next)( void );
 
     /* tray (tray/awl_tray.h) */
     uint32_t (*tray_width)( const char* monitor_id );
@@ -167,8 +169,17 @@ typedef struct awl_plugin_api_t {
      * cleared); dwl has prepared drw for drawing into it */
     void (*desktop_draw)( Drwl* drw, uint32_t* data, int stride, int w, int h, int r,
                           float scale );
-    /* a click on the bare desktop; returns whether it was taken */
-    int (*desktop_click)( int button );
+    /* a click on the bare desktop, mods as WLR_MODIFIER_* without the ignored
+     * ones; returns whether it was taken */
+    int (*desktop_click)( int button, uint32_t mods );
+
+    /* changes the wallpaper (plugins/wallpaper.h); returns at once */
+    void (*wallpaper)( WallpaperMode mode );
+    /* the newest decoded wallpaper not taken yet, or NULL; the caller owns
+     * it. A redraw request announces one. */
+    awl_image_t* (*wallpaper_take)( void );
+    /* the wallpaper timer's mode changed (the wallpapermode action) */
+    void (*wallpaper_mode)( WallpaperMode mode );
 
     /* the reloadable half of config.h; valid until the library is unloaded */
     const awl_config_t* (*config)( void );
