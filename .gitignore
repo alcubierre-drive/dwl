@@ -1,4 +1,4 @@
-dwl
+awl
 *.o
 *.d
 *-protocol.c
@@ -7,3 +7,4 @@ dwl
 config.h
 libawlplugins.so
 test/vptr
+doc/_build

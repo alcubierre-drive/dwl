@@ -1,4 +1,4 @@
-// Bridges dwl's bar (pure C, wlroots render thread) to the SNI tray logic
+// Bridges awl's bar (pure C, wlroots render thread) to the SNI tray logic
 // in tray.hpp/host.hpp/item.hpp (C++, glib/gtk thread). Owns a dedicated
 // pthread running a GTK/GLib main loop that hosts a real, input-owning
 // gtk-layer-shell overlay window containing SNI::Tray's box of icons.
@@ -8,13 +8,13 @@
 // directly, so context-menu popups -- which need a genuine input-event
 // serial -- work exactly as libdbusmenu-gtk expects). The two things that
 // change from the original: it runs as a library thread with a lifecycle
-// dwl owns (awl_tray_init()/awl_tray_shutdown() from dwl.c's run()/
+// awl owns (awl_tray_init()/awl_tray_shutdown() from awl.c's run()/
 // cleanup()) instead of being spawned as a separate process, and it's
-// auto-positioned from dwl's real bar geometry/layout (awl_tray_set_bar_geometry
+// auto-positioned from awl's real bar geometry/layout (awl_tray_set_bar_geometry
 // from updatebar(), awl_tray_set_widget_x() from the systray widget's own
 // draw call) instead of hardcoded gtk-layer-shell margins.
 //
-// dwl's render thread never touches GTK/D-Bus directly: it calls
+// awl's render thread never touches GTK/D-Bus directly: it calls
 // awl_tray_width()/_set_widget_x()/_set_bar_geometry(), which only touch a
 // few atomics/a small mutex, or marshal work onto the GTK thread via
 // g_idle_add() (documented thread-safe).
@@ -48,12 +48,12 @@ struct BarGeom {
     int32_t x = 0, y = 0;
     int32_t width = 0, height = 20;
     double scale = 1.0;
-    bool known = false;  // dwl sent it
+    bool known = false;  // awl sent it
 };
 
-// What dwl's thread and a monitor's Bridge (GTK thread) exchange. dwl's
+// What awl's thread and a monitor's Bridge (GTK thread) exchange. awl's
 // thread only ever touches this, never the Bridge: it is created together
-// with the monitor's registry entry (see shared_for()), so nothing dwl sends
+// with the monitor's registry entry (see shared_for()), so nothing awl sends
 // is lost while the Bridge is still being constructed (updatebar() only
 // sends the geometry on real changes), and it stays valid for whoever still
 // holds a reference after the monitor is removed.
@@ -62,7 +62,7 @@ struct Shared {
     BarGeom geom;                         // guarded by mtx
     std::atomic<int32_t> widget_x{0};     // buffer-scaled px, from systray_draw's `x`
     std::atomic<int32_t> content_w{0};    // logical px, box_'s current allocated width
-    std::atomic<bool> visible{true};      // dwl's togglebar
+    std::atomic<bool> visible{true};      // awl's togglebar
 
     BarGeom getGeom() {
         std::lock_guard<std::mutex> lg(mtx);
@@ -71,7 +71,7 @@ struct Shared {
 };
 
 // Set via awl_tray_set_change_callback(); called from the GTK thread whenever
-// a tray's content width changes, so dwl redraws its bar (which reserves
+// a tray's content width changes, so awl redraws its bar (which reserves
 // that width) instead of polling awl_tray_width().
 std::atomic<void (*)(void)> g_change_cb{nullptr};
 
@@ -103,7 +103,7 @@ public:
     Bridge(std::string monitor_id, std::shared_ptr<Shared> shared);
     ~Bridge();
 
-    // Apply what dwl last sent (shared_).
+    // Apply what awl last sent (shared_).
     void reposition();
     void applyVisible();
     void applyConfig();
@@ -148,7 +148,7 @@ Bridge::Bridge(std::string monitor_id, std::shared_ptr<Shared> shared)
 
     gtk_layer_init_for_window(win_->gobj());
     // The namespace encodes which monitor this window belongs to as
-    // "awl-tray:<monitor_id>" -- dwl.c's createlayersurface() parses this
+    // "awl-tray:<monitor_id>" -- awl.c's createlayersurface() parses this
     // prefix and binds the surface to that exact wlr_output before falling
     // back to its normal "no output requested -> selmon" default. Without
     // this, every tray window (one per monitor, all requesting no specific
@@ -159,8 +159,8 @@ Bridge::Bridge(std::string monitor_id, std::shared_ptr<Shared> shared)
     // that fight no longer exists once each is correctly bound to its own
     // output -- but binding is what actually prevents it).
     gtk_layer_set_namespace(win_->gobj(), ("awl-tray:" + monitor_id_).c_str());
-    // BOTTOM, not TOP: dwl's own bar lives in its LyrBottom scene layer (see
-    // the comment on m->scene_buffer's creation in dwl.c), which sits below
+    // BOTTOM, not TOP: awl's own bar lives in its LyrBottom scene layer (see
+    // the comment on m->scene_buffer's creation in awl.c), which sits below
     // floating windows by design -- the tray should stay in sync with that,
     // not float above it, so a floating window dragged over the bar covers
     // both together instead of just the bar.
@@ -168,7 +168,7 @@ Bridge::Bridge(std::string monitor_id, std::shared_ptr<Shared> shared)
     gtk_layer_set_keyboard_interactivity(win_->gobj(), false);
     gtk_layer_set_anchor(win_->gobj(), GTK_LAYER_SHELL_EDGE_LEFT, true);
     gtk_layer_set_anchor(win_->gobj(), GTK_LAYER_SHELL_EDGE_TOP, true);
-    // dwl's own bar widget layout already reserves the horizontal space for
+    // awl's own bar widget layout already reserves the horizontal space for
     // us (systray_draw's return value), so the layer surface itself must not
     // additionally reserve compositor exclusive zone space.
     gtk_layer_set_exclusive_zone(win_->gobj(), 0);
@@ -300,18 +300,18 @@ void Bridge::reposition() {
 
     // gtk-layer-shell margins get added by wlroots *directly* onto the
     // compositor's own output-layout coordinates (wlr_scene_layer_surface_v1_configure
-    // adds margin straight onto full_area, i.e. m->m -- dwl's own logical-pixel
-    // space, physical / dwl's fractional output scale) -- confirmed by
-    // instrumenting dwl.c's arrangelayer() directly and comparing its
+    // adds margin straight onto full_area, i.e. m->m -- awl's own logical-pixel
+    // space, physical / awl's fractional output scale) -- confirmed by
+    // instrumenting awl.c's arrangelayer() directly and comparing its
     // resulting scene position against what was sent here. GTK's own
     // negotiated client-side scale (the legacy integer wl_output.scale
     // gtk-layer-shell sees) plays no part in that placement -- it only
     // matters for GTK's own rendering, e.g. converting box_'s preferred
     // width to physical pixels in width() below. So g.x/g.y/g.height (already
-    // dwl-logical, from updatebar() in dwl.c) need no conversion at all here;
+    // awl-logical, from updatebar() in awl.c) need no conversion at all here;
     // only wx -- physical/"buffer-scaled" per its documented contract, since
     // it comes from the bar's own pixman-buffer x coordinate -- needs
-    // dividing by dwl's own scale to land in that same dwl-logical space.
+    // dividing by awl's own scale to land in that same awl-logical space.
     int margin_left = g.x + (int)(g.scale > 0 ? wx / g.scale : wx);
     int margin_top = g.y;
     int height = std::max(1, g.height);
@@ -405,14 +405,14 @@ void Bridge::reloadTray() {
     scheduleWidthCheck();
 }
 
-// The tray's width for dwl's bar. Any thread.
+// The tray's width for awl's bar. Any thread.
 uint32_t tray_width(Shared &sh) {
     int32_t w = sh.content_w.load(std::memory_order_relaxed);
     if (w <= 0) return 0;
     // content_w is box_'s preferred width in *this window's own* GTK-logical
-    // pixels; dwl wants it back in units matching its own raw bar buffer (see
+    // pixels; awl wants it back in units matching its own raw bar buffer (see
     // drawbar()'s m->b.width, which is m->b.real_width * m->wlr_output->scale)
-    // to reserve bar space. That's dwl's own *real* output scale (geom.scale,
+    // to reserve bar space. That's awl's own *real* output scale (geom.scale,
     // e.g. 1.5) -- the same one reposition() uses for margins, per its comment
     // on wlr_scene_layer_surface_v1_configure(). It is NOT this window's own
     // client-negotiated buffer scale (win_->get_scale_factor()): GTK3/
@@ -428,8 +428,8 @@ uint32_t tray_width(Shared &sh) {
 pthread_t g_thread;
 std::atomic<bool> g_running{false};
 
-// The monitors dwl told us about, keyed by monitor_id (m->wlr_output->name).
-// An entry is created by dwl's thread (shared_for()) and removed by it
+// The monitors awl told us about, keyed by monitor_id (m->wlr_output->name).
+// An entry is created by awl's thread (shared_for()) and removed by it
 // (awl_tray_remove_monitor()), so a monitor that is unplugged and plugged
 // back under the same name gets a fresh entry right away. Its Bridge is
 // filled in later by the GTK thread, and is only ever constructed, used and
@@ -458,7 +458,7 @@ void destroy_on_gtk_thread(std::unique_ptr<Bridge> b) {
 }
 
 // The shared state of `mon`, creating its entry and queueing the construction
-// of its Bridge if it is new. nullptr if the tray isn't running. dwl's thread.
+// of its Bridge if it is new. nullptr if the tray isn't running. awl's thread.
 std::shared_ptr<Shared> shared_for(const std::string &mon) {
     if (!g_running.load()) return nullptr;
     std::shared_ptr<Shared> sh;
@@ -485,7 +485,7 @@ std::shared_ptr<Shared> shared_for(const std::string &mon) {
             if (is_current()) g_bridges[mon].bridge = std::move(b);
         }
         if (b) return;  // removed while it was being built; destroyed here
-        // apply whatever dwl sent before the Bridge existed
+        // apply whatever awl sent before the Bridge existed
         raw->reposition();
     });
     return sh;
@@ -506,7 +506,7 @@ void with_bridge(const std::string &mon, F &&fn) {
 std::atomic<bool> g_finished{false};
 
 // Runs on its own thread. Gtk::Main's constructor connects to us as a
-// Wayland client, which can only complete once dwl's own main thread
+// Wayland client, which can only complete once awl's own main thread
 // reaches wl_display_run() -- this blocks here (harmlessly, on this
 // background thread) until then rather than the caller of awl_tray_init().
 void *thread_main(void *) {
@@ -516,7 +516,7 @@ void *thread_main(void *) {
     char **argv = &argv0;
     Gtk::Main kit(argc, argv);
 
-    // Bridges are created lazily, per monitor, the first time dwl mentions a
+    // Bridges are created lazily, per monitor, the first time awl mentions a
     // monitor_id (see shared_for()) -- there's no single "the" tray window
     // to construct eagerly here any more.
     //
@@ -529,7 +529,7 @@ void *thread_main(void *) {
     // Explicitly destroy every Bridge (and with it each one's win_/tray_,
     // i.e. this thread's own Wayland client state -- window/surface
     // destruction, final object cleanup) *before* signalling g_finished, so
-    // the dwl-side poll loop in awl_tray_join() can't observe "finished"
+    // the awl-side poll loop in awl_tray_join() can't observe "finished"
     // while that teardown is still in flight (which would let cleanup()
     // race ahead into wl_display_destroy_clients()/wl_display_destroy()
     // concurrently with this thread still using the display).
@@ -554,7 +554,7 @@ void awl_tray_init(const awl_tray_config_t *config) {
     // the thread doesn't exist yet; pthread_create() publishes this to it
     SNI::g_config = *config;
     // g_running before the thread exists: the thread's first calls into
-    // dwl (shared_for(), via geometry pushes) check it
+    // awl (shared_for(), via geometry pushes) check it
     SNI::g_running = true;
     int err = pthread_create(&SNI::g_thread, nullptr, SNI::thread_main, nullptr);
     if (err) {
@@ -568,9 +568,9 @@ void awl_tray_init(const awl_tray_config_t *config) {
 
 void awl_tray_shutdown(void) {
     if (!SNI::g_running.load()) return;
-    // Deliberately does NOT pthread_join() here: by the time dwl's cleanup()
+    // Deliberately does NOT pthread_join() here: by the time awl's cleanup()
     // calls this, wl_display_terminate() has already made wl_display_run()
-    // return, so nothing is dispatching dwl's own Wayland event loop any
+    // return, so nothing is dispatching awl's own Wayland event loop any
     // more. If the tray's GTK thread needs a response from us as the server
     // to finish tearing down its Wayland client connection (a frame
     // callback, a layer-surface configure ack, a buffer release -- any of
@@ -658,7 +658,7 @@ static void calendar_on_gtk_thread(const char *monitor_id, bool toggle) {
         auto it = SNI::g_bridges.find(mon);
         if (it != SNI::g_bridges.end()) g = it->second.shared->getGeom();
     }
-    // dwl puts a bottom bar at y = monitor height - bar height
+    // awl puts a bottom bar at y = monitor height - bar height
     bool top = g.y == 0;
     SNI::run_on_gtk_thread([mon, toggle, top] {
         if (toggle)

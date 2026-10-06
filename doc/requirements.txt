@@ -1,0 +1,5 @@
+sphinx
+hawkmoth
+libclang
+sphinx-rtd-theme
+sphinxcontrib-mermaid

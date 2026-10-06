@@ -93,22 +93,31 @@
 #ifndef MIN
 #define MIN(A, B)               ((A) < (B) ? (A) : (B))
 #endif
+/** the modifier mask without Caps Lock, as keys and buttons are matched */
 #define CLEANMASK(mask)         (mask & ~WLR_MODIFIER_CAPS)
+/** whether client C is on monitor M and one of its shown tags */
 #define VISIBLEON(C, M)         ((M) && (C)->mon == (M) && ((C)->tags & (M)->tagset[(M)->seltags]))
 #define VISIBLEON_ACTIVE(C, M)  (VISIBLEON(C, M) && (C)->isvisible)
+/** the number of elements of array X */
 #define LENGTH(X)               (sizeof X / sizeof X[0])
 #define TAGMASK                 ((1u << LENGTH(tags)) - 1)
 #define LISTEN(E, L, H)         wl_signal_add((E), ((L)->notify = (H), (L)))
 #define LISTEN_STATIC(E, H)     do { struct wl_listener *_l = ecalloc(1, sizeof*_l); _l->notify = (H); wl_signal_add((E), _l); } while (0)
-#define TEXTW(mon, text)        (drwl_font_getwidth(mon->drw, text) + mon->lrpad)
+#define TEXTW(mon, text)        (awl_draw_font_getwidth(mon->drw, text) + mon->lrpad)
 
 /* enums */
-enum { BorderNorm, BorderSel, BorderUrg, BorderLast }; /* bordercolors[] */
-enum { CurNormal, CurPressed, CurMove, CurResize }; /* cursor */
-enum { XDGShell, LayerShell, X11 }; /* client types */
-enum { LyrBg, LyrBottom, LyrTile, LyrFloat, LyrTop, LyrFS, LyrOverlay, LyrBlock, NUM_LAYERS }; /* scene layers */
-enum { ClkBar, ClkClient, ClkRoot }; /* clicks */
+/** bordercolors[] */
+enum { BorderNorm, BorderSel, BorderUrg, BorderLast };
+/** cursor */
+enum { CurNormal, CurPressed, CurMove, CurResize };
+/** client types */
+enum { XDGShell, LayerShell, X11 };
+/** scene layers, bottom to top */
+enum { LyrBg, LyrBottom, LyrTile, LyrFloat, LyrTop, LyrFS, LyrOverlay, LyrBlock, NUM_LAYERS };
+/** where a click went, `Button.click` */
+enum { ClkBar, ClkClient, ClkRoot };
 
+/** The argument config.h's bindings pass to their function. */
 typedef union {
     int i;
     uint32_t ui;
@@ -116,6 +125,7 @@ typedef union {
     const void *v;
 } Arg;
 
+/** A pointer button binding in config.h's ``buttons[]``. */
 typedef struct {
     unsigned int click;
     unsigned int mod;
@@ -126,6 +136,7 @@ typedef struct {
 
 typedef struct Monitor Monitor;
 typedef struct Client Client;
+/** A window, XDG shell or XWayland. */
 struct Client {
     /* Must keep these three elements in this order */
     unsigned int type; /* XDGShell or X11* */
@@ -174,6 +185,7 @@ struct Client {
     uint32_t resize; /* configure serial of a pending resize */
 };
 
+/** A key binding in config.h's ``keys[]``. */
 typedef struct {
     uint32_t mod;
     xkb_keysym_t keysym;
@@ -195,6 +207,8 @@ typedef struct {
     struct wl_listener destroy;
 } KeyboardGroup;
 
+/** A layer-shell surface: panels, notifications, the launcher, the tray's
+ * windows and the calendar. */
 typedef struct {
     /* Must keep these three elements in this order */
     unsigned int type; /* LayerShell */
@@ -214,13 +228,15 @@ typedef struct {
     struct wlr_scene_blur* blur;
 } LayerSurface;
 
+/** A layout in config.h's ``layouts[]``. */
 typedef struct {
     const char *symbol;
     void (*arrange)(Monitor *);
 } Layout;
 
 typedef struct Buffer Buffer;
-typedef struct Drwl Drwl;
+typedef struct awl_draw_t awl_draw_t;
+/** An output, with its bar. */
 struct Monitor {
     struct wl_list link;
     struct wlr_output *wlr_output;
@@ -253,10 +269,14 @@ struct Monitor {
     uint8_t closedbar:1;
     char ltsymbol[16];
     int asleep;
-    Drwl *drw;
+    /** the bar's drawing state and widgets */
+    awl_draw_t *drw;
+    /** the bar's text padding, left and right together */
     int lrpad;
 };
 
+/** A ``wlr_buffer`` of ARGB pixels in memory, for the bar and the desktop
+ * panels. */
 struct Buffer {
     struct wlr_buffer base;
     size_t stride;
@@ -264,6 +284,7 @@ struct Buffer {
     uint32_t data[];
 };
 
+/** A rule in config.h's ``monrules[]``, for outputs whose name matches. */
 typedef struct {
     const char *name;
     float mfact;
@@ -279,6 +300,8 @@ typedef struct {
     struct wl_listener destroy;
 } PointerConstraint;
 
+/** A rule in config.h's ``rules[]``, for new windows whose app id and title
+ * match. */
 typedef struct {
     const char *id;
     const char *title;
@@ -299,17 +322,26 @@ typedef struct {
     struct wl_listener destroy;
 } SessionLock;
 
+/** lays out m's windows with its layout */
 void arrange(Monitor *m);
+/** focuses c (NULL: none) and, if lift, raises it */
 void focusclient(Client *c, int lift);
-/* which wallpaper the wallpaper action (Arg.i) and the timer switch to; the
- * ones after WallpaperModeCount are no timer modes: back to the one shown
+/**
+ * which wallpaper the wallpaper action (`Arg.i`) and the timer switch to; the
+ * ones after `WallpaperModeCount` are no timer modes: back to the one shown
  * before, where the timer goes next, and the way back from there (for
- * WallpaperRand, WallpaperBack) */
+ * `WallpaperRand`, `WallpaperBack`)
+ */
 typedef enum { WallpaperNext, WallpaperPrev, WallpaperRand, WallpaperModeCount,
                WallpaperBack, WallpaperTimerNext, WallpaperTimerBack } WallpaperMode;
+/** config.h's ``wallpaper_config`` */
 typedef struct {
-    const char *dir;         /* its *.png files; relative to $HOME unless absolute */
-    unsigned int fade_ms;    /* from one to the next, 0: switch at once */
-    unsigned int interval;   /* seconds between the timer's changes, 0: none */
-    WallpaperMode mode;      /* what the timer switches to, until wallpapermode */
+    /** its ``*.png`` files; relative to ``$HOME`` unless absolute */
+    const char *dir;
+    /** from one to the next, 0: switch at once */
+    unsigned int fade_ms;
+    /** seconds between the timer's changes, 0: none */
+    unsigned int interval;
+    /** what the timer switches to, until wallpapermode */
+    WallpaperMode mode;
 } WallpaperConfig;

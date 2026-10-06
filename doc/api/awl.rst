@@ -1,0 +1,17 @@
+awl
+===
+
+The compositor itself. awl.h holds the types config.h and the plugin library
+share with awl.c; awl.c's internals below are the parts specific to this fork
+(the plugin library, the bar's hover, the wallpaper timer, config reloads,
+child processes).
+
+awl.h
+-----
+
+.. c:autodoc:: awl.h
+
+awl.c
+-----
+
+.. c:autodoc:: awl.c

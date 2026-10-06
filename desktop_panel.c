@@ -1,5 +1,5 @@
-/* The desktop file list's content: which files, how they look, what clicks
- * do. dwl's desktop.c owns the panels' buffers and scene nodes and asks for
+/** The desktop file list's content: which files, how they look, what clicks
+ * do. awl's desktop.c owns the panels' buffers and scene nodes and asks for
  * the pixels through awl_plugin_api_t (see awl_plugin_abi.h). */
 
 #include "plugins.h"
@@ -20,18 +20,18 @@
 #include <sys/inotify.h>
 #include <unistd.h>
 
-/* calendar style (tray/calendar.cpp) */
+/** calendar style (tray/calendar.cpp) */
 static const uint32_t panel_bg = 0x3c3c3c4c,
                       col_file = 0xf8f8f2ff,
                       col_dir = molokai_blue,
                       col_broken = molokai_red;
-/* hidden entries, "(empty)" and "… N more" keep their color at this opacity */
+/** hidden entries, "(empty)" and "… N more" keep their color at this opacity */
 static const uint32_t hidden_alpha = 0xa0;
 static const float panel_margin = 10; /* logical pixels, to the usable area's corner */
 
 #define NFILES (sizeof(((DesktopFiles*)0)->files) / sizeof(Filename))
 
-/* the layout of the last measure, for drawing */
+/** the layout of the last measure, for drawing */
 typedef struct {
     int idx[NFILES];   /* the visible entries, in order */
     int n, shown;      /* visible ones, and how many of those fit */
@@ -39,7 +39,7 @@ typedef struct {
     char more[32];     /* "… N more" in place of the last that fits */
 } PanelLayout;
 
-/* Main thread state. The main thread never touches the file system: on a
+/** Main thread state. The main thread never touches the file system: on a
  * hung (e.g. remote) mount any file system call can block indefinitely,
  * which must not freeze the compositor. */
 static struct {
@@ -53,7 +53,7 @@ static struct {
     PanelLayout lay;
 } desk;
 
-/* Shared with a scanner thread, which does all the file system access
+/** Shared with a scanner thread, which does all the file system access
  * (inotify_add_watch() resolves the path too). One per scanner: a scanner
  * stuck in the kernel is abandoned rather than waited for, together with its
  * Scanner, which is then never freed -- and since its code must stay
@@ -67,13 +67,13 @@ typedef struct {
     awl_thread_t thread;  /* waking it (main -> scanner) means rescan */
 } Scanner;
 
-/* the running scanner, NULL if none */
+/** the running scanner, NULL if none */
 static Scanner* sc;
 
-/* after an event, wait this long for more before scanning, so a burst
- * (copying many files) costs one scan */
+/** after an event, wait this long for more before scanning, so a burst
+ * (copying many files) costs one scan; but at most scan_settle_max_ms */
 static const int scan_settle_ms = 50, scan_settle_max_ms = 500;
-/* without a watch (no directory yet, or it vanished), retry this often */
+/** without a watch (no directory yet, or it vanished), retry this often */
 static const int rewatch_ms = 5000;
 
 static void* scanner( void* data ) {
@@ -127,7 +127,7 @@ static void* scanner( void* data ) {
     return NULL;
 }
 
-/* asks the scanner to look again, e.g. for a directory that appeared */
+/** asks the scanner to look again, e.g. for a directory that appeared */
 static void rescan( void ) {
     if (sc) awl_thread_wake( &sc->thread );
 }
@@ -155,7 +155,7 @@ int awl_desktop_stop( void ) {
     sc = NULL;
 
     /* a scanner blocked on a dead mount can't be woken or cancelled; leave
-     * it behind instead of hanging dwl */
+     * it behind instead of hanging awl */
     if (awl_thread_stop( &old->thread, 500 )) {
         fprintf( stderr, "desktop: scanner thread stuck (in %s?), not waiting for it\n",
                  old->path );
@@ -191,7 +191,7 @@ static void label( const Filename* f, char* out, size_t n ) {
     snprintf( out, n, "%s%s", f->name, f->isdir ? "/" : "" );
 }
 
-/* c at opacity a; pixman takes text colors premultiplied */
+/** c at opacity a; pixman takes text colors premultiplied */
 static uint32_t fade( uint32_t c, uint32_t a ) {
     uint32_t out = a;
     for (int s = 8; s < 32; s += 8)
@@ -204,11 +204,11 @@ static uint32_t color( const Filename* f ) {
     return f->ishidden ? fade( c, hidden_alpha ) : c;
 }
 
-static int textw( Drwl* drw, const char* text ) {
+static int textw( awl_draw_t* drw, const char* text ) {
     return (int)awl_host->font_getwidth( drw, text );
 }
 
-void awl_desktop_measure( Drwl* drw, int avail_w, int avail_h, int radius, float s,
+void awl_desktop_measure( awl_draw_t* drw, int avail_w, int avail_h, int radius, float s,
                           int* x, int* y, int* w, int* h ) {
     PanelLayout* l = &desk.lay;
     const int fh = drw->font->height,
@@ -266,7 +266,7 @@ static inline float clampf( float x ) {
     return x < 0 ? 0 : x > 1 ? 1 : x;
 }
 
-/* Puts a rounded panel (antialiased) under what is already drawn into the
+/** Puts a rounded panel (antialiased) under what is already drawn into the
  * premultiplied ARGB buffer: dst = dst + src * (1 - dst.a). */
 static void panel_under( uint32_t* data, int stride, int w, int h, float r, uint32_t bg ) {
     const float hw = w / 2.f, hh = h / 2.f;
@@ -295,11 +295,11 @@ static void panel_under( uint32_t* data, int stride, int w, int h, float r, uint
     }
 }
 
-static void text( Drwl* drw, int x, int y, int w, int h, const char* s, uint32_t fg ) {
+static void text( awl_draw_t* drw, int x, int y, int w, int h, const char* s, uint32_t fg ) {
     awl_host->text( drw, x, y, w, h, 0, s, color_8bit_to_16bit( fg ), color_8bit_to_16bit( 0 ) );
 }
 
-void awl_desktop_draw( Drwl* drw, uint32_t* data, int stride, int w, int h, int radius,
+void awl_desktop_draw( awl_draw_t* drw, uint32_t* data, int stride, int w, int h, int radius,
                        float s ) {
     const PanelLayout* l = &desk.lay;
     char buf[sizeof(desk.files[0].name) + 2];

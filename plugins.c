@@ -1,4 +1,4 @@
-#include "dwl.h"
+#include "awl.h"
 #include "plugins.h"
 #include "plugins/ipaddr.h"
 #include "plugins/stats.h"
@@ -78,7 +78,7 @@ awl_plugin_data_t* awl_plugin_get( void ) {
     return plugin_data;
 }
 
-/* plugins/redraw.c lives in dwl, which owns the eventfd */
+/* plugins/redraw.c lives in awl, which owns the eventfd */
 void awl_redraw_request( void ) {
     awl_host->redraw_request();
 }
@@ -114,16 +114,16 @@ static void api_wallpaper( WallpaperMode mode ) {
     case WallpaperPrev: awl_wallpaper_step( -1 ); break;
     case WallpaperRand: awl_wallpaper_random(); break;
     case WallpaperBack: awl_wallpaper_back(); break;
-    default: break; /* dwl resolves the timer ones */
+    default: break; /* awl resolves the timer ones */
     }
 }
 
 void awl_notify( const char* title, const char* body ) {
     awl_host->actions->spawn( &(Arg){ .v = (const char*[]){
-            "notify-send", "-a", "dwl", title, body, NULL } } );
+            "notify-send", "-a", "awl", title, body, NULL } } );
 }
 
-/* the wallpaper to tell about once it's shown (awl_notify_wallpaper_shown());
+/** the wallpaper to tell about once it's shown (`awl_notify_wallpaper_shown()`);
  * main thread */
 static const char* shown_title;
 
@@ -131,7 +131,7 @@ void awl_notify_wallpaper_shown( const char* title ) {
     shown_title = title;
 }
 
-/* dwl takes the wallpaper to show it: if all changes asked for are done,
+/** awl takes the wallpaper to show it: if all changes asked for are done,
  * this is the one they end on */
 static awl_image_t* api_wallpaper_take( void ) {
     awl_image_t* img = awl_wallpaper_take();
@@ -145,7 +145,7 @@ static awl_image_t* api_wallpaper_take( void ) {
     return img;
 }
 
-/* the wallpaper timer's mode changed (wallpapermode) */
+/** the wallpaper timer's mode changed (wallpapermode) */
 static void api_wallpaper_mode( WallpaperMode mode ) {
     static const char* names[] = {
         [WallpaperRand] = "rand", [WallpaperNext] = "next", [WallpaperPrev] = "prev",
@@ -182,7 +182,7 @@ __attribute__((visibility("default")))
 const awl_plugin_api_t* awl_plugin_entry( const awl_host_t* host ) {
     if (!host || host->abi != AWL_PLUGIN_ABI ||
         host->sizeof_host != sizeof(awl_host_t) ||
-        host->sizeof_drwl != sizeof(Drwl) ||
+        host->sizeof_draw != sizeof(awl_draw_t) ||
         host->sizeof_widget != sizeof(widget_t) ||
         host->sizeof_monitor != sizeof(Monitor) ||
         host->sizeof_client != sizeof(Client))

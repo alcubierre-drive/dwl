@@ -7,16 +7,16 @@
 #define MODKEY WLR_MODIFIER_LOGO
 // #define MODKEY WLR_MODIFIER_ALT
 
-/* config.h has two halves. The first is read by dwl once, at startup:
- * restart dwl to apply changes there. The second is reloadable: it is built
+/* config.h has two halves. The first is read by awl once, at startup:
+ * restart awl to apply changes there. The second is reloadable: it is built
  * into libawlplugins.so as well, so `make` and plugin_restart (MOD+Ctrl+r)
- * apply it to the running dwl -- keymap, input devices, font, colors,
+ * apply it to the running awl -- keymap, input devices, font, colors,
  * borders, blur and layouts included (monitor rules are applied to outputs
- * appearing afterwards). dwl is built with the second half too and uses it
+ * appearing afterwards). awl is built with the second half too and uses it
  * while no library is loaded. */
 
 #ifndef AWL_CONFIG_RELOADABLE_ONLY
-/* ==================== startup: restart dwl to apply ==================== */
+/* ==================== startup: restart awl to apply ==================== */
 
 /* appearance */
 static const int showbar                   = 1; /* 0 means no bar */
@@ -70,7 +70,7 @@ static const uint32_t bordercolors[BorderLast] = {
 static const awl_tray_config_t tray_config = {
     .bg = 0x859394ff,
     .calendar = {
-        .bg           = 0x3c3c3c4d, /* dwl blurs what is behind it */
+        .bg           = 0x3c3c3c4d, /* awl blurs what is behind it */
         .fg           = 0xf8f8f2ff,
         .border       = molokai_green,
         .today        = 0xb6ec52ff,

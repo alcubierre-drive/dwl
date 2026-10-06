@@ -1,5 +1,5 @@
 #!/bin/bash
-# Drive a test instance of ./dwl from a shell, e.g. from an agent without a
+# Drive a test instance of ./awl from a shell, e.g. from an agent without a
 # screen: headless outputs, its own runtime dir and D-Bus session (so it can't
 # disturb the running session's tray, notifications or sockets) and a fake
 # $HOME whose Desktop is a fixture. It runs under gdb, which dumps every
@@ -8,7 +8,7 @@
 #   live.sh start           start, wait for the socket (LIVE_TIMEOUT s max)
 #   live.sh stop            SIGTERM, wait for it to exit
 #   live.sh alive           exit status: is it running
-#   live.sh add | remove    add an output / remove the newest (DWL_TEST_OUTPUTS)
+#   live.sh add | remove    add an output / remove the newest (AWL_TEST_OUTPUTS)
 #   live.sh shot FILE       screenshot of all outputs (grim)
 #   live.sh randr [ARGS]    wlr-randr
 #   live.sh key ARGS        wtype, e.g. key -M alt -M ctrl r -m ctrl -m alt
@@ -21,14 +21,14 @@
 # in the session at $WAYLAND_DISPLAY instead of headless ones; that session's
 # keyboard and pointer then work in them too.
 #
-# State goes to $LIVE_DIR (default /tmp/dwl-live-$UID): log, runtime dir,
+# State goes to $LIVE_DIR (default /tmp/awl-live-$UID): log, runtime dir,
 # home. Desktop fixture: $LIVE_DIR/home/Desktop, created on start if missing.
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
-dwl=$(cd "$here/.." && pwd)/dwl
-dir=${LIVE_DIR:-/tmp/dwl-live-$UID}
+awl=$(cd "$here/.." && pwd)/awl
+dir=${LIVE_DIR:-/tmp/awl-live-$UID}
 run=$dir/run
-log=$dir/dwl.log
+log=$dir/awl.log
 
 envs() {
 	export XDG_RUNTIME_DIR=$run HOME=$dir/home
@@ -36,10 +36,10 @@ envs() {
 	unset DISPLAY
 }
 
-pid() { # dwl's, not gdb's; everything runs in the session start made
+pid() { # awl's, not gdb's; everything runs in the session start made
 	local sid
 	sid=$(cat "$dir/sid" 2>/dev/null) || return 1
-	pgrep -s "$sid" -x dwl
+	pgrep -s "$sid" -x awl
 }
 
 # the (union of) output layout size, for absolute pointer motion
@@ -104,13 +104,13 @@ start)
 		fi
 		export XDG_RUNTIME_DIR=$run HOME=$dir/home
 		unset DISPLAY WAYLAND_SOCKET
-		export WLR_RENDERER=${WLR_RENDERER:-gles2} WLR_LIBINPUT_NO_DEVICES=1 DWL_TEST_OUTPUTS=1
+		export WLR_RENDERER=${WLR_RENDERER:-gles2} WLR_LIBINPUT_NO_DEVICES=1 AWL_TEST_OUTPUTS=1
 		cd "$dir"
 		exec setsid timeout -s TERM "${LIVE_TIMEOUT:-600}" dbus-run-session -- \
 			gdb -q -batch \
 			-ex "handle SIGUSR1 SIGUSR2 SIGTERM SIGPIPE nostop noprint pass" \
 			-ex run -ex "bt full" -ex "thread apply all bt" \
-			--args "$dwl" "${@:2}"
+			--args "$awl" "${@:2}"
 	) >"$log" 2>&1 </dev/null &
 	echo $! >"$dir/sid" # setsid didn't need to fork, $! is the session leader
 	for i in $(seq 100); do

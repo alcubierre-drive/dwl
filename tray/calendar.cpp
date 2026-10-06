@@ -227,7 +227,7 @@ private:
 
 Popup *g_popup = nullptr;
 
-// dwl blurs what is behind the popup (scenefx, see createlayersurface()), so
+// awl blurs what is behind the popup (scenefx, see createlayersurface()), so
 // every background is cleared and only the window itself gets a faint
 // tint. Adwaita paints white backgrounds on the calendar, list, rows and
 // viewport -- the wildcard clears all of them (and borders/shadows) at once,
@@ -293,7 +293,7 @@ Popup::Popup(const awl_tray_config_t &config) {
                                                GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
     gtk_layer_init_for_window(win_.gobj());
     gtk_layer_set_layer(win_.gobj(), GTK_LAYER_SHELL_LAYER_TOP);
-    // exclusive while shown (dwl hands keyboard focus to keyboard-interactive
+    // exclusive while shown (awl hands keyboard focus to keyboard-interactive
     // top-layer surfaces), so Escape closes it
     gtk_layer_set_keyboard_mode(win_.gobj(), GTK_LAYER_SHELL_KEYBOARD_MODE_EXCLUSIVE);
     gtk_layer_set_exclusive_zone(win_.gobj(), 0);
@@ -479,9 +479,9 @@ void Popup::show(const std::string &mon, bool top) {
     hide();
 
     mon_ = mon;
-    // dwl binds the surface to that monitor (createlayersurface()) and
+    // awl binds the surface to that monitor (createlayersurface()) and
     // closes it on clicks elsewhere (buttonpress()); takes effect on the next
-    // map. No margin needed: dwl lays out non-exclusive layer surfaces in the
+    // map. No margin needed: awl lays out non-exclusive layer surfaces in the
     // area next to the bar already.
     gtk_layer_set_namespace(win_.gobj(), ("awl-calendar:" + mon).c_str());
     gtk_layer_set_anchor(win_.gobj(), GTK_LAYER_SHELL_EDGE_TOP, top);
@@ -510,7 +510,7 @@ void Popup::hide() {
     shown_ = false;
 }
 
-// Runs in the forked child: dwl blocks the signals it handles in every
+// Runs in the forked child: awl blocks the signals it handles in every
 // thread and ignores SIGPIPE, and exec() would keep both.
 void unblock_signals() {
     sigset_t none;
@@ -521,7 +521,7 @@ void unblock_signals() {
 
 void Popup::launch(std::vector<std::string> argv) {
     try {
-        // DO_NOT_REAP_CHILD: a direct child that dwl's SIGCHLD handler
+        // DO_NOT_REAP_CHILD: a direct child that awl's SIGCHLD handler
         // reaps, instead of GLib's double fork, whose waitpid() would race
         // with that handler.
         Glib::spawn_async("", argv, Glib::SPAWN_SEARCH_PATH | Glib::SPAWN_DO_NOT_REAP_CHILD,

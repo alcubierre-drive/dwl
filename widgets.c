@@ -1,6 +1,6 @@
-/* The bar widgets. Built into libawlplugins.so together with the plugins
+/** The bar widgets. Built into libawlplugins.so together with the plugins
  * whose data they show, so a reload swaps both at once; everything they need
- * from dwl goes through the host table (awl_plugin_abi.h). */
+ * from awl goes through the host table (awl_plugin_abi.h). */
 #include "awl_plugin_abi.h"
 #include "plugins.h"
 #include "plugins/date.h"
@@ -10,7 +10,7 @@
 #include <arpa/inet.h>
 #include <stdatomic.h>
 
-/* dwl.h's TEXTW calls into dwl directly */
+/* awl.h's TEXTW calls into awl directly */
 #undef TEXTW
 #define TEXTW(mon, text) (awl_host->font_getwidth((mon)->drw, text) + (mon)->lrpad)
 
@@ -26,7 +26,7 @@ static uint32_t taskbarwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix
 static void taskbarwidget_scroll( widget_t* w, uint32_t x, int amount );
 static void taskbarwidget_click( widget_t* w, uint32_t x, int button );
 
-/* draw() of the right-hand widgets that show a single text (see textsnap_t) */
+/** draw() of the right-hand widgets that show a single text (see textsnap_t) */
 static uint32_t textsnap_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
 
 static uint32_t clockwidget_measure( widget_t* w );
@@ -51,30 +51,30 @@ static uint32_t ipwidget_measure( widget_t* w );
 static uint32_t backlightwidget_measure( widget_t* w );
 static void backlightwidget_click( widget_t* w, uint32_t x, int button );
 
-void awl_widgets_create( Drwl* drwl ) {
-    drwl->widgets_left[drwl->n_widgets_left++] = (widget_t){
-        .bar = drwl,
+void awl_widgets_create( awl_draw_t* drw ) {
+    drw->widgets_left[drw->n_widgets_left++] = (widget_t){
+        .bar = drw,
         .draw = &tagwidget_draw,
         .callback_click = &tagwidget_click,
         .callback_scroll = &tagwidget_scroll,
     };
-    drwl->widgets_left[drwl->n_widgets_left++] = (widget_t){
-        .bar = drwl,
+    drw->widgets_left[drw->n_widgets_left++] = (widget_t){
+        .bar = drw,
         .draw = &layoutwidget_draw,
         .callback_click = &layoutwidget_click,
         .callback_scroll = &layoutwidget_scroll,
     };
 
-    drwl->center_widget = (widget_t){
-        .bar = drwl,
+    drw->center_widget = (widget_t){
+        .bar = drw,
         .draw = &taskbarwidget_draw,
         .callback_click = &taskbarwidget_click,
         .callback_scroll = &taskbarwidget_scroll,
     };
-    drwl->has_center_widget = 1;
+    drw->has_center_widget = 1;
 
-    drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
-        .bar = drwl,
+    drw->widgets_right[drw->n_widgets_right++] = (widget_t){
+        .bar = drw,
         .measure = &clockwidget_measure,
         .draw = &clockwidget_draw,
         .callback_click = &clockwidget_click,
@@ -85,45 +85,45 @@ void awl_widgets_create( Drwl* drwl ) {
         .popup_namespace = "awl-calendar:",
         .free = free,
     };
-    drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
-        .bar = drwl,
+    drw->widgets_right[drw->n_widgets_right++] = (widget_t){
+        .bar = drw,
         .measure = &systray_measure,
         .draw = &systray_draw,
     };
-    drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
-        .bar = drwl,
+    drw->widgets_right[drw->n_widgets_right++] = (widget_t){
+        .bar = drw,
         .measure = &pulsewidget_measure,
         .draw = &textsnap_draw,
         .callback_click = &pulsewidget_click,
         .callback_scroll = &pulsewidget_scroll,
         .free = free,
     };
-    drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
-        .bar = drwl,
+    drw->widgets_right[drw->n_widgets_right++] = (widget_t){
+        .bar = drw,
         .measure = &statuswidget_measure,
         .draw = &statuswidget_draw,
         .free = free,
     };
-    drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
-        .bar = drwl,
+    drw->widgets_right[drw->n_widgets_right++] = (widget_t){
+        .bar = drw,
         .measure = &tempwidget_measure,
         .draw = &tempwidget_draw,
         .free = free,
     };
-    drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
-        .bar = drwl,
+    drw->widgets_right[drw->n_widgets_right++] = (widget_t){
+        .bar = drw,
         .measure = &batwidget_measure,
         .draw = &textsnap_draw,
         .free = free,
     };
-    drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
-        .bar = drwl,
+    drw->widgets_right[drw->n_widgets_right++] = (widget_t){
+        .bar = drw,
         .measure = &ipwidget_measure,
         .draw = &textsnap_draw,
         .free = free,
     };
-    drwl->widgets_right[drwl->n_widgets_right++] = (widget_t){
-        .bar = drwl,
+    drw->widgets_right[drw->n_widgets_right++] = (widget_t){
+        .bar = drw,
         .measure = &backlightwidget_measure,
         .draw = &textsnap_draw,
         .callback_click = &backlightwidget_click,
@@ -193,7 +193,7 @@ static uint32_t taskbarwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix
     if (nospace)
         return TEXT( space, "+++", P->awl_colors.fg_win, P->awl_colors.bg_win_urg );
 
-    drwl_window_t* windows = w->bar->tagwindows;
+    awl_draw_window_t* windows = w->bar->tagwindows;
 
     // max, float, top
     for (int wi=0; wi<n_windows; ++wi) {
@@ -226,8 +226,8 @@ static uint32_t layoutwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix 
     return ww;
 }
 
-/* A right-hand widget showing one text: measure() fills it in, then
- * textsnap_draw() renders exactly that, so width and pixels always agree. */
+/** A right-hand widget showing one text: measure() fills it in, then
+ * `textsnap_draw()` renders exactly that, so width and pixels always agree. */
 typedef struct {
     char text[128];
     pixman_color_t fg, bg;
@@ -380,7 +380,7 @@ static uint32_t statuswidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix 
     return w->width;
 }
 
-/* the readings measure() saw, so draw() renders text of the same width */
+/** the readings measure() saw, so draw() renders text of the same width */
 typedef struct {
     float temps[16];
 } tempwidget_userdata_t;
@@ -500,7 +500,7 @@ static void taskbarwidget_scroll( widget_t* w, uint32_t x, int amount ) {
 }
 static void taskbarwidget_click( widget_t* w, uint32_t x, int button ) {
     if (w->bar->n_tagwindows <= 0) return;
-    drwl_window_t* windows = w->bar->tagwindows;
+    awl_draw_window_t* windows = w->bar->tagwindows;
     int win_idx = (double)x / (double)w->width * (double)w->bar->n_tagwindows;
     if (win_idx >= w->bar->n_tagwindows || win_idx < 0) return;
 

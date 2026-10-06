@@ -1,5 +1,5 @@
 [Desktop Entry]
-Name=dwl
+Name=awl
 Comment=dwm for Wayland
-Exec=dwl
+Exec=awl
 Type=Application

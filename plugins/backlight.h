@@ -5,12 +5,14 @@
 
 typedef struct awl_backlight_bus_t awl_backlight_bus_t;
 
+/** Whether ``backlight-tooler.timer`` is active (backlight.c). */
 typedef struct awl_backlight_t {
     atomic_int enabled;
-    awl_backlight_bus_t* bus; /* loop thread only */
+    /** loop thread only */
+    awl_backlight_bus_t* bus;
 } awl_backlight_t;
 
-/* Tracks the timer on the loop behind api (poller.h); NULL on failure. */
+/** Tracks the timer on the loop behind api (poller.h); NULL on failure. */
 awl_backlight_t* backlight_init( pa_mainloop_api* api );
-/* Only once the loop thread has stopped. No-op for NULL. */
+/** Only once the loop thread has stopped. No-op for NULL. */
 void backlight_free( awl_backlight_t* b );

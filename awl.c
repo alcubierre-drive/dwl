@@ -1,7 +1,7 @@
-#include "dwl.h"
-#include "dwl-log.h"
+#include "awl.h"
+#include "awl-log.h"
 #include "util.h"
-#include "drwl.h"
+#include "awl_draw.h"
 #include "plugin_host.h"
 #include "awl_plugin_abi.h"
 #include "background.h"
@@ -15,11 +15,11 @@
 #include <wlr/backend/wayland.h>
 #include <wlr/interfaces/wlr_output.h>
 
-/* vfork(2) is a glibc/BSD extension not declared under the strict
+/** vfork(2) is a glibc/BSD extension not declared under the strict
  * -D_POSIX_C_SOURCE=200809L this file is built with, though it's present
  * in libc regardless; declare it ourselves rather than widen the feature
  * test macros for the whole translation unit. Used instead of fork() when
- * spawning children after dwl's background threads (plugin monitors, GPU
+ * spawning children after awl's background threads (plugin monitors, GPU
  * driver threads) are running, since fork() alone risks inheriting a lock
  * one of those threads held at the moment of the fork -- see spawn_pid(). */
 extern pid_t vfork(void);
@@ -87,7 +87,7 @@ static int bardamage(const Buffer *buf, const Buffer *prev, pixman_region32_t *d
 
 static void wallpapertake(void);
 
-/* bars are redrawn on demand: see plugins/redraw.h */
+/** bars are redrawn on demand: see plugins/redraw.h */
 static struct wl_event_source* redraw_source = NULL;
 static int redraw_fire( int fd, uint32_t mask, void* data ) {
     (void)fd; (void)mask; (void)data;
@@ -194,7 +194,7 @@ static void toggleview(const Arg *arg);
 static void transluce(const Arg *arg);
 static void view(const Arg *arg);
 
-/* how long dwl waits on exit for the tray thread and for its children */
+/** how long awl waits on exit for the tray thread and for its children */
 #define TRAY_STOP_MS 5000
 #define CHILD_STOP_MS 3000
 
@@ -214,7 +214,7 @@ static struct wlr_scene_tree *layers[NUM_LAYERS];
 static struct wlr_scene_tree *drag_icon;
 static struct wlr_scene_tree *desktop_tree;
 static struct wlr_scene_tree *background_tree;
-/* Map from ZWLR_LAYER_SHELL_* constants to Lyr* enum */
+/** Map from ZWLR_LAYER_SHELL_* constants to Lyr* enum */
 static const int layermap[] = { LyrBg, LyrBottom, LyrTop, LyrOverlay };
 static struct wlr_renderer *drw;
 static struct wlr_allocator *alloc;
@@ -315,17 +315,17 @@ static struct wlr_xwayland *xwayland;
 #include "client.h"
 
 #define AWL_ACTION_INIT(name) .name = name,
-const awl_actions_t dwl_actions = { AWL_ACTIONS(AWL_ACTION_INIT) };
-const awl_arranges_t dwl_arranges = { AWL_ARRANGES(AWL_ACTION_INIT) };
+const awl_actions_t awl_actions = { AWL_ACTIONS(AWL_ACTION_INIT) };
+const awl_arranges_t awl_arranges = { AWL_ARRANGES(AWL_ACTION_INIT) };
 #undef AWL_ACTION_INIT
 
-/* The reloadable half of config.h in effect: the library's, or while none is
- * loaded the one dwl was built with. It points into the library, so it's only
- * good until the next reload; pluginsdetach() falls back to builtinconfig(). */
+/** The reloadable half of config.h in effect: the library's, or while none is
+ * loaded the one awl was built with. It points into the library, so it's only
+ * good until the next reload; `pluginsdetach()` falls back to builtinconfig(). */
 static const awl_config_t *cfg;
-/* cfg->bordercolors, copied */
+/** cfg->bordercolors, copied */
 static uint32_t borders[BorderLast];
-/* What the keyboard and the bars' font were set up with, copied, to tell
+/** What the keyboard and the bars' font were set up with, copied, to tell
  * whether a reload changed them */
 static struct {
     char *xkb[5]; /* rules, model, layout, variant, options */
@@ -337,7 +337,7 @@ static struct {
     WallpaperMode wallpaper_mode;
 } applied;
 
-/* the keyboards and pointers, to apply a reloaded config.h to */
+/** the keyboards and pointers, to apply a reloaded config.h to */
 typedef struct {
     struct wlr_input_device *device;
     struct wl_listener destroy;
@@ -580,16 +580,16 @@ arrangelayers(Monitor *m)
     }
 }
 
-/* Bar widget hover (widget_t.callback_hover): hover_widget is the widget
+/** Bar widget hover (widget_t.callback_hover): hover_widget is the widget
  * under the pointer if it has a hover callback, hover_timer fires its
  * callback hover_delay_ms after the pointer got there. hover_active is the
  * widget whose hover fired and that has a callback_leave; leave_timer fires
  * that leave_delay_ms after the pointer left both it and its popup (at once
  * for a delay of 0). */
 static struct wl_event_source *hover_timer, *leave_timer;
-/* config.h's wallpaper_config.interval */
+/** config.h's wallpaper_config.interval */
 static struct wl_event_source *wallpaper_timer;
-/* what the timer switches to: config.h's mode, until wallpapermode() */
+/** what the timer switches to: config.h's mode, until `wallpapermode()` */
 static WallpaperMode wallpaper_mode;
 static widget_t *hover_widget, *hover_active;
 static int leave_pending;
@@ -600,7 +600,7 @@ barwidgetat(Monitor *m, double cx, double cy)
     struct wlr_scene_node *node;
     struct wlr_scene_buffer *buffer;
     unsigned int cursor_x, xpos = 0;
-    Drwl *d = m->drw;
+    awl_draw_t *d = m->drw;
     int i;
 
     if (!d || !(node = wlr_scene_node_at(&layers[LyrBottom]->node, cx, cy, NULL, NULL))
@@ -626,7 +626,7 @@ barwidgetat(Monitor *m, double cx, double cy)
 
 static int leavetimeout(void *data);
 
-/* a leave_delay_ms of 0 calls callback_leave right away */
+/** a leave_delay_ms of 0 calls callback_leave right away */
 static void
 setleavepending(int pending)
 {
@@ -670,7 +670,7 @@ hovertimeout(void *data)
     return 0;
 }
 
-/* whether the pointer is inside a mapped layer surface whose namespace
+/** whether the pointer is inside a mapped layer surface whose namespace
  * starts with ns */
 static int
 pointerinpopup(const char *ns)
@@ -697,7 +697,7 @@ pointerinpopup(const char *ns)
     return 0;
 }
 
-/* c is the client under the pointer, which may cover the bar. Exclusive
+/** c is the client under the pointer, which may cover the bar. Exclusive
  * focus (e.g. the calendar popup) deliberately doesn't reset the hover
  * state, so the click that closes the popup over its widget doesn't make it
  * pop up again right away. */
@@ -835,7 +835,7 @@ desktopat(double x, double y)
     return xytomon(x, y) != NULL;
 }
 
-/* the library's thread does it (plugins/wallpaper.c), off the main thread */
+/** the library's thread does it (plugins/wallpaper.c), off the main thread */
 void
 wallpapernext(WallpaperMode mode)
 {
@@ -856,7 +856,7 @@ wallpaper(const Arg *arg)
     wallpapernext(mode);
 }
 
-/* shows a wallpaper the library has decoded since, if any */
+/** shows a wallpaper the library has decoded since, if any */
 void
 wallpapertake(void)
 {
@@ -866,7 +866,7 @@ wallpapertake(void)
         background_set(img, cfg->wallpaper->fade_ms);
 }
 
-/* cycles the timer's mode by arg->i (+1: random, next, previous, random...);
+/** cycles the timer's mode by arg->i (+1: random, next, previous, random...);
  * the library tells the user */
 void
 wallpapermode(const Arg *arg)
@@ -882,7 +882,7 @@ wallpapermode(const Arg *arg)
         api->wallpaper_mode(wallpaper_mode);
 }
 
-/* (re)starts the countdown to the next timed wallpaper change */
+/** (re)starts the countdown to the next timed wallpaper change */
 static void
 wallpaperarm(void)
 {
@@ -1136,7 +1136,7 @@ cleanup(void)
                 >= TRAY_STOP_MS) {
             /* Tearing the display down under a GTK thread that still uses
              * it could crash anywhere; the kernel cleans up just as well. */
-            fprintf(stderr, "dwl: tray thread did not stop within %d ms, exiting without cleanup\n",
+            fprintf(stderr, "awl: tray thread did not stop within %d ms, exiting without cleanup\n",
                     TRAY_STOP_MS);
             stopchildren();
             _exit(EXIT_FAILURE);
@@ -1146,7 +1146,7 @@ cleanup(void)
     }
 
     /* That was the last time the event loop ran, so nothing reads the
-     * signalfd any more: let SIGINT and SIGTERM end dwl the usual way again
+     * signalfd any more: let SIGINT and SIGTERM end awl the usual way again
      * instead of leaving it to SIGKILL should anything below hang. */
     sigemptyset(&quitsigs);
     sigaddset(&quitsigs, SIGINT);
@@ -1172,7 +1172,7 @@ cleanup(void)
     /* Destroy after the wayland display (when the monitors are already destroyed)
        to avoid destroying them with an invalid scene output. */
     wlr_scene_node_destroy(&scene->tree.node);
-    drwl_fini();
+    awl_draw_fini();
     cfg = builtinconfig();
     awl_plugins_unload();
     /* only now nothing can request a redraw anymore */
@@ -1208,10 +1208,10 @@ cleanupmon(struct wl_listener *listener, void *data)
         setleavepending(0);
         hover_active = NULL;
     }
-    drwl_destroy(m->drw);
+    awl_draw_destroy(m->drw);
     /* closemon() below checks m->drw to decide whether to touch the bar;
      * without nulling it here that check sees a dangling pointer into the
-     * Drwl we just freed. */
+     * awl_draw_t we just freed. */
     m->drw = NULL;
 
     wl_list_remove(&m->destroy.link);
@@ -1671,8 +1671,8 @@ createmon(struct wl_listener *listener, void *data)
     wlr_output_commit_state(wlr_output, &state);
     wlr_output_state_finish(&state);
 
-    if (!(m->drw = drwl_create(m)))
-        die("failed to create drwl context");
+    if (!(m->drw = awl_draw_create(m)))
+        die("failed to create awl_draw context");
     awl_plugins_bar_widgets(m->drw);
 
     /* LyrBottom sits below LyrTile/LyrFloat, so floating windows dragged
@@ -2048,7 +2048,7 @@ drawbar(Monitor *m)
         buf = newbarbuffer(m);
     memset(buf->data, 0, buf->stride * buf->h);
 
-    drwl_prepare_drawing(m->drw, m->b.width, m->b.height, buf->data, buf->stride);
+    awl_draw_prepare_drawing(m->drw, m->b.width, m->b.height, buf->data, buf->stride);
 
     ct = focustop(m);
     wl_list_for_each(c, &clients, link) {
@@ -2100,7 +2100,7 @@ drawbar(Monitor *m)
             m->drw->center_widget.width = m->drw->center_widget.draw( &m->drw->center_widget, x, m->drw->pix );
     }
 
-    drwl_finish_drawing(m->drw);
+    awl_draw_finish_drawing(m->drw);
     wlr_scene_buffer_set_dest_size(m->scene_buffer,
         m->b.real_width, m->b.real_height);
     wlr_scene_node_set_position(&m->scene_buffer->node, m->m.x,
@@ -2123,7 +2123,7 @@ drawbar(Monitor *m)
 Buffer *
 newbarbuffer(Monitor *m)
 {
-    int32_t stride = drwl_stride(m->b.width);
+    int32_t stride = awl_draw_stride(m->b.width);
     Buffer *buf = ecalloc(1, sizeof(Buffer) + (size_t)stride * m->b.height);
     buf->stride = stride;
     buf->w = m->b.width;
@@ -2379,7 +2379,7 @@ movestack(const Arg *arg)
     arrange(selmon);
 }
 
-/* We probably should change the name of this, it sounds like
+/** We probably should change the name of this, it sounds like
  * will focus the topmost client of this mon, when actually will
  * only return that client */
 Client *
@@ -2581,7 +2581,7 @@ inputdevice(struct wl_listener *listener, void *data)
     }
 
     /* We need to let the wlr_seat know what our capabilities are, which is
-     * communiciated to the client. In dwl we always have a cursor, even if
+     * communiciated to the client. In awl we always have a cursor, even if
      * there are no pointer devices, so we always include that capability. */
     /* TODO do we actually require a cursor? */
     caps = WL_SEAT_CAPABILITY_POINTER;
@@ -2793,7 +2793,7 @@ maximizenotify(struct wl_listener *listener, void *data)
 {
     /* This event is raised when a client would like to maximize itself,
      * typically because the user clicked on the maximize button on
-     * client-side decorations. dwl doesn't support maximization, but
+     * client-side decorations. awl doesn't support maximization, but
      * to conform to xdg-shell protocol we still must send a configure.
      * Since xdg-shell protocol v5 we should ignore request of unsupported
      * capabilities, just schedule a empty configure when the client uses <5
@@ -3265,7 +3265,7 @@ run(char *startup_cmd)
     }
 
     /* Mark stdout as non-blocking to avoid the startup script
-     * causing dwl to freeze when a user neither closes stdin
+     * causing awl to freeze when a user neither closes stdin
      * nor consumes standard input in his startup script */
 
     if (fd_set_nonblock(STDOUT_FILENO) < 0)
@@ -3365,7 +3365,7 @@ setfullscreen(Client *c, int fullscreen)
     drawbars();
 }
 
-/* l's index in config.h's layouts, -1 if it isn't one of them */
+/** l's index in config.h's layouts, -1 if it isn't one of them */
 static int
 layoutindex(const Layout *l)
 {
@@ -3375,7 +3375,7 @@ layoutindex(const Layout *l)
     return (int)((p - first) / sizeof(Layout));
 }
 
-/* the next (arg->i > 0) or previous (< 0) of config.h's layouts on selmon */
+/** the next (arg->i > 0) or previous (< 0) of config.h's layouts on selmon */
 void
 cycle_layout(const Arg* arg)
 {
@@ -3386,7 +3386,7 @@ cycle_layout(const Arg* arg)
     setlayout(&(Arg){.v = &cfg->layouts[(i % n + n) % n]});
 }
 
-/* like dwm: arg->v, one of config.h's layouts (&layouts[n]), for selmon;
+/** like dwm: arg->v, one of config.h's layouts (&layouts[n]), for selmon;
  * without one (or with the one it has), back to its previous layout */
 void
 setlayout(const Arg *arg)
@@ -3403,7 +3403,7 @@ setlayout(const Arg *arg)
     drawbar(selmon);
 }
 
-/* After cfg changed: the monitors' layouts point into the old table (which
+/** After cfg changed: the monitors' layouts point into the old table (which
  * may be about to be unloaded); same index in the new one, or its first */
 static void
 layoutsmoved(const Layout *old, size_t n_old)
@@ -3434,7 +3434,7 @@ transluce(const Arg *arg)
     if (!c->blur) attachblur(c);
 }
 
-/* arg > 1.0 will set mfact absolutely */
+/** arg > 1.0 will set mfact absolutely */
 void
 setmfact(const Arg *arg)
 {
@@ -3477,7 +3477,7 @@ setpsel(struct wl_listener *listener, void *data)
 {
     /* This event is raised by the seat when a client wants to set the selection,
      * usually when the user copies something. wlroots allows compositors to
-     * ignore such requests if they so choose, but in dwl we always honor them
+     * ignore such requests if they so choose, but in awl we always honor them
      */
     struct wlr_seat_request_set_primary_selection_event *event = data;
     wlr_seat_set_primary_selection(seat, event->source, event->serial);
@@ -3488,7 +3488,7 @@ setsel(struct wl_listener *listener, void *data)
 {
     /* This event is raised by the seat when a client wants to set the selection,
      * usually when the user copies something. wlroots allows compositors to
-     * ignore such requests if they so choose, but in dwl we always honor them
+     * ignore such requests if they so choose, but in awl we always honor them
      */
     struct wlr_seat_request_set_selection_event *event = data;
     wlr_seat_set_selection(seat, event->source, event->serial);
@@ -3508,12 +3508,12 @@ setup(void)
     sigaddset(&handled, SIGCHLD);
     sigaddset(&handled, SIGINT);
     sigaddset(&handled, SIGTERM);
-    if (getenv("DWL_TEST_OUTPUTS")) {
+    if (getenv("AWL_TEST_OUTPUTS")) {
         sigaddset(&handled, SIGUSR1);
         sigaddset(&handled, SIGUSR2);
     }
     sigprocmask(SIG_BLOCK, &handled, NULL);
-    /* a dead client must not kill dwl (GIO ignores it anyway) */
+    /* a dead client must not kill awl (GIO ignores it anyway) */
     signal(SIGPIPE, SIG_IGN);
 
     /* until the library is loaded */
@@ -3542,7 +3542,7 @@ setup(void)
         die("couldn't create backend");
     /* for testing (test/live.sh): SIGUSR1 adds an output, SIGUSR2 removes
      * the newest one; headless and nested (wayland) backends only */
-    if (getenv("DWL_TEST_OUTPUTS")) {
+    if (getenv("AWL_TEST_OUTPUTS")) {
         wl_event_loop_add_signal(event_loop, SIGUSR1, testoutputadd, NULL);
         wl_event_loop_add_signal(event_loop, SIGUSR2, testoutputremove, NULL);
     }
@@ -3757,7 +3757,7 @@ setup(void)
 
     awl_plugins_load(0);
     configuse();
-    drwl_init();
+    awl_draw_init();
     if (awl_redraw_init() >= 0)
         redraw_source = wl_event_loop_add_fd(event_loop, awl_redraw_fd(),
                 WL_EVENT_READABLE, redraw_fire, NULL);
@@ -3790,7 +3790,7 @@ spawn_pid(const Arg *arg)
      * shares stdio buffers with the parent until it exits or execs. */
     pid_t pid = vfork();
     if (pid < 0) {
-        fprintf(stderr, "dwl: vfork failed: %s\n", strerror(errno));
+        fprintf(stderr, "awl: vfork failed: %s\n", strerror(errno));
         return -1;
     } else if (pid == 0) {
         unblocksignals();
@@ -3798,7 +3798,7 @@ spawn_pid(const Arg *arg)
         dup2(STDERR_FILENO, STDOUT_FILENO);
         setsid();
         execvp(((char **)arg->v)[0], (char **)arg->v);
-        fprintf(stderr, "dwl: execvp %s failed: %s\n", ((char **)arg->v)[0], strerror(errno));
+        fprintf(stderr, "awl: execvp %s failed: %s\n", ((char **)arg->v)[0], strerror(errno));
         _exit(1);
     } else {
         return pid;
@@ -3807,7 +3807,7 @@ spawn_pid(const Arg *arg)
 
 void spawn(const Arg *arg) { spawn_pid(arg); }
 
-/* spawns argv and remembers it, so it is stopped when dwl exits; refuses to
+/** spawns argv and remembers it, so it is stopped when awl exits; refuses to
  * start it at all if there is no room left to remember it */
 void
 autostart(const char **argv)
@@ -3823,10 +3823,10 @@ autostart(const char **argv)
         Autostarted_pids[Autostarted_pids_sz++] = pid;
 }
 
-/* Sends SIGTERM to the startup command and every autostarted program (each
+/** Sends SIGTERM to the startup command and every autostarted program (each
  * leads its own process group), then waits for them; whatever is still
  * running after CHILD_STOP_MS gets SIGKILL, so a child that ignores SIGTERM
- * can't keep dwl from exiting. */
+ * can't keep awl from exiting. */
 void
 stopchildren(void)
 {
@@ -3862,7 +3862,7 @@ stopchildren(void)
     for (i = 0; i < n; i++) {
         if (!pids[i])
             continue;
-        fprintf(stderr, "dwl: pid %d still running %d ms after SIGTERM, sending SIGKILL\n",
+        fprintf(stderr, "awl: pid %d still running %d ms after SIGTERM, sending SIGKILL\n",
                 (int)pids[i], CHILD_STOP_MS);
         kill(-pids[i], SIGKILL);
         waitpid(pids[i], NULL, 0);
@@ -3910,7 +3910,7 @@ testoutputadd_backend(struct wlr_backend *b, void *data)
         wlr_wl_output_create(b);
 }
 
-/* the DWL_TEST_OUTPUTS hooks, see setup() */
+/** the AWL_TEST_OUTPUTS hooks, see setup() */
 int
 testoutputadd(int signo, void *data)
 {
@@ -4049,8 +4049,8 @@ unlocksession(struct wl_listener *listener, void *data)
     destroylock(lock, 1);
 }
 
-/* For a (v)forked child before exec, which would keep setup()'s signal mask
- * and ignored SIGPIPE. Both are the child's own even after vfork(). */
+/** For a (v)forked child before exec, which would keep setup()'s signal mask
+ * and ignored SIGPIPE. Both are the child's own even after `vfork()`. */
 void
 unblocksignals(void)
 {
@@ -4102,7 +4102,7 @@ unmapnotify(struct wl_listener *listener, void *data)
     motionnotify(0, NULL, 0, 0, 0, 0);
 }
 
-/* No bar is visible while locked or with every output off (unplugged or
+/** No bar is visible while locked or with every output off (unplugged or
  * powered down), so the plugins' 1 s polling can stop. */
 void
 updatepluginpause(void)
@@ -4156,7 +4156,7 @@ updatemons(struct wl_listener *listener, void *data)
     wlr_scene_node_set_position(&root_bg->node, sgeom.x, sgeom.y);
     wlr_scene_rect_set_size(root_bg, sgeom.width, sgeom.height);
 
-    /* Make sure the clients are hidden when dwl is locked */
+    /* Make sure the clients are hidden when awl is locked */
     if (locked_bg_blur) {
         wlr_scene_node_set_position(&locked_bg_blur->node, sgeom.x, sgeom.y);
         wlr_scene_blur_set_size(locked_bg_blur, sgeom.width, sgeom.height);
@@ -4252,12 +4252,12 @@ updatebar(Monitor *m)
         return;
     }
 
-    drwl_destroy_font(m->drw->font);
+    awl_draw_destroy_font(m->drw->font);
     snprintf(fontattrs, sizeof(fontattrs), "dpi=%.2f", 96. * 2. * m->wlr_output->scale);
     char _font[128] = {0};
     snprintf( _font, sizeof(_font), "%s%.0f", cfg->font, (float)cfg->fontsize*m->wlr_output->scale );
     const char* _pfont = _font;
-    if (!(drwl_load_font(m->drw, 1, &_pfont, fontattrs)))
+    if (!(awl_draw_load_font(m->drw, 1, &_pfont, fontattrs)))
         die("Could not load font");
 
     m->b.scale = m->wlr_output->scale;
@@ -4410,7 +4410,7 @@ strdupnull(const char *s)
     return s ? strdup(s) : NULL;
 }
 
-/* Brings everything that was set up from config.h's reloadable half up to
+/** Brings everything that was set up from config.h's reloadable half up to
  * date with cfg, after it changed. What's only read when it's needed (key
  * and button bindings, rules, focus behaviour, which new layer surfaces get
  * blurred) needs nothing here. */
@@ -4527,7 +4527,7 @@ configapply(void)
     drawbars();
 }
 
-/* switches to the loaded library's config.h, or the built-in one */
+/** switches to the loaded library's config.h, or the built-in one */
 static void
 configuse(void)
 {
@@ -4557,7 +4557,7 @@ trackinputdevice(struct wlr_input_device *device)
     wl_list_insert(&inputdevices, &d->link);
 }
 
-/* awl_plugins_reload(): the bars' widgets come from the library */
+/** `awl_plugins_reload()`: the bars' widgets come from the library */
 static void
 pluginsdetach(void)
 {
@@ -4573,7 +4573,7 @@ pluginsdetach(void)
         wl_event_source_timer_update(hover_timer, 0);
     wl_list_for_each(m, &mons, link)
         if (m->drw)
-            drwl_widgets_clear(m->drw);
+            awl_draw_widgets_clear(m->drw);
     /* cfg points into the library */
     const Layout *old = cfg->layouts;
     size_t n_old = cfg->n_layouts;
@@ -4613,6 +4613,10 @@ pluginrestart(void *data)
     awl_tray_reload(cfg->tray);
 }
 
+/** The plugin_restart action: reloads ``libawlplugins.so`` and the tray's
+ * D-Bus state, see `awl_plugins_reload()` and `awl_tray_reload()`. Deferred
+ * to the event loop's next idle round, since the binding calling it is in the
+ * library the reload unloads. */
 void
 plugin_restart(const Arg* arg)
 {
@@ -4790,7 +4794,7 @@ xwaylandready(struct wl_listener *listener, void *data)
     /* assign the one and only seat */
     wlr_xwayland_set_seat(xwayland, seat);
 
-    /* Set the default XWayland cursor to match the rest of dwl. */
+    /* Set the default XWayland cursor to match the rest of awl. */
     if ((xcursor = wlr_xcursor_manager_get_xcursor(cursor_mgr, "default", 1)))
         wlr_xwayland_set_cursor(xwayland, wlr_xcursor_image_get_buffer(xcursor->images[0]),
                 xcursor->images[0]->hotspot_x, xcursor->images[0]->hotspot_y);
@@ -4809,7 +4813,7 @@ main(int argc, char *argv[])
         else if (c == 'd')
             log_level = WLR_DEBUG;
         else if (c == 'v')
-            die("dwl " VERSION);
+            die("awl " VERSION);
         else
             goto usage;
     }

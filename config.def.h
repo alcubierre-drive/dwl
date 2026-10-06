@@ -6,16 +6,16 @@
 /* If you want to use the windows key for MODKEY, use WLR_MODIFIER_LOGO */
 #define MODKEY WLR_MODIFIER_ALT
 
-/* config.h has two halves. The first is read by dwl once, at startup:
- * restart dwl to apply changes there. The second is reloadable: it is built
+/* config.h has two halves. The first is read by awl once, at startup:
+ * restart awl to apply changes there. The second is reloadable: it is built
  * into libawlplugins.so as well, so `make` and plugin_restart (MOD+Ctrl+r)
- * apply it to the running dwl -- keymap, input devices, font, colors,
+ * apply it to the running awl -- keymap, input devices, font, colors,
  * borders, blur and layouts included (monitor rules are applied to outputs
- * appearing afterwards). dwl is built with the second half too and uses it
+ * appearing afterwards). awl is built with the second half too and uses it
  * while no library is loaded. */
 
 #ifndef AWL_CONFIG_RELOADABLE_ONLY
-/* ==================== startup: restart dwl to apply ==================== */
+/* ==================== startup: restart awl to apply ==================== */
 
 /* appearance */
 static const int showbar                   = 1; /* 0 means no bar */
@@ -29,7 +29,7 @@ static char *tags[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9" };
 /* logging */
 static int log_level = WLR_ERROR;
 
-/* started with dwl, and terminated when it exits */
+/* started with awl, and terminated when it exits */
 static const char* Autostarts[][8] = {
     { NULL }, /* e.g. { "nm-applet", NULL }, */
 };
@@ -70,7 +70,7 @@ static const uint32_t bordercolors[BorderLast] = {
 static const awl_tray_config_t tray_config = {
     .bg = 0x859394ff,
     .calendar = {
-        .bg           = 0x3c3c3c4d, /* dwl blurs what is behind it */
+        .bg           = 0x3c3c3c4d, /* awl blurs what is behind it */
         .fg           = 0xf8f8f2ff,
         .border       = molokai_green,
         .today        = 0xb6ec52ff,
@@ -88,7 +88,7 @@ static const awl_tray_config_t tray_config = {
 };
 
 /* the wallpaper action ({.i = WallpaperNext, WallpaperPrev, WallpaperRand,
- * WallpaperBack, WallpaperTimerNext or WallpaperTimerBack; see dwl.h})
+ * WallpaperBack, WallpaperTimerNext or WallpaperTimerBack; see awl.h})
  * shows one of dir's *.png files, scaled to cover each monitor; so does a
  * timer every interval seconds (0: never), going where mode says
  * (wallpapermode cycles it) */

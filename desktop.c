@@ -1,10 +1,10 @@
 #include "desktop.h"
-#include "drwl.h"
+#include "awl_draw.h"
 #include "util.h"
 #include "awl_plugin_abi.h"
 #include "plugin_host.h"
 
-/* everything a panel's pixels depend on; zeroed before filling, so the
+/** everything a panel's pixels depend on; zeroed before filling, so the
  * padding compares equal too */
 typedef struct {
     uint64_t version;  /* the library's, see awl_plugin_api_t */
@@ -37,7 +37,7 @@ void desktop_init( struct wlr_scene_tree* tree, const desktop_config_t* cfg ) {
     wl_list_init( &desk.views );
 }
 
-/* (re)does v's blur, under its buffer, from desk.cfg */
+/** (re)does v's blur, under its buffer, from desk.cfg */
 static void configure( DesktopView* v ) {
     if (!desk.cfg.blur) {
         if (v->blur) wlr_scene_node_destroy( &v->blur->node );
@@ -90,7 +90,7 @@ void desktop_removemon( Monitor* m ) {
     free( v );
 }
 
-/* like the bar's buffers in dwl.c: read-only for the renderer */
+/** like the bar's buffers in awl.c: read-only for the renderer */
 static void buffer_destroy( struct wlr_buffer* wb ) {
     Buffer* b = wl_container_of( wb, b, base );
     free( b );
@@ -115,10 +115,10 @@ static const struct wlr_buffer_impl buffer_impl = {
     .end_data_ptr_access = buffer_end,
 };
 
-/* returns whether there is anything to show */
+/** returns whether there is anything to show */
 static int draw( DesktopView* v, const awl_plugin_api_t* api ) {
     Monitor* m = v->m;
-    Drwl* drw = m->drw;
+    awl_draw_t* drw = m->drw;
     const float s = m->wlr_output->scale;
     const int radius = (int)lroundf( desk.cfg.radius * s );
     int x, y, width, height;
@@ -126,16 +126,16 @@ static int draw( DesktopView* v, const awl_plugin_api_t* api ) {
                           &x, &y, &width, &height );
     if (width <= 0 || height <= 0) return 0;
 
-    int32_t stride = drwl_stride( width );
+    int32_t stride = awl_draw_stride( width );
     Buffer* b = ecalloc( 1, sizeof(Buffer) + (size_t)stride * height );
     b->stride = stride;
     b->w = width;
     b->h = height;
     wlr_buffer_init( &b->base, &buffer_impl, width, height );
 
-    drwl_prepare_drawing( drw, width, height, b->data, stride );
+    awl_draw_prepare_drawing( drw, width, height, b->data, stride );
     api->desktop_draw( drw, b->data, stride, width, height, radius, s );
-    drwl_finish_drawing( drw );
+    awl_draw_finish_drawing( drw );
 
     const int lw = (int)lroundf( width / s ), lh = (int)lroundf( height / s );
     wlr_scene_buffer_set_buffer( v->buffer, &b->base );

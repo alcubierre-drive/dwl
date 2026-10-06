@@ -6,13 +6,13 @@
 #include <string.h>
 #include <time.h>
 
-/* one decoded image, read-only for the renderer */
+/** one decoded image, read-only for the renderer */
 typedef struct {
     struct wlr_buffer base;
     awl_image_t* img;
 } Image;
 
-/* an image on one monitor; its size kept here, since the scene buffer lets
+/** an image on one monitor; its size kept here, since the scene buffer lets
  * go of the wlr_buffer once it has made a texture of it */
 typedef struct {
     struct wlr_scene_buffer* node;
@@ -36,7 +36,7 @@ static struct {
     unsigned int fade_ms;
 } bg;
 
-/* a frame's worth at 60 Hz */
+/** a frame's worth at 60 Hz */
 static const int fade_tick_ms = 16;
 
 static void image_destroy( struct wlr_buffer* wb ) {
@@ -71,7 +71,7 @@ static BackgroundView* view_of( Monitor* m ) {
     return NULL;
 }
 
-/* s's image, scaled to cover box and centered, the overhang cut off */
+/** s's image, scaled to cover box and centered, the overhang cut off */
 static void place( const Shown* s, struct wlr_box box ) {
     if (!s->node) return;
     double iw = s->width, ih = s->height;

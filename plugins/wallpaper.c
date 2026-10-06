@@ -21,18 +21,18 @@
 
 #define NFILES (sizeof(((DesktopFiles*)0)->files) / sizeof(Filename))
 
-/* the current one's index in the sorted list; a file, so it survives
+/** the current one's index in the sorted list; a file, so it survives
  * reloads and restarts */
 static const char index_file[] = "/tmp/random_wallpaper.index";
-/* larger images are refused rather than allocated (4 bytes per pixel) */
+/** larger images are refused rather than allocated (4 bytes per pixel) */
 static const uint32_t max_side = 16384;
-/* the decoder gets the file this much at a time, and in between a stop
+/** the decoder gets the file this much at a time, and in between a stop
  * request doesn't have to wait for the rest */
 static const size_t feed = 1 << 20;
-/* how many wallpapers back awl_wallpaper_back() can go */
+/** how many wallpapers back `awl_wallpaper_back()` can go */
 #define HISTORY 32
 
-/* One per thread; a stuck one is left behind with its thread, never freed. */
+/** One per thread; a stuck one is left behind with its thread, never freed. */
 typedef struct {
     char dir[PATH_MAX];        /* set before the thread starts, then read-only */
     DesktopFiles files;        /* thread only */
@@ -52,13 +52,13 @@ typedef struct {
 
 static Changer* ch;
 
-/* the current index, the list's length and the index random goes to next,
+/** the current index, the list's length and the index random goes to next,
  * in one word so the main thread never sees half an update */
 static uint64_t pack( int cur, int n, int rand_next ) {
     return (uint64_t)(uint16_t)n << 32 | (uint64_t)(uint16_t)cur << 16 | (uint16_t)rand_next;
 }
 
-/* any of n but cur, from the kernel's random generator */
+/** any of n but cur, from the kernel's random generator */
 static int pick( int cur, int n ) {
     if (n < 2) return 0;
     unsigned int r = 0; if (getrandom(&r, sizeof(r), 0) != sizeof(r)) r = 0;
@@ -89,7 +89,7 @@ static void writeindex( int i ) {
     close( fd );
 }
 
-/* lets the decoder see the next part of the file; 0 if there is none or
+/** lets the decoder see the next part of the file; 0 if there is none or
  * the thread is to quit */
 static int feedmore( Changer* c, wuffs_base__io_buffer* src ) {
     if (src->meta.closed || atomic_load( &c->thread.quit )) return 0;
@@ -176,7 +176,7 @@ out:
     return img;
 }
 
-/* steps 0, random 0, back 0: the one the index file names; asked: the
+/** steps 0, random 0, back 0: the one the index file names; asked: the
  * requests these include. The ones asked for at once take effect in this
  * order: random or steps, then back. */
 static void change( Changer* c, int steps, int random, int back, unsigned asked ) {

@@ -8,9 +8,9 @@
 #include <sys/time.h>
 #include <systemd/sd-bus.h>
 
-/* Tracks whether backlight-tooler.timer is active by listening to systemd's
+/** Tracks whether backlight-tooler.timer is active by listening to systemd's
  * PropertiesChanged signals on the user bus, instead of spawning
- * `systemctl --user is-active` every second. Runs on the plugins' shared
+ * ``systemctl --user is-active`` every second. Runs on the plugins' shared
  * loop (poller.h): the bus fd and its timeout are event sources there, and
  * every call is asynchronous, so a slow bus never holds up the other
  * plugins. Everything but `enabled` is only touched on the loop thread, or
@@ -18,9 +18,10 @@
  * from the loop too. If the bus is unavailable or the connection drops, the
  * last known state is kept and a reconnect is attempted every RETRY_USEC. */
 
+/** the systemd user unit whose state the bar shows */
 static const char unit_name[] = "backlight-tooler.timer";
 #define RETRY_USEC (30 * 1000000ull)
-/* how long a call may go unanswered before the connection counts as broken */
+/** how long a call may go unanswered before the connection counts as broken */
 #define CALL_TIMEOUT_USEC (2 * 1000000ull)
 
 struct awl_backlight_bus_t {
@@ -37,7 +38,7 @@ struct awl_backlight_bus_t {
 
 static void bus_update( awl_backlight_bus_t* s );
 
-/* a timeval `usec` from now on the wall clock, which pa_mainloop_api takes */
+/** a timeval `usec` from now on the wall clock, which pa_mainloop_api takes */
 static struct timeval in_usec( uint64_t usec ) {
     struct timeval tv;
     gettimeofday( &tv, NULL );
@@ -58,7 +59,7 @@ static void set_from_state( awl_backlight_t* b, const char* state ) {
         awl_redraw_request();
 }
 
-/* a method reply: whether it is a proper one; marks the connection as
+/** a method reply: whether it is a proper one; marks the connection as
  * broken otherwise */
 static int reply_ok( sd_bus_message* m, awl_backlight_bus_t* s ) {
     if (!sd_bus_message_is_method_error( m, NULL )) return 1;
@@ -66,7 +67,7 @@ static int reply_ok( sd_bus_message* m, awl_backlight_bus_t* s ) {
     return 0;
 }
 
-/* Properties.Get(ActiveState) -> v */
+/** Properties.Get(ActiveState) -> v */
 static int on_state( sd_bus_message* m, void* userdata, sd_bus_error* ret_error ) {
     (void)ret_error;
     awl_backlight_bus_t* s = userdata;
@@ -87,7 +88,7 @@ static void query_state( awl_backlight_bus_t* s ) {
         s->failed = 1;
 }
 
-/* PropertiesChanged(s interface, a{sv} changed, as invalidated) */
+/** PropertiesChanged(s interface, a{sv} changed, as invalidated) */
 static int on_properties_changed( sd_bus_message* m, void* userdata, sd_bus_error* ret_error ) {
     (void)ret_error;
     awl_backlight_bus_t* s = userdata;
@@ -129,7 +130,7 @@ static int on_subscribed( sd_bus_message* m, void* userdata, sd_bus_error* ret_e
     return 0;
 }
 
-/* LoadUnit(s) -> o */
+/** LoadUnit(s) -> o */
 static int on_unit( sd_bus_message* m, void* userdata, sd_bus_error* ret_error ) {
     (void)ret_error;
     awl_backlight_bus_t* s = userdata;
@@ -213,7 +214,7 @@ static void schedule_retry( awl_backlight_bus_t* s, uint64_t usec ) {
     s->retry = s->api->time_new( s->api, &tv, retry_callback, s );
 }
 
-/* Handles whatever the bus has, then waits for what it wants next. */
+/** Handles whatever the bus has, then waits for what it wants next. */
 static void bus_update( awl_backlight_bus_t* s ) {
     int r;
     while ((r = sd_bus_process( s->bus, NULL )) > 0)

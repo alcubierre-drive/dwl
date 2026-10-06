@@ -7,10 +7,10 @@
 #include <sys/time.h>
 #include <pulse/mainloop.h>
 
-/* Lets the kernel delay the 1 s tick by this much to batch it with other
+/** Lets the kernel delay the 1 s tick by this much to batch it with other
  * wakeups; nobody sees the clock or the graph being 20 ms late. */
 #define TIMER_SLACK_NS 20000000
-/* Safety nets, run on the 1 s tick so they never cause a wakeup of their
+/** Safety nets, run on the 1 s tick so they never cause a wakeup of their
  * own: some firmware doesn't send a uevent for every capacity step, and
  * without the netlink socket the IP address would never update. */
 #define BAT_REREAD_TICKS 60
@@ -71,7 +71,7 @@ static void tick_callback( pa_mainloop_api* a, pa_time_event* e, const struct ti
     a->time_restart( e, &next );
 }
 
-/* starts or stops the tick to match p->paused */
+/** starts or stops the tick to match p->paused */
 static void sync_paused( awl_poller_t* p ) {
     int paused = atomic_load( &p->paused );
     if (paused && p->tick) {

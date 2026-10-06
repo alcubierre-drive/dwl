@@ -1,6 +1,6 @@
 #pragma once
 
-/* Internal to libawlplugins.so; dwl itself only sees awl_plugin_abi.h. */
+/** Internal to ``libawlplugins.so``; awl itself only sees awl_plugin_abi.h. */
 
 #include "awl_plugin_abi.h"
 
@@ -16,6 +16,7 @@
 
 #include "plugins/colors.h"
 
+/** The running plugins' state, see `awl_plugin_get()`. */
 typedef struct awl_plugin_data_t {
     float refresh_sec;
 
@@ -33,31 +34,36 @@ typedef struct awl_plugin_data_t {
     struct awl_colors awl_colors;
 } awl_plugin_data_t;
 
-/* dwl's side of the boundary, set by awl_plugin_entry() */
+/** awl's side of the boundary, set by ``awl_plugin_entry()`` */
 extern const awl_host_t* awl_host;
 
-/* NULL while the plugins aren't running */
+/** The running plugins' state; NULL while the plugins aren't running. */
 awl_plugin_data_t* awl_plugin_get( void );
 
-/* plugins.c: a desktop notification (notify-send, spawned); main thread */
+/** plugins.c: a desktop notification (``notify-send``, spawned); main thread */
 void awl_notify( const char* title, const char* body );
-/* plugins.c: a notification "x/N" once the wallpaper all changes asked for
+/** plugins.c: a notification "x/N" once the wallpaper all changes asked for
  * end on is shown; main thread */
 void awl_notify_wallpaper_shown( const char* title );
 
-/* widgets.c */
-void awl_widgets_create( Drwl* bar );
+/** widgets.c: `awl_plugin_api_t.bar_widgets` */
+void awl_widgets_create( awl_draw_t* bar );
 
-/* desktop_panel.c: the scanner thread, and the awl_plugin_api_t desktop_*
- * entries. stop() returns nonzero if the scanner had to be left running. */
+/** desktop_panel.c: starts the scanner thread */
 void awl_desktop_start( void );
+/** desktop_panel.c: stops the scanner thread; returns nonzero if it had to
+ * be left running */
 int awl_desktop_stop( void );
+/** desktop_panel.c: `awl_plugin_api_t.desktop_version` */
 uint64_t awl_desktop_version( void );
-void awl_desktop_measure( Drwl* drw, int avail_w, int avail_h, int r, float scale,
+/** desktop_panel.c: `awl_plugin_api_t.desktop_measure` */
+void awl_desktop_measure( awl_draw_t* drw, int avail_w, int avail_h, int r, float scale,
                           int* x, int* y, int* w, int* h );
-void awl_desktop_draw( Drwl* drw, uint32_t* data, int stride, int w, int h, int r,
+/** desktop_panel.c: `awl_plugin_api_t.desktop_draw` */
+void awl_desktop_draw( awl_draw_t* drw, uint32_t* data, int stride, int w, int h, int r,
                        float scale );
+/** desktop_panel.c: `awl_plugin_api_t.desktop_click` */
 int awl_desktop_click( int button, uint32_t mods );
 
-/* awl_config.c */
+/** awl_config.c: `awl_plugin_api_t.config` */
 const awl_config_t* awl_config( void );

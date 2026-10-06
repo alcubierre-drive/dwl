@@ -5,7 +5,6 @@ PKG_CONFIG = pkg-config
 
 # paths
 PREFIX = /usr/local
-MANDIR = $(PREFIX)/share/man
 DATADIR = $(PREFIX)/share
 
 WLR_INCS = `$(PKG_CONFIG) --cflags wlroots-0.20`
@@ -30,7 +29,7 @@ XLIBS =
 XWAYLAND = -DXWAYLAND
 XLIBS = xcb xcb-icccm
 
-# dwl itself only uses C99 features, but wlroots' headers use anonymous unions (C11).
+# awl itself only uses C99 features, but wlroots' headers use anonymous unions (C11).
 # To avoid warnings about them, we do not use -std=c99 and instead of using the
 # gmake default 'CC=c99', we use cc.
 CC = gcc
@@ -45,6 +44,6 @@ CFLAGS = -std=c11 -Wall -Wextra -pedantic -Wno-unused-parameter
 CFLAGS += -Ofast -march=native -mtune=native -flto
 LDFLAGS += -flto=12
 
-DWL_LIBS := $(HOME)/Desktop/dwl-libs
-CFLAGS += -I$(DWL_LIBS)/include/scenefx-0.5
-LDFLAGS += -L$(DWL_LIBS)/lib -Wl,-rpath=$(DWL_LIBS)/lib -lscenefx-0.5
+AWL_LIBS := $(HOME)/Desktop/dwl-libs
+CFLAGS += -I$(AWL_LIBS)/include/scenefx-0.5
+LDFLAGS += -L$(AWL_LIBS)/lib -Wl,-rpath=$(AWL_LIBS)/lib -lscenefx-0.5

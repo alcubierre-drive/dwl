@@ -1,0 +1,6 @@
+/* The theme keeps table cells on one line, so wide tables scroll sideways;
+ * wrap them instead (as in divERGe's docs). */
+html body .wy-table-responsive table td,
+html body .wy-table-responsive table th {
+    white-space: normal;
+}

@@ -18,7 +18,7 @@ static logfile_t logfile = {
     .fd = -1,
     .maxsize = 1024*128,
     .currsize = 0,
-    .fname = "/tmp/dwl.log",
+    .fname = "/tmp/awl.log",
 };
 
 static void logfile_close( void ) { if (logfile.fd > 0) close(logfile.fd); }

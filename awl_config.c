@@ -1,8 +1,8 @@
-/* The reloadable half of config.h, built into libawlplugins.so (see
+/** The reloadable half of config.h, built into libawlplugins.so (see
  * config.h and awl_config_t in awl_plugin_abi.h). The functions config.h
- * binds to keys and layouts are dwl's; here they are same-named wrappers
+ * binds to keys and layouts are awl's; here they are same-named wrappers
  * calling them through the host table. */
-#include "dwl.h"
+#include "awl.h"
 #include "awl_plugin_abi.h"
 #include "plugins.h"
 #include "plugins/colors.h"

@@ -19,18 +19,18 @@
 static const awl_host_t host = {
     .abi = AWL_PLUGIN_ABI,
     .sizeof_host = sizeof(awl_host_t),
-    .sizeof_drwl = sizeof(Drwl),
+    .sizeof_draw = sizeof(awl_draw_t),
     .sizeof_widget = sizeof(widget_t),
     .sizeof_monitor = sizeof(Monitor),
     .sizeof_client = sizeof(Client),
 
     .redraw_request = awl_redraw_request,
 
-    .text = drwl_text_color2,
-    .font_getwidth = drwl_font_getwidth,
+    .text = awl_draw_text_color2,
+    .font_getwidth = awl_draw_font_getwidth,
 
-    .actions = &dwl_actions,
-    .arranges = &dwl_arranges,
+    .actions = &awl_actions,
+    .arranges = &awl_arranges,
     .focusclient = focusclient,
     .arrange = arrange,
 
@@ -42,12 +42,12 @@ static const awl_host_t host = {
 };
 
 static void* handle = NULL;
-/* the memfd handle was loaded from, see libopen() */
+/** the memfd handle was loaded from, see `libopen()` */
 static int handle_fd = -1;
 static const awl_plugin_api_t* api = NULL;
 static int paused = 0;
 
-/* $AWL_PLUGINS, or libawlplugins.so next to the dwl binary */
+/** $AWL_PLUGINS, or libawlplugins.so next to the awl binary */
 static int libpath( char* out, size_t n ) {
     const char* env = getenv( "AWL_PLUGINS" );
     if (env && *env)
@@ -62,9 +62,9 @@ static int libpath( char* out, size_t n ) {
     return snprintf( out, n, "%s/libawlplugins.so", exe ) < (int)n ? 0 : -1;
 }
 
-/* Copies the file at path into a memfd, so the loader sees a new file every
+/** Copies the file at path into a memfd, so the loader sees a new file every
  * time: dlopen() hands back the already loaded copy for the same file, and a
- * build overwriting the mapped file in place would crash dwl. */
+ * build overwriting the mapped file in place would crash awl. */
 static int memfd_copy( const char* path ) {
     int src = open( path, O_RDONLY | O_CLOEXEC );
     if (src < 0) return -1;
@@ -86,7 +86,7 @@ out:
     return dst;
 }
 
-/* The memfd stays open, in *out_fd, until the library is unloaded: dlopen()
+/** The memfd stays open, in ``*out_fd``, until the library is unloaded: dlopen()
  * also hands back an already loaded library of the same name, and a closed
  * one's fd number, i.e. its /proc/self/fd/N, is the next memfd's. */
 static const awl_plugin_api_t* libopen( void** out, int* out_fd ) {
@@ -115,7 +115,7 @@ static const awl_plugin_api_t* libopen( void** out, int* out_fd ) {
     const awl_plugin_api_t* a = entry ? entry( &host ) : NULL;
     if (!a || a->abi != AWL_PLUGIN_ABI) {
         fprintf( stderr, "awl plugins: %s: %s\n", path, !entry ? "no entry point" :
-                 "built against different headers than this dwl (rebuild both)" );
+                 "built against different headers than this awl (rebuild both)" );
         dlclose( h );
         close( fd );
         return NULL;
@@ -133,7 +133,7 @@ int awl_plugins_load( int p ) {
     return 0;
 }
 
-/* stops the plugins; unloads the library unless a thread of it is still
+/** stops the plugins; unloads the library unless a thread of it is still
  * running, which would then crash */
 static void stop( void* h, int fd ) {
     if (api && api->fini()) {
@@ -176,7 +176,7 @@ void awl_plugins_set_paused( int p ) {
     if (api) api->set_paused( paused );
 }
 
-void awl_plugins_bar_widgets( Drwl* bar ) {
+void awl_plugins_bar_widgets( awl_draw_t* bar ) {
     if (api) api->bar_widgets( bar );
 }
 
