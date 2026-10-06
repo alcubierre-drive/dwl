@@ -23,10 +23,16 @@ int awl_wallpaper_stop( void );
 void awl_wallpaper_step( int steps );
 /* any other one; main thread */
 void awl_wallpaper_random( void );
+/* the one shown before the current one (one more each time), as long as
+ * the thread remembers; main thread */
+void awl_wallpaper_back( void );
 /* where the list stood at the last change: the current index, its length
  * and the index the next random change goes to. 0 if not known yet. Main
  * thread. */
 int awl_wallpaper_position( int* cur, int* n, int* rand_next );
+/* like awl_wallpaper_position(), but 0 also while a step or random change
+ * asked for isn't done yet. Main thread. */
+int awl_wallpaper_settled( int* cur, int* n );
 /* the newest decoded wallpaper not taken yet, or NULL; the caller owns it.
  * awl_redraw_request() announces one. Main thread. */
 awl_image_t* awl_wallpaper_take( void );

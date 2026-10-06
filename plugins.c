@@ -113,6 +113,8 @@ static void api_wallpaper( WallpaperMode mode ) {
     case WallpaperNext: awl_wallpaper_step( +1 ); break;
     case WallpaperPrev: awl_wallpaper_step( -1 ); break;
     case WallpaperRand: awl_wallpaper_random(); break;
+    case WallpaperBack: awl_wallpaper_back(); break;
+    default: break; /* dwl resolves the timer ones */
     }
 }
 
@@ -121,27 +123,43 @@ void awl_notify( const char* title, const char* body ) {
             "notify-send", "-a", "dwl", title, body, NULL } } );
 }
 
-/* which wallpaper mode switches from and to, counted from 1; suffix goes after */
-void awl_notify_wallpaper( const char* title, WallpaperMode mode, const char* suffix ) {
-    static const char* names[] = {
-        [WallpaperRand] = "rand", [WallpaperNext] = "next", [WallpaperPrev] = "prev" };
-    char body[96];
-    int cur, n, rand_next;
-    if (awl_wallpaper_position( &cur, &n, &rand_next )) {
-        int to = mode == WallpaperNext ? (cur + 1) % n
-               : mode == WallpaperPrev ? (cur + n - 1) % n
-               : rand_next;
-        snprintf( body, sizeof(body), "%s: %d → %d of %d%s", names[mode], cur + 1, to + 1, n, suffix );
-    } else {
-        snprintf( body, sizeof(body), "%s%s", names[mode], suffix );
+/* the wallpaper to tell about once it's shown (awl_notify_wallpaper_shown());
+ * main thread */
+static const char* shown_title;
+
+void awl_notify_wallpaper_shown( const char* title ) {
+    shown_title = title;
+}
+
+/* dwl takes the wallpaper to show it: if all changes asked for are done,
+ * this is the one they end on */
+static awl_image_t* api_wallpaper_take( void ) {
+    awl_image_t* img = awl_wallpaper_take();
+    int cur, n;
+    if (img && shown_title && awl_wallpaper_settled( &cur, &n )) {
+        char body[32];
+        snprintf( body, sizeof(body), "%d/%d", cur + 1, n );
+        awl_notify( shown_title, body );
+        shown_title = NULL;
     }
-    awl_notify( title, body );
+    return img;
 }
 
 /* the wallpaper timer's mode changed (wallpapermode) */
 static void api_wallpaper_mode( WallpaperMode mode ) {
-    awl_notify_wallpaper( "Wallpaper timer", mode,
-                          awl_config()->wallpaper->interval ? "" : " (timer off)" );
+    static const char* names[] = {
+        [WallpaperRand] = "rand", [WallpaperNext] = "next", [WallpaperPrev] = "prev",
+        [WallpaperModeCount] = "",
+    };
+    const char* off = awl_config()->wallpaper->interval ? "" : " (timer off)";
+    char body[64];
+    int cur, n;
+    /* where it stands now, as awl_notify_wallpaper_shown() tells it */
+    if (awl_wallpaper_settled( &cur, &n ))
+        snprintf( body, sizeof(body), "%s: %d/%d%s", names[mode], cur + 1, n, off );
+    else
+        snprintf( body, sizeof(body), "%s%s", names[mode], off );
+    awl_notify( "Wallpaper timer", body );
 }
 
 static const awl_plugin_api_t api = {
@@ -155,7 +173,7 @@ static const awl_plugin_api_t api = {
     .desktop_draw = awl_desktop_draw,
     .desktop_click = awl_desktop_click,
     .wallpaper = api_wallpaper,
-    .wallpaper_take = awl_wallpaper_take,
+    .wallpaper_take = api_wallpaper_take,
     .wallpaper_mode = api_wallpaper_mode,
     .config = awl_config,
 };

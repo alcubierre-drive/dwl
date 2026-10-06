@@ -20,7 +20,7 @@
 #include "tray/awl_tray.h"
 #include "plugins/wallpaper.h"
 
-#define AWL_PLUGIN_ABI 12
+#define AWL_PLUGIN_ABI 13
 #define AWL_PLUGIN_ENTRY "awl_plugin_entry"
 
 /* Every dwl function config.h can bind to a key or button. The library binds

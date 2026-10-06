@@ -87,7 +87,8 @@ static const awl_tray_config_t tray_config = {
     },
 };
 
-/* the wallpaper action ({.i = WallpaperNext, WallpaperPrev or WallpaperRand})
+/* the wallpaper action ({.i = WallpaperNext, WallpaperPrev, WallpaperRand,
+ * WallpaperBack, WallpaperTimerNext or WallpaperTimerBack; see dwl.h})
  * shows one of dir's *.png files, scaled to cover each monitor; so does a
  * timer every interval seconds (0: never), going where mode says
  * (wallpapermode cycles it) */
@@ -207,7 +208,8 @@ static const Key keys[] = {
     /* modifier                  key                 function          argument */
     { MODKEY,                    XKB_KEY_p,          spawn,            {.v = menucmd} },
     { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_Return,     spawn,            {.v = termcmd} },
-    { MODKEY,                    XKB_KEY_w,          wallpaper,        {.i = WallpaperRand} },
+    { MODKEY,                    XKB_KEY_w,          wallpaper,        {.i = WallpaperTimerNext} },
+    { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_W,          wallpaper,        {.i = WallpaperTimerBack} },
     { MODKEY,                    XKB_KEY_b,          togglebar,        {0} },
     { MODKEY,                    XKB_KEY_j,          focusstack,       {.i = +1} },
     { MODKEY,                    XKB_KEY_k,          focusstack,       {.i = -1} },

@@ -301,8 +301,12 @@ typedef struct {
 
 void arrange(Monitor *m);
 void focusclient(Client *c, int lift);
-/* which wallpaper the wallpaper action (Arg.i) and the timer switch to */
-typedef enum { WallpaperNext, WallpaperPrev, WallpaperRand } WallpaperMode;
+/* which wallpaper the wallpaper action (Arg.i) and the timer switch to; the
+ * ones after WallpaperModeCount are no timer modes: back to the one shown
+ * before, where the timer goes next, and the way back from there (for
+ * WallpaperRand, WallpaperBack) */
+typedef enum { WallpaperNext, WallpaperPrev, WallpaperRand, WallpaperModeCount,
+               WallpaperBack, WallpaperTimerNext, WallpaperTimerBack } WallpaperMode;
 typedef struct {
     const char *dir;         /* its *.png files; relative to $HOME unless absolute */
     unsigned int fade_ms;    /* from one to the next, 0: switch at once */

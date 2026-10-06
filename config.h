@@ -72,7 +72,7 @@ static const awl_tray_config_t tray_config = {
     .calendar = {
         .bg           = 0x3c3c3c4d, /* dwl blurs what is behind it */
         .fg           = 0xf8f8f2ff,
-        .border       = molokai_green,
+        .border       = molokai_blue,
         .today        = 0xb6ec52ff,
         .dim          = 0xf8f8f259, /* the neighbouring months' days */
         .selected     = 0xffffff33, /* the selected day's background */
@@ -87,7 +87,8 @@ static const awl_tray_config_t tray_config = {
     },
 };
 
-/* the wallpaper action ({.i = WallpaperNext, WallpaperPrev or WallpaperRand})
+/* the wallpaper action ({.i = WallpaperNext, WallpaperPrev, WallpaperRand,
+ * WallpaperBack, WallpaperTimerNext or WallpaperTimerBack; see dwl.h})
  * shows one of dir's *.png files, scaled to cover each monitor; so does a
  * timer every interval seconds (0: never), going where mode says
  * (wallpapermode cycles it) */
@@ -261,8 +262,8 @@ static const Key keys[] = {
     { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_space,      togglefloating,   {0} },
     { MODKEY,                    XKB_KEY_t,          toggleontop,      {0} },
     { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_r,          plugin_restart,   {0} },
-    { MODKEY,                    XKB_KEY_w,          wallpaper,        {.i = WallpaperRand} },
-    { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_W,          wallpaper,        {.i = WallpaperNext} },
+    { MODKEY,                    XKB_KEY_w,          wallpaper,        {.i = WallpaperTimerNext} },
+    { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_W,          wallpaper,        {.i = WallpaperTimerBack} },
     { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_N,          spawn,            {.v = notification_action} },
     // { MODKEY,                    XKB_KEY_g,          spawn,            {.v = garfield} },
     { MODKEY,                    XKB_KEY_b,          togglebw,         {0} },

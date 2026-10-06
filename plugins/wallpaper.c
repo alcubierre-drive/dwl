@@ -29,12 +29,19 @@ static const uint32_t max_side = 16384;
 /* the decoder gets the file this much at a time, and in between a stop
  * request doesn't have to wait for the rest */
 static const size_t feed = 1 << 20;
+/* how many wallpapers back awl_wallpaper_back() can go */
+#define HISTORY 32
 
 /* One per thread; a stuck one is left behind with its thread, never freed. */
 typedef struct {
     char dir[PATH_MAX];        /* set before the thread starts, then read-only */
     DesktopFiles files;        /* thread only */
-    atomic_int steps, random;  /* main -> thread: what to do once woken */
+    atomic_int steps, random, back; /* main -> thread: what to do once woken */
+    /* the ones shown before, newest last; thread only */
+    int history[HISTORY], nhistory;
+    /* how many steps and random changes were asked for, and how many of them
+     * the newest where includes: equal once all of them are done */
+    atomic_uint asked, done;
     /* thread -> main: the newest decoded wallpaper, NULL once taken. Handed
      * over whole, so neither side ever waits for the other. */
     _Atomic(awl_image_t*) pending;
@@ -169,8 +176,10 @@ out:
     return img;
 }
 
-/* steps 0, random 0: the one the index file names */
-static void change( Changer* c, int steps, int random ) {
+/* steps 0, random 0, back 0: the one the index file names; asked: the
+ * requests these include. The ones asked for at once take effect in this
+ * order: random or steps, then back. */
+static void change( Changer* c, int steps, int random, int back, unsigned asked ) {
     int png[NFILES], n = 0, i;
     findfiles( &c->files, c->dir );
     for (i = 0; i < c->files.n_files; i++)
@@ -190,8 +199,18 @@ static void change( Changer* c, int steps, int random ) {
         int next = (int)(w & 0xffff);
         i = w && (int)(w >> 32) == n && next < n && next != prev ? next : pick( prev, n );
     }
+    if (i != prev) {
+        /* full: the oldest goes */
+        if (c->nhistory == HISTORY)
+            memmove( c->history, c->history + 1, --c->nhistory * sizeof(int) );
+        c->history[c->nhistory++] = prev;
+    }
+    /* nothing left to go back to: stay; the list may have shrunk since */
+    for (; back > 0 && c->nhistory; back--)
+        i = c->history[--c->nhistory] % n;
     if (i != prev) writeindex( i );
     atomic_store( &c->where, pack( i, n, pick( i, n ) ) );
+    atomic_store( &c->done, asked );
 
     char path[PATH_MAX + sizeof(c->files.files[0].name) + 1];
     snprintf( path, sizeof(path), "%s/%s", c->dir, c->files.files[png[i]].name );
@@ -208,9 +227,12 @@ static void* changer( void* data ) {
     int current = 1; /* at first, the one the index file names */
 
     while (1) {
+        /* before the requests themselves: it may include fewer, never more */
+        unsigned asked = atomic_load( &c->asked );
         int random = atomic_exchange( &c->random, 0 ),
-            steps = atomic_exchange( &c->steps, 0 );
-        if (current || random || steps) change( c, steps, random );
+            steps = atomic_exchange( &c->steps, 0 ),
+            back = atomic_exchange( &c->back, 0 );
+        if (current || random || steps || back) change( c, steps, random, back, asked );
         current = 0;
 
         if (poll( &fd, 1, -1 ) < 0) {
@@ -234,6 +256,9 @@ void awl_wallpaper_start( const char* dir ) {
     }
     atomic_init( &n->steps, 0 );
     atomic_init( &n->random, 0 );
+    atomic_init( &n->back, 0 );
+    atomic_init( &n->asked, 0 );
+    atomic_init( &n->done, 0 );
     atomic_init( &n->pending, NULL );
     atomic_init( &n->where, 0 );
     if (awl_thread_start( &n->thread, "wallpaper", changer, n )) {
@@ -259,12 +284,21 @@ int awl_wallpaper_stop( void ) {
 void awl_wallpaper_step( int steps ) {
     if (!ch) return;
     atomic_fetch_add( &ch->steps, steps );
+    atomic_fetch_add( &ch->asked, 1 );
     awl_thread_wake( &ch->thread );
 }
 
 void awl_wallpaper_random( void ) {
     if (!ch) return;
     atomic_store( &ch->random, 1 );
+    atomic_fetch_add( &ch->asked, 1 );
+    awl_thread_wake( &ch->thread );
+}
+
+void awl_wallpaper_back( void ) {
+    if (!ch) return;
+    atomic_fetch_add( &ch->back, 1 );
+    atomic_fetch_add( &ch->asked, 1 );
     awl_thread_wake( &ch->thread );
 }
 
@@ -275,6 +309,12 @@ int awl_wallpaper_position( int* cur, int* n, int* rand_next ) {
     *cur = (int)(w >> 16 & 0xffff);
     *rand_next = (int)(w & 0xffff);
     return 1;
+}
+
+int awl_wallpaper_settled( int* cur, int* n ) {
+    if (!ch || atomic_load( &ch->done ) != atomic_load( &ch->asked )) return 0;
+    int rand_next;
+    return awl_wallpaper_position( cur, n, &rand_next );
 }
 
 awl_image_t* awl_wallpaper_take( void ) {

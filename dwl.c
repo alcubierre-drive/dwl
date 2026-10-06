@@ -844,7 +844,17 @@ wallpapernext(WallpaperMode mode)
         api->wallpaper(mode);
 }
 
-void wallpaper(const Arg *arg) { wallpapernext(arg->i); }
+void
+wallpaper(const Arg *arg)
+{
+    WallpaperMode mode = arg->i;
+    if (mode == WallpaperTimerNext)
+        mode = wallpaper_mode;
+    else if (mode == WallpaperTimerBack)
+        mode = wallpaper_mode == WallpaperNext ? WallpaperPrev
+             : wallpaper_mode == WallpaperPrev ? WallpaperNext : WallpaperBack;
+    wallpapernext(mode);
+}
 
 /* shows a wallpaper the library has decoded since, if any */
 void

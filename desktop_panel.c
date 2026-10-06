@@ -340,31 +340,41 @@ int awl_desktop_click( int button, uint32_t mods ) {
         case BTN_MIDDLE: mode = WallpaperRand; break;
         default: return 0;
         }
-        /* before the switch: it's where the wallpaper goes from */
-        awl_notify_wallpaper( "Wallpaper", mode, "" );
+        awl_notify_wallpaper_shown( "Wallpaper" );
         if (mode == WallpaperRand) awl_wallpaper_random();
         else awl_wallpaper_step( mode == WallpaperNext ? +1 : -1 );
         return 1;
-    }
-    if (mods != WLR_MODIFIER_SHIFT) return 0;
-    int show = desk.show, hidden = desk.hidden;
-    switch (button) {
-    case BTN_LEFT:
-        desk.show = !desk.show;
-        break;
-    case BTN_MIDDLE:
-        /* also shows a hidden list */
-        if (desk.show) desk.hidden = !desk.hidden;
-        desk.show = 1;
-        break;
-    case BTN_RIGHT:
-        awl_host->actions->wallpapermode( &(Arg){ .i = +1 } );
+    } else if (mods == WLR_MODIFIER_CTRL) {
+        // the button is ignored here, could be taken in the future.
+        int cur, n;
+        char body[32];
+        if (awl_wallpaper_settled( &cur, &n )) {
+            snprintf( body, sizeof(body), "%d/%d", cur + 1, n );
+            awl_notify( "Wallpaper Info", body );
+        }
         return 1;
-    default:
+    } else if (mods == WLR_MODIFIER_SHIFT) {
+        int show = desk.show, hidden = desk.hidden;
+        switch (button) {
+        case BTN_LEFT:
+            desk.show = !desk.show;
+            break;
+        case BTN_MIDDLE:
+            /* also shows a hidden list */
+            if (desk.show) desk.hidden = !desk.hidden;
+            desk.show = 1;
+            break;
+        case BTN_RIGHT:
+            awl_host->actions->wallpapermode( &(Arg){ .i = +1 } );
+            return 1;
+        default:
+            return 0;
+        }
+        desk.version++;
+        rescan();
+        notify_toggle( show, hidden );
+        return 1;
+    } else {
         return 0;
     }
-    desk.version++;
-    rescan();
-    notify_toggle( show, hidden );
-    return 1;
 }
