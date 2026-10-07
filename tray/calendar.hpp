@@ -28,5 +28,7 @@ void calendar_toggle(const std::string& monitor_id, bool bar_on_top);
 // Like calendar_toggle(), but never hides it.
 void calendar_show(const std::string& monitor_id, bool bar_on_top);
 void calendar_hide();
+// Moves the shown popup a month forward (amount > 0) or back (amount < 0).
+void calendar_scroll(int amount);
 
 }  // namespace awl

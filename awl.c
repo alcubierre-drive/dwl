@@ -2,6 +2,7 @@
 #include "awl-log.h"
 #include "util.h"
 #include "awl_draw.h"
+#include "awl_dict.h"
 #include "plugin_host.h"
 #include "awl_plugin_abi.h"
 #include "background.h"
@@ -308,6 +309,7 @@ static struct wl_listener xwayland_ready = {.notify = xwaylandready};
 static struct wlr_xwayland *xwayland;
 #endif
 
+#define notifyconfig NULL
 /* configuration, allows nested code to access above variables */
 #include "config.h"
 
@@ -323,6 +325,9 @@ const awl_arranges_t awl_arranges = { AWL_ARRANGES(AWL_ACTION_INIT) };
  * loaded the one awl was built with. It points into the library, so it's only
  * good until the next reload; `pluginsdetach()` falls back to builtinconfig(). */
 static const awl_config_t *cfg;
+/** The config values that can change while awl runs, by name, for awl and the
+ * library (`awl_host_t.cfg`). Lives from setup() to cleanup(), across reloads. */
+static awl_dict_t *cfgdict;
 /** cfg->bordercolors, copied */
 static uint32_t borders[BorderLast];
 /** What the keyboard and the bars' font were set up with, copied, to tell
@@ -335,7 +340,8 @@ static struct {
     unsigned int borderpx;
     unsigned int wallpaper_interval;
     WallpaperMode wallpaper_mode;
-} applied;
+    int wallpaper_mode_dict; /* cfgdict's "wallpaper_mode", -1: none */
+} applied = { .wallpaper_mode_dict = -1 };
 
 /** the keyboards and pointers, to apply a reloaded config.h to */
 typedef struct {
@@ -345,6 +351,49 @@ typedef struct {
 } InputDevice;
 static struct wl_list inputdevices; /* InputDevice.link */
 static struct wl_event_source *plugin_restart_source;
+
+
+static void cfgdict_defaults(awl_dict_t* cfgdict)
+{
+    /* "desktop_dir": the folder the desktop panels list, $HOME/Desktop */
+    char dir[PATH_MAX];
+    const char *home = getenv("HOME");
+    snprintf(dir, sizeof(dir), "%s/Desktop", home ? home : "/tmp");
+    awl_dict_set(cfgdict, "desktop_dir", &AWL_DICT_STR(dir));
+
+    /* "wallpaper_dir": the folder the wallpapers come from, the built-in
+     * config.h's wallpaper_config.dir, relative to $HOME unless absolute;
+     * none for a NULL one, then there's no wallpaper */
+    const char *wp = cfg->wallpaper->dir;
+    if (wp) {
+        if (wp[0] == '/')
+            snprintf(dir, sizeof(dir), "%s", wp);
+        else
+            snprintf(dir, sizeof(dir), "%s/%s", home ? home : "/tmp", wp);
+        awl_dict_set(cfgdict, "wallpaper_dir", &AWL_DICT_STR(dir));
+    }
+
+    /* "config_home": $XDG_CONFIG_HOME, else $HOME/.config; the spec says
+     * to ignore an empty or relative $XDG_CONFIG_HOME */
+    const char *xdg = getenv("XDG_CONFIG_HOME");
+    if (xdg && xdg[0] == '/')
+        snprintf(dir, sizeof(dir), "%s", xdg);
+    else
+        snprintf(dir, sizeof(dir), "%s/.config", home ? home : "/tmp");
+    awl_dict_set(cfgdict, "config_home", &AWL_DICT_STR(dir));
+
+    /* "state_home": $XDG_STATE_HOME, else $HOME/.local/state, likewise */
+    xdg = getenv("XDG_STATE_HOME");
+    if (xdg && xdg[0] == '/')
+        snprintf(dir, sizeof(dir), "%s", xdg);
+    else
+        snprintf(dir, sizeof(dir), "%s/.local/state", home ? home : "/tmp");
+    awl_dict_set(cfgdict, "state_home", &AWL_DICT_STR(dir));
+
+    // TODO: Add wallpaper_mode and desktop_file_mode. These should also be
+    // added to persistent state.
+}
+
 
 static const awl_config_t *
 builtinconfig(void)
@@ -589,7 +638,8 @@ arrangelayers(Monitor *m)
 static struct wl_event_source *hover_timer, *leave_timer;
 /** config.h's wallpaper_config.interval */
 static struct wl_event_source *wallpaper_timer;
-/** what the timer switches to: config.h's mode, until `wallpapermode()` */
+/** what the timer switches to: config.h's mode or cfgdict's "wallpaper_mode",
+ * until `wallpapermode()` */
 static WallpaperMode wallpaper_mode;
 static widget_t *hover_widget, *hover_active;
 static int leave_pending;
@@ -833,6 +883,29 @@ desktopat(double x, double y)
         if (wlr_scene_node_at(&layers[i]->node, x, y, NULL, NULL))
             return 0;
     return xytomon(x, y) != NULL;
+}
+
+/** cfgdict's "wallpaper_mode" values, the timer modes' names */
+static const char *const wallpaper_mode_names[WallpaperModeCount] = {
+    [WallpaperNext] = "next", [WallpaperPrev] = "prev", [WallpaperRand] = "random",
+};
+
+/** cfgdict's "wallpaper_mode" as a mode, -1 if it's missing or no mode's
+ * name */
+static int
+wallpapermodedict(void)
+{
+    int mode = -1, i;
+    awl_dict_val_t v;
+
+    awl_dict_lock(cfgdict);
+    if (awl_dict_get(cfgdict, "wallpaper_mode", &v) == AWL_DICT_OK
+            && v.kind == AWL_DICT_KIND_STR)
+        for (i = 0; i < WallpaperModeCount; i++)
+            if (!strcmp(v.str, wallpaper_mode_names[i]))
+                mode = i;
+    awl_dict_unlock(cfgdict);
+    return mode;
 }
 
 /** the library's thread does it (plugins/wallpaper.c), off the main thread */
@@ -1175,6 +1248,8 @@ cleanup(void)
     awl_draw_fini();
     cfg = builtinconfig();
     awl_plugins_unload();
+    awl_dict_destroy(cfgdict);
+    cfgdict = NULL;
     /* only now nothing can request a redraw anymore */
     awl_redraw_fini();
 }
@@ -1226,6 +1301,7 @@ cleanupmon(struct wl_listener *listener, void *data)
 
     closemon(m);
     wlr_scene_node_destroy(&m->fullscreen_bg->node);
+    wlr_scene_node_destroy(&m->bar_blur->node);
     wlr_scene_node_destroy(&m->scene_buffer->node);
     desktop_removemon(m);
     background_removemon(m);
@@ -1683,6 +1759,12 @@ createmon(struct wl_listener *listener, void *data)
      * so floating windows render above both. */
     m->scene_buffer = wlr_scene_buffer_create(layers[LyrBottom], NULL);
     m->scene_buffer->point_accepts_input = bar_accepts_input;
+    /* frosts the window list's translucent entries; drawbar() fits it and
+     * enables it with cfg->blur_windowlist */
+    m->bar_blur = wlr_scene_blur_create(layers[LyrBottom], 0, 0);
+    wlr_scene_node_place_below(&m->bar_blur->node, &m->scene_buffer->node);
+    wlr_scene_blur_set_strength(m->bar_blur, cfg->blur[0]);
+    wlr_scene_blur_set_alpha(m->bar_blur, cfg->blur[1]);
 
     m->showbar = showbar;
     updatebar(m);
@@ -2105,6 +2187,17 @@ drawbar(Monitor *m)
         m->b.real_width, m->b.real_height);
     wlr_scene_node_set_position(&m->scene_buffer->node, m->m.x,
         m->m.y + (topbar ? 0 : m->m.height - m->b.real_height));
+    /* the window list's box, from buffer to logical pixels */
+    if (m->b.width) {
+        uint32_t cx = m->drw->has_center_widget ? m->drw->center_widget_start : 0,
+                 cw = m->drw->has_center_widget ? m->drw->center_widget.width : 0;
+        int bx = (int)((uint64_t)cx * m->b.real_width / m->b.width),
+            bw = (int)((uint64_t)(cx + cw) * m->b.real_width / m->b.width) - bx;
+        wlr_scene_blur_set_size(m->bar_blur, bw, m->b.real_height);
+        wlr_scene_node_set_position(&m->bar_blur->node, m->m.x + bx,
+            m->m.y + (topbar ? 0 : m->m.height - m->b.real_height));
+        wlr_scene_node_set_enabled(&m->bar_blur->node, cfg->blur_windowlist && bw > 0);
+    }
     /* only hand the scene a new buffer if the pixels actually changed, and
      * only damage the output where they did (usually just the clock and the
      * graphs); buf stays unlocked otherwise and is reused next time */
@@ -3223,10 +3316,14 @@ run(char *startup_cmd)
     setenv("SYSTEMD_EDITOR","/usr/bin/nvim",1);
     setenv("SSH_AUTH_SOCK","1",1);
     setenv("NO_AT_BRIDGE","1",1);
-    char buf[256] = {0};
-    const char* home = getenv("HOME");
-    snprintf( buf, sizeof(buf), "%s/Desktop", home ? home : "/tmp" );
-    setenv("GRIM_DEFAULT_DIR", buf, 1);
+    /* setup() filled in "desktop_dir" and the library's init() may have
+     * changed it since; later changes don't reach the environment */
+    awl_dict_val_t dir;
+    awl_dict_lock(cfgdict);
+    if (awl_dict_get(cfgdict, "desktop_dir", &dir) == AWL_DICT_OK
+            && dir.kind == AWL_DICT_KIND_STR)
+        setenv("GRIM_DEFAULT_DIR", dir.str, 1);
+    awl_dict_unlock(cfgdict);
 
     /* Only now does our own Wayland socket exist and WAYLAND_DISPLAY point
      * at it, which the tray's GTK/GDK thread needs to connect to us as a
@@ -3559,7 +3656,7 @@ setup(void)
     background_tree = wlr_scene_tree_create(&scene->tree);
     wlr_scene_node_place_below(&background_tree->node, &layers[LyrBg]->node);
     background_init(background_tree, event_loop);
-    /* the $HOME/Desktop panels, over the wallpaper (see desktop.h) */
+    /* the desktop_dir panels, over the wallpaper (see desktop.h) */
     desktop_tree = wlr_scene_tree_create(&scene->tree);
     wlr_scene_node_place_above(&desktop_tree->node, &layers[LyrBg]->node);
     desktop_init(desktop_tree, &(desktop_config_t){
@@ -3755,7 +3852,11 @@ setup(void)
     wl_signal_add(&output_mgr->events.apply, &output_mgr_apply);
     wl_signal_add(&output_mgr->events.test, &output_mgr_test);
 
-    awl_plugins_load(0);
+    /* NULL is fine: every lookup then fails with AWL_DICT_ERR_INVALID */
+    if (!(cfgdict = awl_dict_new()))
+        fprintf(stderr, "awl: out of memory for the config dictionary\n");
+    cfgdict_defaults(cfgdict);
+    awl_plugins_load(0, cfgdict);
     configuse();
     awl_draw_init();
     if (awl_redraw_init() >= 0)
@@ -3969,6 +4070,9 @@ void togglebar_mon(Monitor* m) {
     if (!m) return;
     m->showbar = !m->showbar;
     wlr_scene_node_set_enabled(&m->scene_buffer->node, m->showbar);
+    /* drawbar() enables it again, if the window list has a width */
+    if (!m->showbar)
+        wlr_scene_node_set_enabled(&m->bar_blur->node, 0);
     /* The tray is a separate, real layer-shell overlay window per monitor
      * (see tray/awl_tray_bridge.cpp), not something drawn into m's own bar
      * buffer, so hiding/showing that buffer's scene node above doesn't
@@ -4421,6 +4525,7 @@ configapply(void)
     Client *c, *sel = focustop(selmon);
     LayerSurface *l;
     InputDevice *d;
+    int mode;
     struct xkb_keymap *keymap;
     const char *xkb[5] = { cfg->xkb_rules->rules, cfg->xkb_rules->model,
         cfg->xkb_rules->layout, cfg->xkb_rules->variant, cfg->xkb_rules->options };
@@ -4497,6 +4602,8 @@ configapply(void)
     }
     wl_list_for_each(m, &mons, link) {
         wlr_scene_rect_set_color(m->fullscreen_bg, cfg->fullscreen_bg);
+        wlr_scene_blur_set_strength(m->bar_blur, cfg->blur[0]);
+        wlr_scene_blur_set_alpha(m->bar_blur, cfg->blur[1]);
         for (i = 0; i < (int)LENGTH(m->layers); i++) {
             wl_list_for_each(l, &m->layers[i], link) {
                 if (!l->blur)
@@ -4520,6 +4627,12 @@ configapply(void)
     /* a new config.h mode replaces wallpapermode()'s; an unchanged one doesn't */
     if (cfg->wallpaper->mode != applied.wallpaper_mode)
         wallpaper_mode = applied.wallpaper_mode = cfg->wallpaper->mode;
+    /* so does a new cfgdict "wallpaper_mode" (the library's init() sets it
+     * before this runs), after config.h's, so it wins when both change */
+    mode = wallpapermodedict();
+    if (mode >= 0 && mode != applied.wallpaper_mode_dict)
+        wallpaper_mode = mode;
+    applied.wallpaper_mode_dict = mode;
     desktop_configure(&(desktop_config_t){
             .blur = cfg->blur_launcher, .radius = cfg->blur_launcher_radius,
             .blur_strength = cfg->blur[0], .blur_alpha = cfg->blur[1] });

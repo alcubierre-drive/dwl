@@ -139,8 +139,18 @@ void awl_desktop_start( void ) {
 
     Scanner* n = calloc( 1, sizeof(*n) );
     if (!n) return;
-    const char* home = getenv( "HOME" );
-    snprintf( n->path, sizeof(n->path), "%s/Desktop", home ? home : "" );
+    /* the string is the dictionary's until it's unlocked */
+    awl_dict_val_t dir;
+    AWL_HOST_CFG_LOCK( awl_host );
+    if (AWL_HOST_CFG_GET( awl_host, "desktop_dir", &dir ) == AWL_DICT_OK
+            && dir.kind == AWL_DICT_KIND_STR)
+        snprintf( n->path, sizeof(n->path), "%s", dir.str );
+    AWL_HOST_CFG_UNLOCK( awl_host );
+    if (!n->path[0]) {
+        fprintf( stderr, "desktop: no desktop_dir in the config dictionary\n" );
+        free( n );
+        return;
+    }
     atomic_init( &n->pending, NULL );
     if (awl_thread_start( &n->thread, "desktop", scanner, n )) {
         free( n );

@@ -26,7 +26,7 @@ The threads
        kernel events; volume and the backlight timer on their own events
    * - ``desktop``
      - desktop_panel.c
-     - watches ``$HOME/Desktop`` with inotify and lists it
+     - watches ``desktop_dir`` with inotify and lists it
    * - ``wallpaper``
      - plugins/wallpaper.c
      - lists the wallpaper directory, picks one, decodes it
@@ -85,7 +85,7 @@ redraw eventfd, and it then picks up whatever they published.
      subgraph lib["libawlplugins.so"]
        direction LR
        poller["poller thread<br/>stats, temp, clock, battery,<br/>IP, volume, backlight"] -- "readings" --> atomics[("atomics<br/>awl_stats_t, ...")]
-       scanner["desktop thread<br/>$HOME/Desktop"] -- "changed list" --> pending[("pending<br/>DesktopFiles*")]
+       scanner["desktop thread<br/>desktop_dir"] -- "changed list" --> pending[("pending<br/>DesktopFiles*")]
        changer["wallpaper thread<br/>pick, decode"] -- "decoded image" --> image[("pending<br/>awl_image_t*")]
      end
      tray["tray thread<br/>GTK, libawltray.so"]
@@ -195,7 +195,7 @@ all of them end on.
      participant W as wallpaper thread
      M->>W: awl_wallpaper_step(+1)<br/>steps += 1, asked += 1, wake
      W->>W: takes asked, then steps, random, back
-     W->>W: change(): lists the directory,<br/>picks, writes the index file,<br/>where = (cur, n, rand_next), done = asked
+     W->>W: change(): lists the directory,<br/>picks, sets wallpaper_index,<br/>where = (cur, n, rand_next), done = asked
      W->>W: decode() the PNG (Wuffs)
      W->>W: pending = image<br/>(frees one not taken yet)
      W-->>M: awl_redraw_request()
@@ -212,7 +212,7 @@ The desktop scanner
    sequenceDiagram
      participant M as main thread
      participant S as desktop thread
-     S->>S: inotify on $HOME/Desktop<br/>(retried every 5 s while missing)
+     S->>S: inotify on desktop_dir<br/>(retried every 5 s while missing)
      Note over S: an event: wait 50 ms for more,<br/>500 ms at most
      S->>S: findfiles(): the list
      S->>S: pending = copy, if it changed

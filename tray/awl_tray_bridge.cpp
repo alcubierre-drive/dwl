@@ -681,6 +681,11 @@ void awl_tray_calendar_hide(void) {
     SNI::run_on_gtk_thread([] { awl::calendar_hide(); });
 }
 
+void awl_tray_calendar_scroll(int amount) {
+    if (!SNI::g_running.load()) return;
+    SNI::run_on_gtk_thread([amount] { awl::calendar_scroll(amount); });
+}
+
 void awl_tray_remove_monitor(const char *monitor_id) {
     std::string mon(monitor_id ? monitor_id : "");
     std::unique_ptr<SNI::Bridge> b;

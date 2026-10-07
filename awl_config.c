@@ -17,6 +17,7 @@ AWL_ACTIONS( AWL_ACTION_WRAPPER )
 AWL_ARRANGES( AWL_ARRANGE_WRAPPER )
 #undef AWL_ARRANGE_WRAPPER
 
+static void notifyconfig( const Arg* arg ) { awl_notify_config(); }
 #define AWL_CONFIG_RELOADABLE_ONLY
 #include "config.h"
 

@@ -57,7 +57,8 @@ static const float fullscreen_bg[]         = {0.1f, 0.1f, 0.1f, 1.0f}; /* You ca
 static const int blur_notifications        = 1,
                  blur_notifications_radius = 15,
                  blur_launcher             = 1,
-                 blur_launcher_radius      = 15;
+                 blur_launcher_radius      = 15,
+                 blur_windowlist           = 0;
 
 /* molokai_* are in plugins/colors.h */
 static const uint32_t bordercolors[BorderLast] = {
@@ -239,6 +240,7 @@ static const Key keys[] = {
     /* Note that Shift changes certain key codes: c -> C, 2 -> at, etc. */
     /* modifier                  key                 function        argument */
     { MODKEY,                    XKB_KEY_p,          spawn,            {.v = menucmd} },
+    { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_P,          notifyconfig,     {0} },
     { MODKEY,                    XKB_KEY_Return,     spawn,            {.v = termcmd} },
     { MODKEY,                    XKB_KEY_y,          spawn,            {.v = backlight_tooler_disable_cmd } },
     { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_Y,          spawn,            {.v = backlight_tooler_enable_cmd } },

@@ -1,7 +1,8 @@
 #pragma once
 
 /**
- * The files in ``$HOME/Desktop``, listed in a panel over the wallpaper on
+ * The files in the config dictionary's ``desktop_dir`` (``$HOME/Desktop``
+ * unless a plugin changes it), listed in a panel over the wallpaper on
  * every monitor. This side only places the panels and owns their buffers;
  * what's in them -- the file list, its scanner thread (all file system access
  * is there, so a hung mount can't block the compositor), the layout, the look

@@ -137,6 +137,12 @@ void awl_tray_calendar_show(const char *monitor_id);
  * else. Fire-and-forget, safe to call from any thread. */
 void awl_tray_calendar_hide(void);
 
+/** Moves the calendar popup, if it is shown, a month forward (amount > 0) or
+ * back (amount < 0), keeping the day of the month where it can. For
+ * scrolling on the bar's clock. Fire-and-forget, safe to call from any
+ * thread. */
+void awl_tray_calendar_scroll(int amount);
+
 /** Tears down the given monitor's tray overlay window (if one was ever
  * created for it) -- call when a monitor is being destroyed (e.g.
  * unplugged), from cleanupmon(), before its wlr_output goes away. Safe to

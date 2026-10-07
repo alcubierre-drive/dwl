@@ -49,7 +49,11 @@ static void awl_draw_rect_color(awl_draw_t *drw, int x, int y, unsigned int w, u
     if (!drw || !drw->pix)
         return;
 
+    /* the bar buffer is premultiplied ARGB, color is not */
     clr = convert_color(color);
+    clr.red = (uint32_t)clr.red * clr.alpha / 0xffff;
+    clr.green = (uint32_t)clr.green * clr.alpha / 0xffff;
+    clr.blue = (uint32_t)clr.blue * clr.alpha / 0xffff;
     pixman_image_fill_rectangles(PIXMAN_OP_SRC, drw->pix, &clr, 1,
         &(pixman_rectangle16_t){x, y, w, h});
 }

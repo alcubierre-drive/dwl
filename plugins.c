@@ -8,6 +8,7 @@
 #include "plugins/pulsetest.h"
 #include "plugins/poller.h"
 #include "plugins/redraw.h"
+#include "plugins/persistent.h"
 
 #include <stddef.h>
 #include <stdio.h>
@@ -86,10 +87,11 @@ void awl_redraw_request( void ) {
 static void api_init( int paused ) {
     plugin_data = calloc(1,sizeof(awl_plugin_data_t));
     plugin_data->paused = paused;
+    /* plugins/persistent.h's file: $XDG_STATE_HOME/awl/persistent */
+    AWL_HOST_CFG_SET( awl_host, AWL_PERSISTENT_KEY, AWL_DICT_STR( "awl/persistent" ) );
     awl_plugin_start( plugin_data );
     awl_desktop_start();
-    const WallpaperConfig* wp = awl_config()->wallpaper;
-    awl_wallpaper_start( wp->dir );
+    awl_wallpaper_start();
 }
 
 static int api_fini( void ) {
@@ -121,6 +123,91 @@ static void api_wallpaper( WallpaperMode mode ) {
 void awl_notify( const char* title, const char* body ) {
     awl_host->actions->spawn( &(Arg){ .v = (const char*[]){
             "notify-send", "-a", "awl", title, body, NULL } } );
+}
+
+/** `awl_notify_config()`'s lines so far */
+typedef struct {
+    char** lines;
+    size_t n, cap;
+} ConfigLines;
+
+/** what notify-send's body markup would take for a tag or an entity */
+static void escape( FILE* f, const char* s ) {
+    for (; *s; s++) {
+        switch (*s) {
+        case '&': fputs( "&amp;", f ); break;
+        case '<': fputs( "&lt;", f ); break;
+        case '>': fputs( "&gt;", f ); break;
+        default: fputc( *s, f );
+        }
+    }
+}
+
+/** one entry's line; under the dictionary's lock (awl_dict_iter()), so its
+ * strings stay valid */
+static int32_t configline( const char* key, const awl_dict_val_t* v, void* ctx ) {
+    ConfigLines* cl = ctx;
+    if (cl->n == cl->cap) {
+        size_t cap = cl->cap ? 2 * cl->cap : 16;
+        char** l = realloc( cl->lines, cap * sizeof(*l) );
+        if (!l) return AWL_DICT_ERR_NOMEM;
+        cl->lines = l;
+        cl->cap = cap;
+    }
+    char* line = NULL;
+    size_t len;
+    FILE* f = open_memstream( &line, &len );
+    if (!f) return AWL_DICT_ERR_NOMEM;
+    escape( f, key );
+    fputc( '=', f );
+    switch (v->kind) {
+    case AWL_DICT_KIND_STR: escape( f, v->str ); break;
+    case AWL_DICT_KIND_NUM: fprintf( f, "%lld", (long long)v->num ); break;
+    case AWL_DICT_KIND_FRAC: fprintf( f, "%g", v->frac ); break;
+    case AWL_DICT_KIND_PTR: fprintf( f, "%p", v->ptr ); break;
+    case AWL_DICT_KIND_OWNED: {
+        /* ISO C has no cast from function to object pointer */
+        void* fn;
+        memcpy( &fn, &v->owned.free, sizeof(fn) );
+        fprintf( f, "%p(%p)", v->owned.ptr, fn );
+        break;
+    }
+    default: fprintf( f, "? (kind %d)", (int)v->kind ); break;
+    }
+    if (fclose( f )) {
+        free( line );
+        return AWL_DICT_ERR_NOMEM;
+    }
+    cl->lines[cl->n++] = line;
+    return AWL_DICT_OK;
+}
+
+static int cmpline( const void* a, const void* b ) {
+    return strcmp( *(char* const*)a, *(char* const*)b );
+}
+
+void awl_notify_config( void ) {
+    ConfigLines cl = { 0 };
+    /* holds the lock throughout; nothing waits under it but malloc() */
+    int32_t r = awl_host->cfg.s_iter( awl_host->cfg.s, configline, &cl );
+    qsort( cl.lines, cl.n, sizeof(*cl.lines), cmpline );
+
+    char* body = NULL;
+    size_t len;
+    FILE* f = open_memstream( &body, &len );
+    for (size_t i = 0; i < cl.n; i++) {
+        if (f) fprintf( f, i ? "\n%s" : "%s", cl.lines[i] );
+        free( cl.lines[i] );
+    }
+    free( cl.lines );
+    if (f && r != AWL_DICT_OK) fprintf( f, cl.n ? "\n(%s)" : "(%s)",
+            r == AWL_DICT_ERR_INVALID ? "no dictionary" : "out of memory" );
+    if (!f || fclose( f )) {
+        free( body );
+        return;
+    }
+    awl_notify( "AWL config", body[0] ? body : "(empty)" );
+    free( body );
 }
 
 /** the wallpaper to tell about once it's shown (`awl_notify_wallpaper_shown()`);

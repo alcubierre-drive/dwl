@@ -242,6 +242,7 @@ struct Monitor {
     struct wlr_output *wlr_output;
     struct wlr_scene_output *scene_output;
     struct wlr_scene_buffer *scene_buffer; /* bar buffer */
+    struct wlr_scene_blur *bar_blur; /* behind the bar's window list */
     Buffer *bar_bufs[2]; /* bar render targets, reused; see barbuffer() */
     Buffer *bar_shown; /* the slot scene_buffer shows, NULL if unknown */
     struct wlr_scene_rect *fullscreen_bg; /* See createmon() for info */
@@ -336,7 +337,10 @@ typedef enum { WallpaperNext, WallpaperPrev, WallpaperRand, WallpaperModeCount,
                WallpaperBack, WallpaperTimerNext, WallpaperTimerBack } WallpaperMode;
 /** config.h's ``wallpaper_config`` */
 typedef struct {
-    /** its ``*.png`` files; relative to ``$HOME`` unless absolute */
+    /** its ``*.png`` files; relative to ``$HOME`` unless absolute. The config
+     * dictionary's ``wallpaper_dir`` starts as this, from the config.h built
+     * into awl; the wallpaper thread reads that key, so a reloaded config.h's
+     * dir doesn't count. */
     const char *dir;
     /** from one to the next, 0: switch at once */
     unsigned int fade_ms;

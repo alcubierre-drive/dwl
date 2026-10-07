@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * Picks and decodes the wallpaper: lists dir's ``*.png`` files, picks one
+ * Picks and decodes the wallpaper: lists a folder's ``*.png`` files, picks one
  * and decodes it (Wuffs, wuffs/). A thread does that, the main thread only
  * asks for it and takes the result (see desktop_panel.c on why the main
  * thread never touches the file system); awl's background.c shows it.
@@ -16,11 +16,13 @@ typedef struct awl_image_t {
     uint8_t data[];
 } awl_image_t;
 
-/** Starts the thread. dir is relative to ``$HOME`` unless absolute. The thread starts with the
- * wallpaper the index file names. Logs if it can't start. */
-void awl_wallpaper_start( const char* dir );
-/** Stops the thread. Returns nonzero if it had to be left running (see
- * thread.h). */
+/** Starts the thread on the config dictionary's ``wallpaper_dir``, if it's set; awl sets it from
+ * config.h's ``wallpaper_config.dir``, a plugin may change it before this. The thread starts with the
+ * wallpaper the config dictionary's ``wallpaper_index`` names; at awl's start, before anything
+ * set that, the one persistent.h's file names. Logs if it can't start. */
+void awl_wallpaper_start( void );
+/** Stops the thread, which first writes the index to persistent.h's file if it changed.
+ * Returns nonzero if it had to be left running (see thread.h). */
 int awl_wallpaper_stop( void );
 /** steps forward (negative: back) in the sorted list; main thread */
 void awl_wallpaper_step( int steps );

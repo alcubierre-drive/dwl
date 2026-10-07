@@ -42,6 +42,10 @@ awl_plugin_data_t* awl_plugin_get( void );
 
 /** plugins.c: a desktop notification (``notify-send``, spawned); main thread */
 void awl_notify( const char* title, const char* body );
+/** plugins.c: a notification "AWL config" listing the config dictionary,
+ * one ``key=value`` line per entry, sorted by key; an owned value (one the
+ * dictionary frees) as ``key=pointer(free function)``. Main thread. */
+void awl_notify_config( void );
 /** plugins.c: a notification "x/N" once the wallpaper all changes asked for
  * end on is shown; main thread */
 void awl_notify_wallpaper_shown( const char* title );

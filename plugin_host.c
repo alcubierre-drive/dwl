@@ -3,6 +3,7 @@
 
 #include "plugin_host.h"
 #include "awl_plugin_abi.h"
+#include "awl_dict.h"
 #include "plugins/redraw.h"
 #include "tray/awl_tray.h"
 
@@ -16,7 +17,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-static const awl_host_t host = {
+static awl_host_t host = {
     .abi = AWL_PLUGIN_ABI,
     .sizeof_host = sizeof(awl_host_t),
     .sizeof_draw = sizeof(awl_draw_t),
@@ -39,6 +40,20 @@ static const awl_host_t host = {
     .calendar_toggle = awl_tray_calendar_toggle,
     .calendar_show = awl_tray_calendar_show,
     .calendar_hide = awl_tray_calendar_hide,
+    .calendar_scroll = awl_tray_calendar_scroll,
+
+    .cfg = {
+        .s_new = &awl_dict_new,
+        .s_destroy = &awl_dict_destroy,
+        .s_set = &awl_dict_set,
+        .s_get = &awl_dict_get,
+        .s_del = &awl_dict_del,
+        .s_len = &awl_dict_len,
+        .s_next = &awl_dict_next,
+        .s_iter = &awl_dict_iter,
+        .s_lock = &awl_dict_lock,
+        .s_unlock = &awl_dict_unlock,
+    },
 };
 
 static void* handle = NULL;
@@ -125,8 +140,9 @@ static const awl_plugin_api_t* libopen( void** out, int* out_fd ) {
     return a;
 }
 
-int awl_plugins_load( int p ) {
+int awl_plugins_load( int p, awl_dict_t* cfg ) {
     paused = p;
+    host.cfg.s = cfg;
     if (!(api = libopen( &handle, &handle_fd )))
         return -1;
     api->init( paused );
@@ -169,6 +185,7 @@ void awl_plugins_unload( void ) {
     api = NULL;
     handle = NULL;
     handle_fd = -1;
+    host.cfg.s = NULL;
 }
 
 void awl_plugins_set_paused( int p ) {

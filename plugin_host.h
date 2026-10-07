@@ -11,10 +11,13 @@
  */
 
 #include "awl_draw.h"
+#include "awl_dict_type.h"
 
-/** Loads the library and starts the plugins. Returns 0 on success; on
- * failure awl runs on with empty bars until a reload succeeds. */
-int awl_plugins_load( int paused );
+/** Loads the library and starts the plugins. cfg becomes `awl_host_t.cfg`'s
+ * dictionary; it stays awl's and must outlive `awl_plugins_unload()`. Returns
+ * 0 on success; on failure awl runs on with empty bars until a reload
+ * succeeds. */
+int awl_plugins_load( int paused, awl_dict_t* cfg );
 
 /**
  * Loads the library from disk again and swaps it in. `detach()` must clear

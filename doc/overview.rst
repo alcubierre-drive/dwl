@@ -43,7 +43,7 @@ What lives where
      - lists the directory, picks and decodes (plugins/wallpaper.c, Wuffs)
    * - Desktop panel
      - scene nodes, buffers, placement (desktop.c)
-     - scans ``$HOME/Desktop``, lays out and draws the list, handles
+     - scans ``desktop_dir``, lays out and draws the list, handles
        clicks on the bare desktop (desktop_panel.c)
    * - config.h
      - the startup half, and the reloadable half as a fallback

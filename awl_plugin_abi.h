@@ -21,11 +21,12 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "awl_draw.h"
+#include "awl_dict_type.h"
 #include "tray/awl_tray.h"
 #include "plugins/wallpaper.h"
 
 /** The version both sides compare; see the top of this file. */
-#define AWL_PLUGIN_ABI 13
+#define AWL_PLUGIN_ABI 15
 /** The name of the library's only exported symbol, an `awl_plugin_entry_t`. */
 #define AWL_PLUGIN_ENTRY "awl_plugin_entry"
 
@@ -92,6 +93,7 @@ typedef struct awl_config_t {
     const float* blur;
     int blur_notifications, blur_notifications_radius;
     int blur_launcher, blur_launcher_radius;
+    int blur_windowlist;
 
     const struct xkb_rule_names* xkb_rules;
     int repeat_rate, repeat_delay;
@@ -122,6 +124,7 @@ typedef struct awl_config_t {
     .blur_notifications = blur_notifications, \
     .blur_notifications_radius = blur_notifications_radius, \
     .blur_launcher = blur_launcher, .blur_launcher_radius = blur_launcher_radius, \
+    .blur_windowlist = blur_windowlist, \
     .xkb_rules = &xkb_rules, .repeat_rate = repeat_rate, .repeat_delay = repeat_delay, \
     .tap_to_click = tap_to_click, .tap_and_drag = tap_and_drag, .drag_lock = drag_lock, \
     .natural_scrolling = natural_scrolling, .disable_while_typing = disable_while_typing, \
@@ -134,7 +137,7 @@ typedef struct awl_config_t {
 
 /**
  * What awl provides to the library. All functions are main-thread only,
- * except `redraw_request`, which any thread may call.
+ * except `redraw_request` and `cfg`'s, which any thread may call.
  */
 typedef struct awl_host_t {
     /** `AWL_PLUGIN_ABI` as awl was built */
@@ -171,7 +174,58 @@ typedef struct awl_host_t {
     void (*calendar_show)( const char* monitor_id );
     /** tray: `awl_tray_calendar_hide()` */
     void (*calendar_hide)( void );
+    /** tray: `awl_tray_calendar_scroll()` */
+    void (*calendar_scroll)( int amount );
+
+    /**
+     * config values that can change while awl runs, by name. awl owns the
+     * dictionary (``cfg.s``, awl.c's ``cfgdict``): it lives as long as awl
+     * and keeps its entries across reloads.
+     *
+     * Any thread may use it, plugin threads included (awl_dict.h has the
+     * details): every call is atomic on its own, under the dictionary's
+     * lock. A thread that needs several calls to see the same dictionary
+     * holds the lock across them, with `AWL_HOST_CFG_LOCK` and
+     * `AWL_HOST_CFG_UNLOCK`: a read-modify-write, an iteration, and any use
+     * of a string or owned pointer it got, which another thread could free
+     * by overwriting or deleting the entry. Numbers and plain pointers are
+     * copied out and need no lock. The lock is recursive. Hold it briefly
+     * and never wait for anything under it: awl's main thread takes it too.
+     *
+     * A value must not point into
+     * the library, which may be unloaded while the entry stays: a string is
+     * copied, but a pointer, an owned pointer and its free function must be
+     * awl's, libc's or heap memory (``AWL_DICT_OWNED( p, free )``). The
+     * `AWL_HOST_CFG_*` macros below go through this.
+     */
+    awl_dict_c cfg;
 } awl_host_t;
+
+/** `awl_dict_get()` on `awl_host_t.cfg`; valptr is an ``awl_dict_val_t*`` */
+#define AWL_HOST_CFG_GET( host, key, valptr ) \
+    (host)->cfg.s_get( (host)->cfg.s, (key), (valptr) )
+/** `awl_dict_set()` on `awl_host_t.cfg`; val is an ``awl_dict_val_t``, e.g.
+ * ``AWL_DICT_STR( "x" )`` */
+#define AWL_HOST_CFG_SET( host, key, val ) \
+    (host)->cfg.s_set( (host)->cfg.s, (key), &(val) )
+/** `awl_dict_del()` on `awl_host_t.cfg` */
+#define AWL_HOST_CFG_DEL( host, key ) \
+    (host)->cfg.s_del( (host)->cfg.s, (key) )
+/** `awl_dict_lock()` on `awl_host_t.cfg`, e.g. around getting a string and
+ * using it:
+ *
+ *     awl_dict_val_t v;
+ *     AWL_HOST_CFG_LOCK( awl_host );
+ *     if (AWL_HOST_CFG_GET( awl_host, "name", &v ) == AWL_DICT_OK &&
+ *         v.kind == AWL_DICT_KIND_STR)
+ *         use( v.str );
+ *     AWL_HOST_CFG_UNLOCK( awl_host );
+ */
+#define AWL_HOST_CFG_LOCK( host ) \
+    (host)->cfg.s_lock( (host)->cfg.s )
+/** `awl_dict_unlock()` on `awl_host_t.cfg` */
+#define AWL_HOST_CFG_UNLOCK( host ) \
+    (host)->cfg.s_unlock( (host)->cfg.s )
 
 /** What the library provides. Main thread only. */
 typedef struct awl_plugin_api_t {

@@ -28,6 +28,14 @@ plugins/poller.c
 
 .. c:autodoc:: plugins/poller.c
 
+Persistent state
+----------------
+
+plugins/persistent.h
+^^^^^^^^^^^^^^^^^^^^
+
+.. c:autodoc:: plugins/persistent.h
+
 Readings
 --------
 

@@ -58,6 +58,9 @@ static const int blur_notifications        = 1, /* "notifications" */
                  blur_notifications_radius = 15,
                  blur_launcher             = 1, /* "launcher" */
                  blur_launcher_radius      = 15;
+/* the bar's window list: inactive and minimized windows translucent over a
+ * blur, the focused one opaque; 0 keeps them all opaque */
+static const int blur_windowlist           = 1;
 
 /* molokai_* are in plugins/colors.h */
 static const uint32_t bordercolors[BorderLast] = {

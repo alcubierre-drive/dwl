@@ -198,14 +198,19 @@ public:
     void show(const std::string &mon, bool top);
     void hide();
     void goToday();
+    void stepDay(int n);
+    void stepMonth(int n);
+    void scroll(int amount);
 #ifdef AWL_HAVE_ECAL
     void onResult(int key, std::vector<Event> events);
 #endif
 
 private:
     int shownKey();
+    void select(int year, int month, int day);
     void request(int key);
     void refresh();
+    void fitDayLabel();
     void launch(std::vector<std::string> argv);
 
     Glib::RefPtr<Gtk::CssProvider> css_;
@@ -214,6 +219,7 @@ private:
     Gtk::Calendar cal_;
     Gtk::Button today_btn_;
     Gtk::Label day_label_;
+    Gtk::Button prev_btn_, next_btn_;
     Gtk::ScrolledWindow scroll_;
     Gtk::ListBox list_;
     Gtk::Box header_{Gtk::ORIENTATION_HORIZONTAL, 6};
@@ -301,7 +307,7 @@ Popup::Popup(const awl_tray_config_t &config) {
 
     cal_.set_display_options(Gtk::CALENDAR_SHOW_HEADING | Gtk::CALENDAR_SHOW_DAY_NAMES |
                              Gtk::CALENDAR_SHOW_WEEK_NUMBERS);
-    day_label_.set_xalign(0);
+    day_label_.set_xalign(0.5);
     list_.set_selection_mode(Gtk::SELECTION_NONE);
     scroll_.set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC);
     scroll_.set_propagate_natural_height(true);
@@ -310,7 +316,22 @@ Popup::Popup(const awl_tray_config_t &config) {
     evo_btn_.set_relief(Gtk::RELIEF_NONE);
     evo_btn_.set_tooltip_text("Open in Evolution");
     evo_btn_.set_valign(Gtk::ALIGN_CENTER);
+    // < day >, like the calendar's own month and year headings: the label is
+    // as wide as the longest day name (fitDayLabel()), so neither the arrows
+    // nor the window move while it changes
+    prev_btn_.set_image_from_icon_name("pan-start-symbolic", Gtk::ICON_SIZE_MENU);
+    next_btn_.set_image_from_icon_name("pan-end-symbolic", Gtk::ICON_SIZE_MENU);
+    for (Gtk::Button *b : {&prev_btn_, &next_btn_}) {
+        b->set_relief(Gtk::RELIEF_NONE);
+        b->set_valign(Gtk::ALIGN_CENTER);
+    }
+    prev_btn_.set_tooltip_text("Previous day");
+    next_btn_.set_tooltip_text("Next day");
+    prev_btn_.signal_clicked().connect([this] { stepDay(-1); });
+    next_btn_.signal_clicked().connect([this] { stepDay(1); });
+    header_.pack_start(prev_btn_, Gtk::PACK_SHRINK);
     header_.pack_start(day_label_, Gtk::PACK_EXPAND_WIDGET);
+    header_.pack_start(next_btn_, Gtk::PACK_SHRINK);
     header_.pack_end(evo_btn_, Gtk::PACK_SHRINK);
     today_btn_.set_image_from_icon_name("view-refresh-symbolic", Gtk::ICON_SIZE_MENU);
     today_btn_.set_relief(Gtk::RELIEF_NONE);
@@ -323,6 +344,8 @@ Popup::Popup(const awl_tray_config_t &config) {
     vbox_.pack_start(scroll_, Gtk::PACK_EXPAND_WIDGET);
     win_.add(vbox_);
     vbox_.show_all();
+    // the widest day depends on the font, which the css sets
+    day_label_.signal_style_updated().connect([this] { fitDayLabel(); });
     configure(config);
 
     cal_.signal_month_changed().connect([this] {
@@ -369,10 +392,68 @@ void Popup::configure(const awl_tray_config_t &config) {
     win_.resize(1, 1);
 }
 
+// the label's width is the widest "weekday, day month" of a (leap) year, in
+// the label's bold font
+void Popup::fitDayLabel() {
+    auto layout = day_label_.create_pango_layout("");
+    int widest = 0;
+    char buf[64];
+    for (int d = 1; d <= 366; d++) {
+        time_t t0 = day_start(2024, 0, d);
+        struct tm t;
+        localtime_r(&t0, &t);
+        strftime(buf, sizeof(buf), "%A, %e %B", &t);
+        layout->set_markup("<b>" + Glib::Markup::escape_text(buf) + "</b>");
+        int w, h;
+        layout->get_pixel_size(w, h);
+        widest = std::max(widest, w);
+    }
+    day_label_.set_size_request(widest, -1);
+}
+
 int Popup::shownKey() {
     guint y, m, d;
     cal_.get_date(y, m, d);
     return month_key((int)y, (int)m);
+}
+
+// Selecting the day first keeps it valid in both months (31 doesn't exist in
+// every month); select_month() emits month-changed -> request().
+void Popup::select(int year, int month, int day) {
+    guint y, m, d;
+    cal_.get_date(y, m, d);
+    if ((int)y != year || (int)m != month) {
+        cal_.select_day(1);
+        cal_.select_month(month, year);
+    }
+    cal_.select_day(day);
+}
+
+void Popup::stepDay(int n) {
+    guint y, m, d;
+    cal_.get_date(y, m, d);
+    time_t day = day_start((int)y, (int)m, (int)d + n);  // mktime() carries over
+    struct tm t;
+    localtime_r(&day, &t);
+    select(t.tm_year + 1900, t.tm_mon, t.tm_mday);
+}
+
+// Keeps the day of the month, or the month's last day if it has fewer.
+void Popup::stepMonth(int n) {
+    guint y, m, d;
+    cal_.get_date(y, m, d);
+    int key = month_key((int)y, (int)m) + n;
+    time_t last = day_start(key / 12, key % 12 + 1, 0);  // day 0: the one before the 1st
+    struct tm t;
+    localtime_r(&last, &t);
+    select(key / 12, key % 12, std::min((int)d, t.tm_mday));
+}
+
+// From the bar's clock (awl_tray_calendar_scroll()): down is later, as on the
+// calendar itself.
+void Popup::scroll(int amount) {
+    if (!shown_ || !amount) return;
+    stepMonth(amount > 0 ? 1 : -1);
 }
 
 void Popup::request(int key) {
@@ -583,6 +664,10 @@ void calendar_show(const std::string &monitor_id, bool bar_on_top) {
 
 void calendar_hide() {
     if (g_popup) g_popup->hide();
+}
+
+void calendar_scroll(int amount) {
+    if (g_popup) g_popup->scroll(amount);
 }
 
 }  // namespace awl

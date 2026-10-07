@@ -34,6 +34,7 @@ static uint32_t clockwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix )
 static void clockwidget_click( widget_t* w, uint32_t x, int button );
 static void clockwidget_hover( widget_t* w );
 static void clockwidget_leave( widget_t* w );
+static void clockwidget_scroll( widget_t* w, uint32_t x, int amount );
 
 static uint32_t pulsewidget_measure( widget_t* w );
 static void pulsewidget_click( widget_t* w, uint32_t x, int button );
@@ -81,6 +82,7 @@ void awl_widgets_create( awl_draw_t* drw ) {
         .callback_hover = &clockwidget_hover,
         .hover_delay_ms = 500,
         .callback_leave = &clockwidget_leave,
+        .callback_scroll = &clockwidget_scroll,
         .leave_delay_ms = 20,
         .popup_namespace = "awl-calendar:",
         .free = free,
@@ -208,11 +210,14 @@ static uint32_t taskbarwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix
             strcat( txt, "] " );
         }
         strcat( txt, windows[wi].name );
-        TEXT( spaces[wi], txt, P->awl_colors.fg_win,
-                windows[wi].focused ? P->awl_colors.bg_win_act :
-                windows[wi].urgent  ? P->awl_colors.bg_win_urg :
-                windows[wi].visible ? P->awl_colors.bg_win     :
-                                      P->awl_colors.bg_win_min );
+        pixman_color_t bg = windows[wi].focused ? P->awl_colors.bg_win_act :
+                            windows[wi].urgent  ? P->awl_colors.bg_win_urg :
+                            windows[wi].visible ? P->awl_colors.bg_win     :
+                                                  P->awl_colors.bg_win_min;
+        /* frosted: awl blurs what is behind the window list (drawbar()) */
+        if (awl_config()->blur_windowlist && !windows[wi].focused && !windows[wi].urgent)
+            bg.alpha = 0x8888;
+        TEXT( spaces[wi], txt, P->awl_colors.fg_win, bg );
         x += spaces[wi];
     }
     return w->bar->center_widget_space;
@@ -543,6 +548,12 @@ static void clockwidget_hover( widget_t* w ) {
 static void clockwidget_leave( widget_t* w ) {
     (void)w;
     awl_host->calendar_hide();
+}
+
+/* pages the calendar the hover opened; does nothing while it is closed */
+static void clockwidget_scroll( widget_t* w, uint32_t x, int amount ) {
+    (void)w; (void)x;
+    awl_host->calendar_scroll( amount );
 }
 
 static uint32_t backlightwidget_measure( widget_t* w ) {
