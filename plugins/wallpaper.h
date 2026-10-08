@@ -19,9 +19,12 @@ typedef struct awl_image_t {
 /** Starts the thread on the config dictionary's ``wallpaper_dir``, if it's set; awl sets it from
  * config.h's ``wallpaper_config.dir``, a plugin may change it before this. The thread starts with the
  * wallpaper the config dictionary's ``wallpaper_index`` names; at awl's start, before anything
- * set that, the one persistent.h's file names. Logs if it can't start. */
+ * set that, the one persistent.h's file names; then, also once per awl run, the file's
+ * ``wallpaper_mode`` replaces the dictionary's (`awl_persistent_load_str()`). Logs if it
+ * can't start. */
 void awl_wallpaper_start( void );
-/** Stops the thread, which first writes the index to persistent.h's file if it changed.
+/** Stops the thread, which first writes the index and ``wallpaper_mode`` to persistent.h's
+ * file if they changed.
  * Returns nonzero if it had to be left running (see thread.h). */
 int awl_wallpaper_stop( void );
 /** steps forward (negative: back) in the sorted list; main thread */

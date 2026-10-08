@@ -4,6 +4,7 @@
 
 #include "plugins.h"
 #include "plugins/colors.h"
+#include "plugins/persistent.h"
 #include "plugins/readdir.h"
 #include "plugins/redraw.h"
 #include "plugins/thread.h"
@@ -70,6 +71,36 @@ typedef struct {
 /** the running scanner, NULL if none */
 static Scanner* sc;
 
+/** desk.show and desk.hidden as a string in awl's config dictionary, so they
+ * survive reloads: "off", "on" or "all" (hidden files too). awl gives it a
+ * default, the scanner loads and saves it in persistent.h's file. Off
+ * doesn't keep hidden files' setting. */
+static const char mode_key[] = "desktop_file_mode";
+
+/** desk.show and desk.hidden from the dictionary; unchanged if it has no
+ * mode; main thread */
+static void readmode( void ) {
+    awl_dict_val_t v;
+    /* the string is the dictionary's until it's unlocked */
+    AWL_HOST_CFG_LOCK( awl_host );
+    if (AWL_HOST_CFG_GET( awl_host, mode_key, &v ) == AWL_DICT_OK
+            && v.kind == AWL_DICT_KIND_STR) {
+        if (!strcmp( v.str, "off" )) {
+            desk.show = 0;
+        } else if (!strcmp( v.str, "on" ) || !strcmp( v.str, "all" )) {
+            desk.show = 1;
+            desk.hidden = v.str[0] == 'a';
+        }
+    }
+    AWL_HOST_CFG_UNLOCK( awl_host );
+}
+
+/** the dictionary's mode from desk.show and desk.hidden; main thread */
+static void writemode( void ) {
+    const char* mode = !desk.show ? "off" : desk.hidden ? "all" : "on";
+    AWL_HOST_CFG_SET( awl_host, mode_key, AWL_DICT_STR( mode ) );
+}
+
 /** after an event, wait this long for more before scanning, so a burst
  * (copying many files) costs one scan; but at most scan_settle_max_ms */
 static const int scan_settle_ms = 50, scan_settle_max_ms = 500;
@@ -81,6 +112,9 @@ static void* scanner( void* data ) {
     int ifd = inotify_init1( IN_NONBLOCK | IN_CLOEXEC ), watch = -1, unsent = 1;
     char buf[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
 
+    /* at awl's start, the saved mode; the main thread reads it with the
+     * first list */
+    awl_persistent_load_str( mode_key );
     while (1) {
         /* the directory may have been (re)created since */
         if (ifd >= 0 && watch < 0)
@@ -124,6 +158,7 @@ static void* scanner( void* data ) {
         }
     }
     if (ifd >= 0) close( ifd );
+    awl_persistent_save_str( mode_key );
     return NULL;
 }
 
@@ -136,6 +171,7 @@ void awl_desktop_start( void ) {
     memset( &desk, 0, sizeof(desk) );
     desk.show = 1;
     desk.version = 1;
+    readmode();
 
     Scanner* n = calloc( 1, sizeof(*n) );
     if (!n) return;
@@ -187,6 +223,7 @@ uint64_t awl_desktop_version( void ) {
         }
         free( f );
         if (changed || !desk.scanned) desk.version++;
+        if (!desk.scanned) readmode(); /* the scanner may have loaded one */
         desk.scanned = 1;
     }
     /* nothing until the first scan, rather than a wrong "(empty)" */
@@ -381,6 +418,7 @@ int awl_desktop_click( int button, uint32_t mods ) {
             return 0;
         }
         desk.version++;
+        writemode();
         rescan();
         notify_toggle( show, hidden );
         return 1;

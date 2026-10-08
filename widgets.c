@@ -162,6 +162,20 @@ static uint32_t tagwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {
             bg_color = alpha_blend_16(bg_color, bg_add);
         }
         TEXT( ww, num, P->awl_colors.fg_lay, bg_color );
+        /* the selected monitor: a bar under the "1", where TEXT() put it */
+        if (t == 0 && w->bar->selmon) {
+            int hh = w->bar->m->b.height;
+            int h = hh / 8;
+            if (h < 2) h = 2;
+            int w = (ww < hh ? ww : hh)/2;
+            if (w < 2) w = 2;
+            pixman_color_t c = P->awl_colors.fg_stats_cpu;
+            pixman_rectangle16_t rects[] = {
+                { .x=x, .y=hh-h, .width=w, .height=h },
+                { .x=x, .y=hh-w, .width=h, .height=w },
+            };
+            pixman_image_fill_rectangles( PIXMAN_OP_OVER, pix, &c, 2, rects );
+        }
         x += ww;
         width += ww;
     }

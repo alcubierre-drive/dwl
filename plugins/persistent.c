@@ -66,7 +66,7 @@ static const char* value( const char* line, const char* key ) {
     return !strncmp( line, key, n ) && line[n] == '=' ? line + n + 1 : NULL;
 }
 
-int awl_persistent_get_num( const char* key, int64_t* v ) {
+int awl_persistent_get_str( const char* key, char* out, size_t n ) {
     char path[PATH_MAX];
     static char buf[MAX_SIZE + 1];
     int r = -1;
@@ -79,13 +79,8 @@ int awl_persistent_get_num( const char* key, int64_t* v ) {
             if (next) *next++ = 0;
             const char* val = value( line, key );
             if (val) {
-                char* end;
-                errno = 0;
-                long long num = strtoll( val, &end, 10 );
-                if (end != val && !*end && !errno) {
-                    *v = num;
-                    r = 0;
-                }
+                int len = snprintf( out, n, "%s", val );
+                r = len >= 0 && (size_t)len < n ? 0 : -1;
                 break;
             }
             line = next;
@@ -93,6 +88,16 @@ int awl_persistent_get_num( const char* key, int64_t* v ) {
     }
     pthread_mutex_unlock( &lock );
     return r;
+}
+
+int awl_persistent_get_num( const char* key, int64_t* v ) {
+    char val[32], *end;
+    if (awl_persistent_get_str( key, val, sizeof(val) )) return -1;
+    errno = 0;
+    long long num = strtoll( val, &end, 10 );
+    if (end == val || *end || errno) return -1;
+    *v = num;
+    return 0;
 }
 
 /** creates path's directories, as far as they don't exist */
@@ -104,9 +109,13 @@ static void mkparents( char* path ) {
     }
 }
 
-int awl_persistent_set_num( const char* key, int64_t v ) {
+int awl_persistent_set_str( const char* key, const char* v ) {
     char path[PATH_MAX], tmp[PATH_MAX + 8];
     static char buf[MAX_SIZE + 1];
+    if (strchr( v, '\n' )) {
+        fprintf( stderr, "awl persistent: %s's value has a newline, not writing it\n", key );
+        return -1;
+    }
     if (awl_persistent_path( path, sizeof(path) )) {
         fprintf( stderr, "awl persistent: state_home or " AWL_PERSISTENT_KEY " unset\n" );
         return -1;
@@ -138,7 +147,7 @@ int awl_persistent_set_num( const char* key, int64_t v ) {
         if (!next) break;
         line = next;
     }
-    fprintf( f, "%s=%" PRId64 "\n", key, v );
+    fprintf( f, "%s=%s\n", key, v );
     /* on disk before the rename, or a crash could leave an empty file */
     if (fflush( f ) || fsync( fileno( f ) )) {
         fclose( f );
@@ -153,4 +162,65 @@ fail:
     unlink( tmp );
     pthread_mutex_unlock( &lock );
     return -1;
+}
+
+int awl_persistent_set_num( const char* key, int64_t v ) {
+    char val[32];
+    snprintf( val, sizeof(val), "%" PRId64, v );
+    return awl_persistent_set_str( key, val );
+}
+
+/** whether key is a word of the space-separated list; dictionary locked */
+static int listed( const char* key ) {
+    awl_dict_val_t v;
+    if (AWL_HOST_CFG_GET( awl_host, AWL_PERSISTENT_LOADED_KEY, &v ) != AWL_DICT_OK
+            || v.kind != AWL_DICT_KIND_STR) return 0;
+    size_t n = strlen( key );
+    for (const char* p = v.str; (p = strstr( p, key )); p += n)
+        if ((p == v.str || p[-1] == ' ') && (!p[n] || p[n] == ' ')) return 1;
+    return 0;
+}
+
+int awl_persistent_load_str( const char* key ) {
+    char val[256];
+    AWL_HOST_CFG_LOCK( awl_host );
+    int done = listed( key );
+    AWL_HOST_CFG_UNLOCK( awl_host );
+    if (done) return -1;
+
+    /* the file's read outside the lock, the main thread takes it too */
+    int r = awl_persistent_get_str( key, val, sizeof(val) );
+    AWL_HOST_CFG_LOCK( awl_host );
+    if (!listed( key )) { /* another thread may have been quicker */
+        awl_dict_val_t v;
+        char list[1024] = "";
+        if (AWL_HOST_CFG_GET( awl_host, AWL_PERSISTENT_LOADED_KEY, &v ) == AWL_DICT_OK
+                && v.kind == AWL_DICT_KIND_STR)
+            snprintf( list, sizeof(list), "%s ", v.str );
+        size_t len = strlen( list );
+        snprintf( list + len, sizeof(list) - len, "%s", key );
+        AWL_HOST_CFG_SET( awl_host, AWL_PERSISTENT_LOADED_KEY, AWL_DICT_STR( list ) );
+        if (!r) AWL_HOST_CFG_SET( awl_host, key, AWL_DICT_STR( val ) );
+    } else {
+        r = -1;
+    }
+    AWL_HOST_CFG_UNLOCK( awl_host );
+    return r;
+}
+
+int awl_persistent_save_str( const char* key ) {
+    char val[256], saved[256];
+    awl_dict_val_t v;
+    int r = -1;
+    /* the string is the dictionary's until it's unlocked */
+    AWL_HOST_CFG_LOCK( awl_host );
+    if (AWL_HOST_CFG_GET( awl_host, key, &v ) == AWL_DICT_OK && v.kind == AWL_DICT_KIND_STR) {
+        int len = snprintf( val, sizeof(val), "%s", v.str );
+        r = len >= 0 && (size_t)len < sizeof(val) ? 0 : -1;
+    }
+    AWL_HOST_CFG_UNLOCK( awl_host );
+    if (r) return -1;
+    if (!awl_persistent_get_str( key, saved, sizeof(saved) ) && !strcmp( saved, val ))
+        return 0;
+    return awl_persistent_set_str( key, val );
 }

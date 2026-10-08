@@ -107,6 +107,8 @@ struct awl_draw_t {
      * tags */
     uint32_t occ, urg, sel;
     int ntags;
+    /** nonzero on the bar of the selected monitor */
+    int selmon;
 
     Monitor* m;
 };

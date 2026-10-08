@@ -206,7 +206,9 @@ void awl_notify_config( void ) {
         free( body );
         return;
     }
-    awl_notify( "AWL config", body[0] ? body : "(empty)" );
+    char head[128] = {0};
+    snprintf( head, 127, "AWL config (ABI v%i)", AWL_PLUGIN_ABI );
+    awl_notify( head, body[0] ? body : "(empty)" );
     free( body );
 }
 

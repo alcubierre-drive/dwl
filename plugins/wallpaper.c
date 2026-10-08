@@ -27,6 +27,9 @@
  * dictionary, so it survives reloads and a plugin can set which one comes
  * first; across restarts, in persistent.h's file under the same key */
 static const char index_key[] = "wallpaper_index";
+/** the timer's mode, a string in awl's config dictionary that awl keeps;
+ * this thread loads and saves it, in persistent.h's file */
+static const char mode_key[] = "wallpaper_mode";
 /** the folder, in awl's config dictionary: a string, read at the start */
 static const char dir_key[] = "wallpaper_dir";
 /** larger images are refused rather than allocated (4 bytes per pixel) */
@@ -252,6 +255,7 @@ static void* changer( void* data ) {
     int current = 1; /* at first, the one the dictionary names */
 
     loadindex( c );
+    awl_persistent_load_str( mode_key );
     while (1) {
         /* before the requests themselves: it may include fewer, never more */
         unsigned asked = atomic_load( &c->asked );
@@ -268,6 +272,7 @@ static void* changer( void* data ) {
         if (awl_thread_woken( &c->thread )) break;
     }
     saveindex( c );
+    awl_persistent_save_str( mode_key );
     return NULL;
 }
 

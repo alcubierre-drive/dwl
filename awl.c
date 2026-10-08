@@ -56,6 +56,7 @@ static void createkeyboard(struct wlr_keyboard *keyboard);
 static KeyboardGroup *createkeyboardgroup(void);
 static struct xkb_keymap *compilekeymap(void);
 static void configapply(void);
+static void wallpapermodeset(WallpaperMode mode);
 static void configuse(void);
 static void configurepointer(struct wlr_pointer *pointer);
 static void trackinputdevice(struct wlr_input_device *device);
@@ -100,6 +101,7 @@ static int redraw_fire( int fd, uint32_t mask, void* data ) {
 }
 
 static void focusmon(const Arg *arg);
+static void setselmon(Monitor *m);
 static void focusstack(const Arg *arg);
 static void movestack(const Arg *arg);
 static Client *focustop(Monitor *m);
@@ -390,8 +392,17 @@ static void cfgdict_defaults(awl_dict_t* cfgdict)
         snprintf(dir, sizeof(dir), "%s/.local/state", home ? home : "/tmp");
     awl_dict_set(cfgdict, "state_home", &AWL_DICT_STR(dir));
 
-    // TODO: Add wallpaper_mode and desktop_file_mode. These should also be
-    // added to persistent state.
+    /* "wallpaper_mode": the timer's mode by name (wallpaper_mode_names),
+     * config.h's to begin with; awl keeps it current, and a plugin may set
+     * it. plugins/wallpaper.c saves it in plugins/persistent.h's file and
+     * at the start loads the saved one over this. */
+    wallpapermodeset(cfg->wallpaper->mode);
+    applied.wallpaper_mode = cfg->wallpaper->mode;
+
+    /* "desktop_file_mode": what the desktop panels list, "off", "on" or
+     * "all" (hidden files too); desktop_panel.c keeps it current and, like
+     * "wallpaper_mode", saved */
+    awl_dict_set(cfgdict, "desktop_file_mode", &AWL_DICT_STR("on"));
 }
 
 
@@ -908,6 +919,28 @@ wallpapermodedict(void)
     return mode;
 }
 
+/** sets the timer's mode, and cfgdict's "wallpaper_mode" to match */
+static void
+wallpapermodeset(WallpaperMode mode)
+{
+    if (mode >= WallpaperModeCount)
+        return;
+    wallpaper_mode = mode;
+    awl_dict_set(cfgdict, "wallpaper_mode", &AWL_DICT_STR(wallpaper_mode_names[mode]));
+    applied.wallpaper_mode_dict = mode;
+}
+
+/** takes a cfgdict "wallpaper_mode" set since: a plugin's, or the saved one
+ * plugins/wallpaper.c loads at the start */
+static void
+wallpapermodesync(void)
+{
+    int mode = wallpapermodedict();
+    if (mode >= 0 && mode != applied.wallpaper_mode_dict)
+        wallpaper_mode = mode;
+    applied.wallpaper_mode_dict = mode;
+}
+
 /** the library's thread does it (plugins/wallpaper.c), off the main thread */
 void
 wallpapernext(WallpaperMode mode)
@@ -921,6 +954,7 @@ void
 wallpaper(const Arg *arg)
 {
     WallpaperMode mode = arg->i;
+    wallpapermodesync();
     if (mode == WallpaperTimerNext)
         mode = wallpaper_mode;
     else if (mode == WallpaperTimerBack)
@@ -949,8 +983,9 @@ wallpapermode(const Arg *arg)
     const int n = LENGTH(order);
     int i;
 
+    wallpapermodesync();
     for (i = 0; i < n && order[i] != wallpaper_mode; i++);
-    wallpaper_mode = order[((i + arg->i) % n + n) % n];
+    wallpapermodeset(order[((i + arg->i) % n + n) % n]);
     if (api)
         api->wallpaper_mode(wallpaper_mode);
 }
@@ -967,6 +1002,7 @@ wallpaperarm(void)
 static int
 wallpapertimeout(void *data)
 {
+    wallpapermodesync();
     wallpapernext(wallpaper_mode);
     wallpaperarm();
     return 0;
@@ -1085,7 +1121,7 @@ buttonpress(struct wl_listener *listener, void *data)
     switch (event->state) {
     case WL_POINTER_BUTTON_STATE_PRESSED:
         cursor_mode = CurPressed;
-        selmon = xytomon(cursor->x, cursor->y);
+        setselmon(xytomon(cursor->x, cursor->y));
         if (locked)
             break;
 
@@ -2157,6 +2193,7 @@ drawbar(Monitor *m)
     m->drw->urg = urg;
     m->drw->sel = m->tagset[m->seltags];
     m->drw->ntags = LENGTH(tags);
+    m->drw->selmon = (m == selmon);
 
     for (int ww=0; ww<m->drw->n_widgets_left; ++ww) {
         if (m->drw->widgets_left[ww].draw)
@@ -2396,6 +2433,16 @@ nextmon(int add) {
 
     if (!i) return NULL;
     return pmons[(i_sel + add + i)%i];
+}
+
+void
+setselmon(Monitor *m)
+{
+    /* the bars mark the selected monitor (awl_draw_t.selmon) */
+    if (m == selmon)
+        return;
+    selmon = m;
+    drawbars();
 }
 
 void
@@ -2980,7 +3027,7 @@ motionnotify(uint32_t time, struct wlr_input_device *device, double dx, double d
 
         /* Update selmon (even while dragging a window) */
         if (cfg->sloppyfocus)
-            selmon = xytomon(cursor->x, cursor->y);
+            setselmon(xytomon(cursor->x, cursor->y));
     }
 
     /* the cursor has moved: look again */
@@ -4624,15 +4671,17 @@ configapply(void)
         applied.wallpaper_interval = cfg->wallpaper->interval;
         wallpaperarm();
     }
-    /* a new config.h mode replaces wallpapermode()'s; an unchanged one doesn't */
-    if (cfg->wallpaper->mode != applied.wallpaper_mode)
-        wallpaper_mode = applied.wallpaper_mode = cfg->wallpaper->mode;
-    /* so does a new cfgdict "wallpaper_mode" (the library's init() sets it
-     * before this runs), after config.h's, so it wins when both change */
+    /* a new config.h mode replaces wallpapermode()'s, and goes to cfgdict;
+     * an unchanged one doesn't. So does a new cfgdict "wallpaper_mode" (the
+     * library's init() sets it before this runs), which wins when both
+     * change. */
     mode = wallpapermodedict();
-    if (mode >= 0 && mode != applied.wallpaper_mode_dict)
-        wallpaper_mode = mode;
-    applied.wallpaper_mode_dict = mode;
+    if (cfg->wallpaper->mode != applied.wallpaper_mode) {
+        applied.wallpaper_mode = cfg->wallpaper->mode;
+        if (mode < 0 || mode == applied.wallpaper_mode_dict)
+            wallpapermodeset(cfg->wallpaper->mode);
+    }
+    wallpapermodesync();
     desktop_configure(&(desktop_config_t){
             .blur = cfg->blur_launcher, .radius = cfg->blur_launcher_radius,
             .blur_strength = cfg->blur[0], .blur_alpha = cfg->blur[1] });
