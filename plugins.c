@@ -15,6 +15,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 static void awl_plugin_start( awl_plugin_data_t* p ) {
     p->awl_colors = awl_colors();
@@ -84,7 +85,22 @@ void awl_redraw_request( void ) {
     awl_host->redraw_request();
 }
 
+/** sets the config dictionary's "t_plugins_loaded" to the local time now, as
+ * "YY/MM/DD HH:MM:SS" (24h): when this library was loaded, at awl's start or
+ * by a plugin_restart that brought it. A restart in place (a broken new
+ * library) calls api_init() again on this copy, and keeps the time. */
+static void loaded_stamp( void ) {
+    static int stamped = 0; // each load is a fresh copy of the library
+    if (stamped) return;
+    stamped = 1;
+    char buf[32];
+    if (!awl_localtime(buf)) {
+        AWL_HOST_CFG_SET(awl_host, "t_plugins_loaded", AWL_DICT_STR(buf));
+    }
+}
+
 static void api_init( int paused ) {
+    loaded_stamp();
     plugin_data = calloc(1,sizeof(awl_plugin_data_t));
     plugin_data->paused = paused;
     /* plugins/persistent.h's file: $XDG_STATE_HOME/awl/persistent */

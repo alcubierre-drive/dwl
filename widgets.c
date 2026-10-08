@@ -144,7 +144,8 @@ static uint32_t tagwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {
     for (int t=0; t<w->bar->ntags; ++t) {
         char num[16] = ""; snprintf( num, sizeof(num)-1, "%i", t+1 );
         int ww = TEXTW(w->bar->m, "0");
-        pixman_color_t bg_color = color_8bit_to_16bit(molokai_dark_gray);
+        pixman_color_t bg_color = color_8bit_to_16bit(molokai_dark_gray),
+                       fg_color = P->awl_colors.fg_lay;
         pixman_color_t bg_add;
         if (w->bar->occ & (1 << t)) {
             bg_add = color_8bit_to_16bit(molokai_orange);
@@ -160,8 +161,9 @@ static uint32_t tagwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {
             bg_add = color_8bit_to_16bit(molokai_purple);
             bg_add.alpha = 0xaaaa;
             bg_color = alpha_blend_16(bg_color, bg_add);
+            // if (w->bar->selmon) fg_color = P->awl_colors.fg_stats_cpu;
         }
-        TEXT( ww, num, P->awl_colors.fg_lay, bg_color );
+        TEXT( ww, num, fg_color, bg_color );
         /* the selected monitor: a bar under the "1", where TEXT() put it */
         if (t == 0 && w->bar->selmon) {
             int hh = w->bar->m->b.height;
@@ -274,6 +276,9 @@ typedef struct {
     int sec; // -1: unknown
 } clockwidget_userdata_t;
 
+/** how far the seconds meter moves left into the time's right padding */
+static const float clock_meter_pad = 2.5f;
+
 static uint32_t clockwidget_measure( widget_t* w ) {
     if (!w->userdata) w->userdata = calloc(1, sizeof(clockwidget_userdata_t));
     clockwidget_userdata_t* u = w->userdata;
@@ -286,10 +291,10 @@ static uint32_t clockwidget_measure( widget_t* w ) {
         snprintf(u->timestr, sizeof(u->timestr), "%02d:%02d", secs / 3600, secs / 60 % 60);
         u->sec = secs % 60;
     }
-    // time text plus the seconds meter
+    // time text plus the seconds meter, which eats into the text's padding
     int mw = 3 * w->bar->m->wlr_output->scale + 0.5f;
     if (mw < 2) mw = 2;
-    return TEXTW( w->bar->m, "--:--" ) + mw;
+    return TEXTW( w->bar->m, "--:--" ) + mw - (int)(clock_meter_pad * w->bar->m->wlr_output->scale + 0.5f);
 }
 
 static uint32_t clockwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {

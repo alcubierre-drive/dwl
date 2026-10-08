@@ -354,9 +354,14 @@ typedef struct {
 static struct wl_list inputdevices; /* InputDevice.link */
 static struct wl_event_source *plugin_restart_source;
 
-
 static void cfgdict_defaults(awl_dict_t* cfgdict)
 {
+    /* "t_awl_started": when awl started, in cfgdict_stamp()'s format; the
+     * library sets "plugins_loaded" alike (plugins.c) */
+    char buf[32];
+    if (!awl_localtime(buf))
+        awl_dict_set(cfgdict, "t_awl_started", &AWL_DICT_STR(buf));
+
     /* "desktop_dir": the folder the desktop panels list, $HOME/Desktop */
     char dir[PATH_MAX];
     const char *home = getenv("HOME");

@@ -349,3 +349,12 @@ typedef struct {
     /** what the timer switches to, until wallpapermode */
     WallpaperMode mode;
 } WallpaperConfig;
+
+static inline int awl_localtime(char buf[32]) {
+    time_t now = time(NULL);
+    struct tm tm;
+    if (!localtime_r(&now, &tm) || !strftime(buf, 32, "%y/%m/%d-%H:%M:%S", &tm))
+        return 1;
+    return 0;
+}
+
