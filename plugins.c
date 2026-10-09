@@ -202,6 +202,11 @@ static int cmpline( const void* a, const void* b ) {
     return strcmp( *(char* const*)a, *(char* const*)b );
 }
 
+void awl_backlight_toggle( void ) {
+    awl_plugin_data_t* p = awl_plugin_get();
+    if (p) backlight_toggle( p->backlight );
+}
+
 void awl_notify_config( void ) {
     ConfigLines cl = { 0 };
     /* holds the lock throughout; nothing waits under it but malloc() */

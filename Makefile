@@ -23,7 +23,7 @@ LDLIBS    = `$(PKG_CONFIG) --libs $(PKGS)` -lm $(LIBS) \
 PLUGINS_SRC := $(filter-out plugins/redraw.c,$(wildcard plugins/*.c))
 PLUGINS_OBJ := $(patsubst %.c,%.o,$(PLUGINS_SRC)) plugins.o widgets.o desktop_panel.o awl_config.o \
 	wuffs/wuffs.o
-PLUGINS_PKGS = libpulse libsystemd pixman-1
+PLUGINS_PKGS = libpulse libsystemd pixman-1 fcft
 # --as-needed drops config.mk's -lscenefx, which only awl uses
 PLUGINS_LIBS = -Wl,--as-needed `$(PKG_CONFIG) --libs $(PLUGINS_PKGS)` -lm -pthread
 
@@ -44,7 +44,7 @@ $(PLUGINS_OBJ): AWLCFLAGS += -fPIC -fvisibility=hidden
 libawlplugins.so: $(PLUGINS_OBJ)
 	$(CC) -shared $(PLUGINS_OBJ) $(AWLCFLAGS) $(PLUGINS_LIBS) $(LDFLAGS) -o $@.tmp
 	mv -f $@.tmp $@
-awl.o: awl.c client.h config.h awl_draw.h config.mk cursor-shape-v1-protocol.h \
+awl.o: awl.c client.h config_awl.h config_plugins.def.h awl_draw.h config.mk cursor-shape-v1-protocol.h \
 	pointer-constraints-unstable-v1-protocol.h wlr-layer-shell-unstable-v1-protocol.h \
 	wlr-output-power-management-unstable-v1-protocol.h xdg-shell-protocol.h tray/awl_tray.h
 util.o: util.c util.h
@@ -74,8 +74,10 @@ xdg-shell-protocol.h:
 	$(WAYLAND_SCANNER) server-header \
 		$(WAYLAND_PROTOCOLS)/stable/xdg-shell/xdg-shell.xml $@
 
-config.h:
-	cp config.def.h $@
+# on the first build, copied from their .def.h
+config_awl.h config_plugins.h:
+	cp $(@:.h=.def.h) $@
+awl_config.o: config_plugins.h
 clean:
 	rm -f awl libawlplugins.so *.o *-protocol.h
 	rm -f $(PLUGINS_OBJ) plugins/redraw.o $(DEPS)
@@ -83,7 +85,7 @@ clean:
 
 dist: clean
 	mkdir -p awl-$(VERSION)/plugins awl-$(VERSION)/tray awl-$(VERSION)/wuffs
-	cp -R LICENSE Makefile README.md client.h config.def.h \
+	cp -R LICENSE Makefile README.md client.h config_awl.def.h config_plugins.def.h \
 		config.mk protocols awl.c awl.h awl-log.c awl-log.h util.c util.h \
 		awl_draw.c awl_draw.h plugins.c plugins.h widgets.c plugin_host.c plugin_host.h desktop.c desktop.h desktop_panel.c background.c background.h awl_config.c \
 		awl_plugin_abi.h awl.desktop \

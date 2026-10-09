@@ -117,7 +117,7 @@ enum { LyrBg, LyrBottom, LyrTile, LyrFloat, LyrTop, LyrFS, LyrOverlay, LyrBlock,
 /** where a click went, `Button.click` */
 enum { ClkBar, ClkClient, ClkRoot };
 
-/** The argument config.h's bindings pass to their function. */
+/** The argument config_plugins.h's bindings pass to their function. */
 typedef union {
     int i;
     uint32_t ui;
@@ -125,7 +125,7 @@ typedef union {
     const void *v;
 } Arg;
 
-/** A pointer button binding in config.h's ``buttons[]``. */
+/** A pointer button binding in config_plugins.h's ``buttons[]``. */
 typedef struct {
     unsigned int click;
     unsigned int mod;
@@ -185,7 +185,7 @@ struct Client {
     uint32_t resize; /* configure serial of a pending resize */
 };
 
-/** A key binding in config.h's ``keys[]``. */
+/** A key binding in config_plugins.h's ``keys[]``. */
 typedef struct {
     uint32_t mod;
     xkb_keysym_t keysym;
@@ -228,7 +228,7 @@ typedef struct {
     struct wlr_scene_blur* blur;
 } LayerSurface;
 
-/** A layout in config.h's ``layouts[]``. */
+/** A layout in config_plugins.h's ``layouts[]``. */
 typedef struct {
     const char *symbol;
     void (*arrange)(Monitor *);
@@ -285,7 +285,7 @@ struct Buffer {
     uint32_t data[];
 };
 
-/** A rule in config.h's ``monrules[]``, for outputs whose name matches. */
+/** A rule in config_plugins.h's ``monrules[]``, for outputs whose name matches. */
 typedef struct {
     const char *name;
     float mfact;
@@ -301,7 +301,7 @@ typedef struct {
     struct wl_listener destroy;
 } PointerConstraint;
 
-/** A rule in config.h's ``rules[]``, for new windows whose app id and title
+/** A rule in config_plugins.h's ``rules[]``, for new windows whose app id and title
  * match. */
 typedef struct {
     const char *id;
@@ -335,11 +335,11 @@ void focusclient(Client *c, int lift);
  */
 typedef enum { WallpaperNext, WallpaperPrev, WallpaperRand, WallpaperModeCount,
                WallpaperBack, WallpaperTimerNext, WallpaperTimerBack } WallpaperMode;
-/** config.h's ``wallpaper_config`` */
+/** config_plugins.h's ``wallpaper_config`` */
 typedef struct {
     /** its ``*.png`` files; relative to ``$HOME`` unless absolute. The config
-     * dictionary's ``wallpaper_dir`` starts as this, from the config.h built
-     * into awl; the wallpaper thread reads that key, so a reloaded config.h's
+     * dictionary's ``wallpaper_dir`` starts as this, from the config_plugins.h built
+     * into awl; the wallpaper thread reads that key, so a reloaded config_plugins.h's
      * dir doesn't count. */
     const char *dir;
     /** from one to the next, 0: switch at once */

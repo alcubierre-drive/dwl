@@ -50,6 +50,7 @@ static uint32_t batwidget_measure( widget_t* w );
 static uint32_t ipwidget_measure( widget_t* w );
 
 static uint32_t backlightwidget_measure( widget_t* w );
+static uint32_t backlightwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix );
 static void backlightwidget_click( widget_t* w, uint32_t x, int button );
 
 void awl_widgets_create( awl_draw_t* drw ) {
@@ -127,7 +128,7 @@ void awl_widgets_create( awl_draw_t* drw ) {
     drw->widgets_right[drw->n_widgets_right++] = (widget_t){
         .bar = drw,
         .measure = &backlightwidget_measure,
-        .draw = &textsnap_draw,
+        .draw = &backlightwidget_draw,
         .callback_click = &backlightwidget_click,
         .free = free,
     };
@@ -575,30 +576,109 @@ static void clockwidget_scroll( widget_t* w, uint32_t x, int amount ) {
     awl_host->calendar_scroll( amount );
 }
 
+/** how close (per mille) the screen brightness has to come to full or empty
+ * for the moon to pass through it and swap sides */
+static const int backlight_moon_swap = 50;
+
+/** The screen brightness (per mille) as a moon, new at 0 and full at 1000:
+ * waxing (lit on the right) on the way up, waning (lit on the left) on the
+ * way down, like the real one. The side only swaps when the brightness comes
+ * within backlight_moon_swap of full or empty, so going back and forth in
+ * between doesn't flip it. Shared by all bars. */
+static const char* backlight_moon( int permille ) {
+    static const char* waxing[] = { "🌑", "🌒", "🌓", "🌔", "🌕" };
+    static const char* waning[] = { "🌑", "🌘", "🌗", "🌖", "🌕" };
+    static int is_waning;
+    if (permille >= 1000 - backlight_moon_swap) is_waning = 1;
+    else if (permille <= backlight_moon_swap) is_waning = 0;
+    int i = (permille * 4 + 500) / 1000;
+    return (is_waning ? waning : waxing)[i < 0 ? 0 : i > 4 ? 4 : i];
+}
+
+/** Whether the bar font of w's monitor draws all of the backlight widget's
+ * emoji in color. A monochrome fallback doesn't count: Adwaita Mono has the
+ * moons, but gets two of them wrong, and draws them inverted on a dark bar. */
+static int backlight_emoji( widget_t* w ) {
+    static const uint32_t cps[] = { 0x1F311, 0x1F312, 0x1F313, 0x1F314, 0x1F315,
+                                    0x1F316, 0x1F317, 0x1F318, 0x1F440, 0x1F31E, 0x1F6D1 };
+    struct fcft_font* font = w->bar->m->drw->font;
+    if (!font) return 0;
+    for (size_t i = 0; i < sizeof(cps) / sizeof(*cps); ++i) {
+        const struct fcft_glyph* g = fcft_rasterize_char_utf32( font, cps[i], FCFT_SUBPIXEL_DEFAULT );
+        if (!g || pixman_image_get_format( g->pix ) != PIXMAN_a8r8g8b8) return 0;
+    }
+    return 1;
+}
+
+/** the gap between the moon and the eyes or sun, in pixels at scale 1 */
+static const float backlight_emoji_gap = 4.0f;
+/** how much of the right padding (half of lrpad) the emoji leave out, in
+ * pixels at scale 1: they fill the whole line height and need less air */
+static const float backlight_emoji_rpad = 5.0f;
+
+/** the backlight widget's snapshot: `text` is "BR"/"DK" without color
+ * emoji; with them, moon (empty if the brightness is unknown, a stop sign if
+ * it makes no sense) and mode */
+typedef struct {
+    textsnap_t text;
+    const char* moon;
+    const char* mode;
+    int gap, rpad;
+} backlightsnap_t;
+
 static uint32_t backlightwidget_measure( widget_t* w ) {
     awl_plugin_data_t* P = awl_plugin_get();
     if (!P || !P->backlight) return 0;
+    if (!w->userdata) w->userdata = calloc(1, sizeof(backlightsnap_t));
+    backlightsnap_t* s = w->userdata;
+    if (!s) return 0;
 
     const int enabled = atomic_load( &P->backlight->enabled );
-    textsnap_t* s = textsnap( w );
-    strcpy( s->text, enabled ? "BR" : "DK" );
-    s->fg = enabled ? P->awl_colors.fg_status : color_8bit_to_16bit(molokai_orange);
-    s->bg = P->awl_colors.bg_status;
-    return textsnap_width( w );
+    const int screen = atomic_load( &P->backlight->screen );
+    s->text.fg = enabled ? P->awl_colors.fg_status : color_8bit_to_16bit(molokai_orange);
+    s->text.bg = P->awl_colors.bg_status;
+    if (!backlight_emoji( w )) {
+        s->moon = s->mode = NULL;
+        strcpy( s->text.text, enabled ? "BR" : "DK" );
+        return textsnap_width( w );
+    }
+
+    // the moon if the brightness is known, a stop sign if the daemon's
+    // number is nonsense, then eyes for automatic updates or a sun for
+    // manual brightness
+    Monitor* m = w->bar->m;
+    float scale = m->wlr_output->scale;
+    s->moon = screen >= 0 ? backlight_moon( screen ) :
+              screen == BACKLIGHT_INVALID ? "🛑" : "";
+    s->mode = enabled ? "👀" : "🌞";
+    s->gap = *s->moon ? (int)(backlight_emoji_gap * scale + 0.5f) : 0;
+    s->rpad = (int)(backlight_emoji_rpad * scale + 0.5f);
+    if (s->rpad > m->lrpad/2) s->rpad = m->lrpad/2;
+    return TEXTW( m, s->moon ) + s->gap + TEXTW( m, s->mode ) - m->lrpad - s->rpad;
+}
+
+static uint32_t backlightwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {
+    backlightsnap_t* s = w->userdata;
+    if (!s) return 0;
+    if (!s->mode) return textsnap_draw( w, x, pix );
+    // the moon with the left padding and the gap, then the mode filling the
+    // rest; TEXT() pads by lrpad/2 on the left
+    Monitor* m = w->bar->m;
+    uint32_t mw = m->lrpad/2 + awl_host->font_getwidth( w->bar, s->moon ) + s->gap;
+    if (mw > w->width) mw = w->width;
+    TEXT( mw, s->moon, s->text.fg, s->text.bg );
+    awl_host->text( w->bar, x + mw, -2, w->width - mw, m->b.height, 0, s->mode,
+            s->text.fg, s->text.bg );
+    return w->width;
 }
 
 static void backlightwidget_click( widget_t* w, uint32_t x, int button ) {
     (void)w; (void)x;
     awl_plugin_data_t* P = awl_plugin_get();
     if (!P || !P->backlight) return;
-    if (button != BTN_LEFT)
-        awl_host->actions->spawn( &(Arg){.v=(const char*[]){"systemctl", "--user", "stop",
-                "backlight-tooler.service", NULL}} );
-    else if (atomic_load( &P->backlight->running ))
-        // forwarded to the daemon as Update(): measure and set now
-        awl_host->actions->spawn( &(Arg){.v=(const char*[]){"backlight-tooler", NULL}} );
+    // both start the daemon if it isn't running
+    if (button == BTN_LEFT)
+        backlight_update( P->backlight );
     else
-        // the daemon updates once right after it starts
-        awl_host->actions->spawn( &(Arg){.v=(const char*[]){"systemctl", "--user", "--no-block", "start",
-                "backlight-tooler.service", NULL}} );
+        backlight_toggle( P->backlight );
 }

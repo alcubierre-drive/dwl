@@ -5,7 +5,7 @@
  * of awl: the plugin threads (plugins.c, plugins/), the bar widgets
  * (widgets.c), the desktop file list (desktop_panel.c; awl's desktop.c only
  * places it), picking and decoding the wallpaper (plugins/wallpaper.c; awl's
- * background.c shows it) and the reloadable half of config.h (awl_config.c).
+ * background.c shows it) and config_plugins.h (awl_config.c).
  * awl loads the library with ``dlopen()`` and looks up a single symbol,
  * `AWL_PLUGIN_ENTRY`; everything else goes through the two tables below,
  * `awl_host_t` and `awl_plugin_api_t`, so the library has no unresolved
@@ -31,7 +31,7 @@
 #define AWL_PLUGIN_ENTRY "awl_plugin_entry"
 
 /**
- * Every awl function config.h can bind to a key or button, as an X macro.
+ * Every awl function config_plugins.h can bind to a key or button, as an X macro.
  * The library binds them through same-named wrappers around
  * `awl_host_t.actions` (awl_config.c).
  */
@@ -61,10 +61,10 @@ typedef struct awl_arranges_t {
 #undef AWL_ARRANGE_FIELD
 
 /**
- * The reloadable half of config.h (see there), as awl reads it. Built by
- * `AWL_CONFIG_TABLE` from config.h's names, in the library and, as the
+ * config_plugins.h (see there), as awl reads it. Built by
+ * `AWL_CONFIG_TABLE` from config_plugins.h's names, in the library and, as the
  * fallback while none is loaded, in awl. Everything points into whoever built
- * it, so awl copies what it keeps past a reload. The fields are config.h's
+ * it, so awl copies what it keeps past a reload. The fields are config_plugins.h's
  * variables of the same names.
  */
 typedef struct awl_config_t {
@@ -110,7 +110,7 @@ typedef struct awl_config_t {
     const WallpaperConfig* wallpaper;
 } awl_config_t;
 
-/** An `awl_config_t` of config.h's names, where config.h is included. */
+/** An `awl_config_t` of config_plugins.h's names, where config_plugins.h is included. */
 #define AWL_CONFIG_TABLE (awl_config_t){ \
     .keys = keys, .n_keys = LENGTH( keys ), \
     .buttons = buttons, .n_buttons = LENGTH( buttons ), \
@@ -155,9 +155,9 @@ typedef struct awl_host_t {
     /** drawing: `awl_draw_font_getwidth()` */
     unsigned int (*font_getwidth)( awl_draw_t* drw, const char* text );
 
-    /** actions: what config.h binds keys and buttons to */
+    /** actions: what config_plugins.h binds keys and buttons to */
     const awl_actions_t* actions;
-    /** actions: what config.h's layouts arrange with */
+    /** actions: what config_plugins.h's layouts arrange with */
     const awl_arranges_t* arranges;
     /** `focusclient()` */
     void (*focusclient)( Client* c, int lift );
@@ -270,7 +270,7 @@ typedef struct awl_plugin_api_t {
     /** the wallpaper timer's mode changed (the wallpapermode action) */
     void (*wallpaper_mode)( WallpaperMode mode );
 
-    /** the reloadable half of config.h; valid until the library is unloaded */
+    /** config_plugins.h; valid until the library is unloaded */
     const awl_config_t* (*config)( void );
 } awl_plugin_api_t;
 

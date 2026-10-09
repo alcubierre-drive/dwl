@@ -17,7 +17,7 @@
 
 #include "awl.h"
 
-/** How the panels look; awl fills it from config.h's ``blur_launcher*``
+/** How the panels look; awl fills it from config_plugins.h's ``blur_launcher*``
  * and ``locked_blur_config``. */
 typedef struct {
     /** blur the wallpaper behind the panel */
@@ -31,7 +31,7 @@ typedef struct {
 /** tree: an empty scene tree, already placed in the stacking order */
 void desktop_init( struct wlr_scene_tree* tree, const desktop_config_t* cfg );
 
-/** config.h was reloaded */
+/** config_plugins.h was reloaded */
 void desktop_configure( const desktop_config_t* cfg );
 
 /** m->drw must have its font loaded */

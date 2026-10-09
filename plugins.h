@@ -46,6 +46,9 @@ void awl_notify( const char* title, const char* body );
  * one ``key=value`` line per entry, sorted by key; an owned value (one the
  * dictionary frees) as ``key=pointer(free function)``. Main thread. */
 void awl_notify_config( void );
+/** plugins.c: `backlight_toggle()` on the running plugins' daemon, if any
+ * (the backlighttoggle action); main thread */
+void awl_backlight_toggle( void );
 /** plugins.c: a notification "x/N" once the wallpaper all changes asked for
  * end on is shown; main thread */
 void awl_notify_wallpaper_shown( const char* title );

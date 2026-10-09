@@ -1,3 +1,10 @@
+/* config_plugins.h: built into libawlplugins.so, so `make` and
+ * plugin_restart (MOD+Ctrl+r) apply it to the running awl -- keymap, input
+ * devices, font, colors, borders, blur and layouts included (monitor rules
+ * are applied to outputs appearing afterwards). While no library is loaded,
+ * awl uses config_plugins.def.h instead. What only a restart of awl applies
+ * is in config_awl.h. */
+
 /* Taken from https://github.com/djpohly/dwl/issues/466 */
 #define COLOR(hex)    { ((hex >> 24) & 0xFF) / 255.0f, \
                         ((hex >> 16) & 0xFF) / 255.0f, \
@@ -5,40 +12,6 @@
                         (hex & 0xFF) / 255.0f }
 /* If you want to use the windows key for MODKEY, use WLR_MODIFIER_LOGO */
 #define MODKEY WLR_MODIFIER_ALT
-
-/* config.h has two halves. The first is read by awl once, at startup:
- * restart awl to apply changes there. The second is reloadable: it is built
- * into libawlplugins.so as well, so `make` and plugin_restart (MOD+Ctrl+r)
- * apply it to the running awl -- keymap, input devices, font, colors,
- * borders, blur and layouts included (monitor rules are applied to outputs
- * appearing afterwards). awl is built with the second half too and uses it
- * while no library is loaded. */
-
-#ifndef AWL_CONFIG_RELOADABLE_ONLY
-/* ==================== startup: restart awl to apply ==================== */
-
-/* appearance */
-static const int showbar                   = 1; /* 0 means no bar */
-static const int topbar                    = 1; /* 0 means bottom bar */
-static const bool locked_blur              = true; /* blur the screen while locked */
-
-/* tagging - TAGCOUNT must be no greater than 31 */
-#define NTAGS 9
-static char *tags[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9" };
-
-/* logging */
-static int log_level = WLR_ERROR;
-
-/* started with awl, and terminated when it exits */
-static const char* Autostarts[][8] = {
-    { NULL }, /* e.g. { "nm-applet", NULL }, */
-};
-static const int ScreenLockServiceAtStart = 0; /* spawn ScreenLockService */
-static const char* ScreenLockService[] = { "systemd-lock-handler", "--", "swaylock", "-c", "00000000", NULL };
-
-#endif /* AWL_CONFIG_RELOADABLE_ONLY */
-
-/* ==================== reloadable: make && MOD+Ctrl+r ==================== */
 
 /* appearance */
 static const int sloppyfocus               = 1;  /* focus follows mouse */
@@ -203,7 +176,9 @@ static const char *termcmd[] = { "foot", NULL };
 static const char *menucmd[] = { "wmenu-run", NULL };
 
 /* the functions keys and buttons can call are listed in AWL_ACTIONS
- * (awl_plugin_abi.h); config.h may define its own on top, like this one */
+ * (awl_plugin_abi.h), plus the library's own in awl_config.c, like
+ * notifyconfig; config_plugins.h may define more, like this one. awl itself
+ * is built with this file, so it binds only AWL_ACTIONS. */
 static void tagmonf( const Arg* arg ) { tagmon(arg); focusmon(arg); }
 
 static const Key keys[] = {

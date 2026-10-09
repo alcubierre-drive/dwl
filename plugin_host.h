@@ -41,10 +41,10 @@ void awl_plugins_set_paused( int paused );
 void awl_plugins_bar_widgets( awl_draw_t* bar );
 
 typedef struct awl_actions_t awl_actions_t;
-/** awl.c's functions config.h binds keys to, for the library */
+/** awl.c's functions config_plugins.h binds keys to, for the library */
 extern const awl_actions_t awl_actions;
 typedef struct awl_arranges_t awl_arranges_t;
-/** awl.c's functions config.h's layouts arrange with, for the library */
+/** awl.c's functions config_plugins.h's layouts arrange with, for the library */
 extern const awl_arranges_t awl_arranges;
 
 typedef struct awl_plugin_api_t awl_plugin_api_t;

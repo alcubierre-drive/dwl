@@ -31,17 +31,17 @@ Then:
     make
 
 This builds `awl`, `tray/libawltray.so` and `libawlplugins.so`. On the first
-build, config.h is copied from config.def.h.
+build, config_awl.h and config_plugins.h are copied from their .def.h.
 
 ## Configuration
 
-config.h has two halves:
+The configuration is in two files:
 
-- the first half is read once at startup, so a change there needs a restart
-- the second half is built into `libawlplugins.so` too, so `make` followed by
+- config_awl.h is read once at startup, so a change there needs a restart
+- config_plugins.h is built into `libawlplugins.so` too, so `make` followed by
   `plugin_restart` (MOD+Ctrl+r) applies it to the running awl
 
-The second half covers keys, buttons, rules, layouts, colors, font, borders,
+config_plugins.h covers keys, buttons, rules, layouts, colors, font, borders,
 blur, input devices, the keymap, and the tray and wallpaper settings.
 
 ## Running

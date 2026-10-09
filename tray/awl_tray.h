@@ -13,7 +13,7 @@
 extern "C" {
 #endif
 
-/** The tray's settings, config.h's tray_config. Colors are 0xRRGGBBAA, sizes
+/** The tray's settings, config_plugins.h's tray_config. Colors are 0xRRGGBBAA, sizes
  * logical pixels. The tray keeps a copy, so the struct only has to live for
  * the call that hands it over. */
 typedef struct awl_tray_config_t {

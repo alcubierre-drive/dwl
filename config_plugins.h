@@ -1,3 +1,10 @@
+/* config_plugins.h: built into libawlplugins.so, so `make` and
+ * plugin_restart (MOD+Ctrl+r) apply it to the running awl -- keymap, input
+ * devices, font, colors, borders, blur and layouts included (monitor rules
+ * are applied to outputs appearing afterwards). While no library is loaded,
+ * awl uses config_plugins.def.h instead. What only a restart of awl applies
+ * is in config_awl.h. */
+
 /* Taken from https://github.com/djpohly/dwl/issues/466 */
 #define COLOR(hex)    { ((hex >> 24) & 0xFF) / 255.0f, \
                         ((hex >> 16) & 0xFF) / 255.0f, \
@@ -6,44 +13,6 @@
 /* If you want to use the windows key for MODKEY, use WLR_MODIFIER_LOGO */
 #define MODKEY WLR_MODIFIER_LOGO
 // #define MODKEY WLR_MODIFIER_ALT
-
-/* config.h has two halves. The first is read by awl once, at startup:
- * restart awl to apply changes there. The second is reloadable: it is built
- * into libawlplugins.so as well, so `make` and plugin_restart (MOD+Ctrl+r)
- * apply it to the running awl -- keymap, input devices, font, colors,
- * borders, blur and layouts included (monitor rules are applied to outputs
- * appearing afterwards). awl is built with the second half too and uses it
- * while no library is loaded. */
-
-#ifndef AWL_CONFIG_RELOADABLE_ONLY
-/* ==================== startup: restart awl to apply ==================== */
-
-/* appearance */
-static const int showbar                   = 1; /* 0 means no bar */
-static const int topbar                    = 0; /* 0 means bottom bar */
-static const bool locked_blur              = true;
-
-/* tagging - TAGCOUNT must be no greater than 31 */
-#define NTAGS 9
-static char *tags[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9" };
-
-/* logging */
-static int log_level = WLR_ERROR;
-
-static const char* Autostarts[][8] = {
-    { "fnott", NULL },
-    { "nm-applet", NULL },
-    { "blueman-applet", NULL },
-    { "system-config-printer-applet", NULL },
-    { "Telegram", NULL },
-    { "evolution", NULL },
-};
-static const int ScreenLockServiceAtStart = 1;
-static const char* ScreenLockService[] = { "systemd-lock-handler", "--", "swaylock", "-c", "00000000", "-p", NULL };
-
-#endif /* AWL_CONFIG_RELOADABLE_ONLY */
-
-/* ==================== reloadable: make && MOD+Ctrl+r ==================== */
 
 /* appearance */
 static const int sloppyfocus               = 1;  /* focus follows mouse */
@@ -57,7 +26,8 @@ static const float fullscreen_bg[]         = {0.1f, 0.1f, 0.1f, 1.0f}; /* You ca
 static const int blur_notifications        = 1,
                  blur_notifications_radius = 15,
                  blur_launcher             = 1,
-                 blur_launcher_radius      = 15;
+                 blur_launcher_radius      = 15,
+                 blur_windowlist           = 0;
 
 /* molokai_* are in plugins/colors.h */
 static const uint32_t bordercolors[BorderLast] = {
@@ -72,7 +42,7 @@ static const awl_tray_config_t tray_config = {
     .calendar = {
         .bg           = 0x3c3c3c4d, /* awl blurs what is behind it */
         .fg           = 0xf8f8f2ff,
-        .border       = molokai_green,
+        .border       = molokai_blue,
         .today        = 0xb6ec52ff,
         .dim          = 0xf8f8f259, /* the neighbouring months' days */
         .selected     = 0xffffff33, /* the selected day's background */
@@ -87,7 +57,8 @@ static const awl_tray_config_t tray_config = {
     },
 };
 
-/* the wallpaper action ({.i = WallpaperNext, WallpaperPrev or WallpaperRand})
+/* the wallpaper action ({.i = WallpaperNext, WallpaperPrev, WallpaperRand,
+ * WallpaperBack, WallpaperTimerNext or WallpaperTimerBack; see awl.h})
  * shows one of dir's *.png files, scaled to cover each monitor; so does a
  * timer every interval seconds (0: never), going where mode says
  * (wallpapermode cycles it) */
@@ -98,21 +69,20 @@ static const WallpaperConfig wallpaper_config = {
 /* NOTE: ALWAYS keep a rule declared even if you don't use rules (e.g leave at least one example) */
 static const Rule rules[] = {
     /* app_id             title       tags mask     isfloating   monitor w h blur 1-alpha*/
-    { NULL,               "nomacs_garfield", 0,     1,           -1,   0,   0, 0, 0 },
+    // { NULL,               "nomacs_garfield", 0,     1,           -1,   0,   0, 0, 0 },
     { "python3",          "Figure",   0,            1,           -1,   0,   0, 0, 0 },
     { "wdisplays",        NULL,       0,            1,           -1,   0,   0, 0, 0 },
 
     { "zoom",             NULL,       0,            1,           -1,   0,   0, 0, 0 },
     { "Zoom",             NULL,       0,            1,           -1,   0,   0, 0, 0 },
 
-    { "org.gnome.Calendar",NULL,      0,            1,           -1, 400, 500, 1, 0.2 },
-
     { "org.telegram.desktop",NULL,    1<<7,         0,           -1,   0,   0, 0, 0 },
     { "signal",           "Signal",   1<<7,         0,           -1,   0,   0, 0, 0 },
+    { "mattermost-desktop","Mattermost Desktop App",1<<7,0,      -1,   0,   0, 0, 0 },
 
     { "org.gnome.Evolution",NULL,     1<<8,         0,           -1,   0,   0, 0, 0 },
     { "evolution-alarm-notify", NULL, 1<<8,         1,           -1,   0,   0, 0, 0 },
-    { "kitty",            NULL,       0,            0,           -1,   0,   0, 0, 0 },
+    // { "kitty",            NULL,       0,            0,           -1,   0,   0, 0, 0 },
 };
 
 /* layout(s); setlayout/cycle_layout switch between them. After a reload
@@ -229,9 +199,7 @@ static const char *docked_r[] = { "docked", "reset", NULL };
 static const char *docked_d[] = { "docked", "dock", NULL };
 static const char *docked_z[] = { "docked", "zoom", NULL };
 static const char *notification_action[] = { "fnottctl", "actions", NULL };
-static const char *garfield[] = { "garfield", NULL };
-static const char *backlight_tooler_disable_cmd[] = {"systemctl", "--user", "stop", "backlight-tooler.timer", NULL};
-static const char *backlight_tooler_enable_cmd[] = {"systemctl", "--user", "--no-block", "start", "backlight-tooler.timer", "backlight-tooler.service", NULL};
+// static const char *garfield[] = { "garfield", NULL };
 
 static void tagmonf( const Arg* arg ) { tagmon(arg); focusmon(arg); }
 
@@ -239,9 +207,9 @@ static const Key keys[] = {
     /* Note that Shift changes certain key codes: c -> C, 2 -> at, etc. */
     /* modifier                  key                 function        argument */
     { MODKEY,                    XKB_KEY_p,          spawn,            {.v = menucmd} },
+    { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_P,          notifyconfig,     {0} },
     { MODKEY,                    XKB_KEY_Return,     spawn,            {.v = termcmd} },
-    { MODKEY,                    XKB_KEY_y,          spawn,            {.v = backlight_tooler_disable_cmd } },
-    { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_Y,          spawn,            {.v = backlight_tooler_enable_cmd } },
+    { MODKEY,                    XKB_KEY_y,          backlighttoggle,  {0} },
     { MODKEY,                    XKB_KEY_i,          togglebar,        {0} },
     { MODKEY,                    XKB_KEY_j,          focusstack,       {.i = +1} },
     { MODKEY,                    XKB_KEY_k,          focusstack,       {.i = -1} },
@@ -262,10 +230,10 @@ static const Key keys[] = {
     { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_space,      togglefloating,   {0} },
     { MODKEY,                    XKB_KEY_t,          toggleontop,      {0} },
     { MODKEY|WLR_MODIFIER_CTRL,  XKB_KEY_r,          plugin_restart,   {0} },
-    { MODKEY,                    XKB_KEY_w,          wallpaper,        {.i = WallpaperRand} },
-    { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_W,          wallpaper,        {.i = WallpaperNext} },
+    { MODKEY,                    XKB_KEY_w,          wallpaper,        {.i = WallpaperTimerNext} },
+    { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_W,          wallpaper,        {.i = WallpaperTimerBack} },
     { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_N,          spawn,            {.v = notification_action} },
-    { MODKEY,                    XKB_KEY_g,          spawn,            {.v = garfield} },
+    // { MODKEY,                    XKB_KEY_g,          spawn,            {.v = garfield} },
     { MODKEY,                    XKB_KEY_b,          togglebw,         {0} },
     { MODKEY|WLR_MODIFIER_SHIFT, XKB_KEY_B,          changebw,         {.i=+1} },
     { MODKEY|WLR_MODIFIER_SHIFT|WLR_MODIFIER_CTRL,XKB_KEY_B, changebw, {.i=-1} },

@@ -1,10 +1,13 @@
 #include "backlight.h"
 #include "redraw.h"
+#include <stdarg.h>
 #include <string.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <poll.h>
 #include <time.h>
+#include <unistd.h>
+#include <sys/eventfd.h>
 #include <sys/time.h>
 #include <systemd/sd-bus.h>
 
@@ -15,19 +18,27 @@
  * NameOwnerChanged and the daemon's PropertiesChanged, so nothing is
  * polled. Runs on the plugins' shared loop (poller.h): the bus
  * fd and its timeout are event sources there, and every call is
- * asynchronous, so a slow bus never holds up the other plugins. Nothing ever
- * starts the daemon. Everything but the atomics is only touched on the loop
- * thread, or before it starts and after it has stopped; the first
- * connection is made from the loop too. If the bus is unavailable or the
- * connection drops, the last known state is kept and a reconnect is
- * attempted every RETRY_USEC. */
+ * asynchronous, so a slow bus never holds up the other plugins. The bar's
+ * requests (backlight_toggle(), backlight_update()) go out on the same
+ * connection; they are the only thing that starts the daemon, through its
+ * systemd user unit, never D-Bus auto-start. Everything but the atomics and
+ * the wake fd is only touched on the loop thread, or before it starts and
+ * after it has stopped; the first connection is made from the loop too. If
+ * the bus is unavailable or the connection drops, the last known state is
+ * kept, requests are dropped, and a reconnect is attempted every
+ * RETRY_USEC. */
 
 #define BUS_NAME  "org.BacklightTooler"
 #define BUS_PATH  "/org/BacklightTooler"
 #define BUS_IFACE "org.BacklightTooler"
+#define UNIT      "backlight-tooler.service"
 #define RETRY_USEC (30 * 1000000ull)
 /** how long a call may go unanswered before it counts as failed */
 #define CALL_TIMEOUT_USEC (2 * 1000000ull)
+
+/** awl_backlight_t.requests; a second toggle before the loop got to the
+ * first one cancels it */
+enum { REQ_TOGGLE = 1, REQ_UPDATE = 2 };
 
 struct awl_backlight_bus_t {
     awl_backlight_t* b;
@@ -38,7 +49,11 @@ struct awl_backlight_bus_t {
     pa_io_event* io;
     pa_time_event* timeout; /* the bus's next timeout, NULL if none */
     pa_time_event* retry;   /* the next connection attempt, NULL if none */
+    pa_io_event* wake;      /* awl_backlight_t.wake_fd */
     int failed;             /* set by callbacks, which can't drop the bus */
+    /* the daemon's Interval and ConfigInterval as last seen; Interval as
+     * last set by a toggle until the daemon tells otherwise */
+    uint64_t interval, config_interval;
 };
 
 static void bus_update( awl_backlight_bus_t* s );
@@ -60,17 +75,21 @@ static int set_int( atomic_int* a, int v ) {
     return atomic_exchange( a, v ) != v;
 }
 
-/** brightness in [0,1] (or -1 for none) as per mille, -1 if unknown */
+/** brightness in [0,1] as per mille; the daemon's -1 (none yet) as
+ * BACKLIGHT_UNKNOWN, anything else (NaN, out of range) as BACKLIGHT_INVALID */
 static int to_permille( double v ) {
-    return (v >= 0 && v <= 1) ? (int)(v * 1000 + 0.5) : -1;
+    if (v >= 0 && v <= 1) return (int)(v * 1000 + 0.5);
+    return v == -1 ? BACKLIGHT_UNKNOWN : BACKLIGHT_INVALID;
 }
 
 /** the daemon went away: nothing is known anymore */
-static void set_gone( awl_backlight_t* b ) {
+static void set_gone( awl_backlight_bus_t* s ) {
+    awl_backlight_t* b = s->b;
+    s->interval = s->config_interval = 0;
     int changed = set_int( &b->running, 0 );
     changed |= set_int( &b->enabled, 0 );
-    changed |= set_int( &b->screen, -1 );
-    changed |= set_int( &b->webcam, -1 );
+    changed |= set_int( &b->screen, BACKLIGHT_UNKNOWN );
+    changed |= set_int( &b->webcam, BACKLIGHT_UNKNOWN );
     if (changed) awl_redraw_request();
 }
 
@@ -85,7 +104,8 @@ static int reply_ok( sd_bus_message* m, awl_backlight_bus_t* s ) {
 /** Reads an a{sv} of the daemon's properties, keeps those we track and
  * requests a redraw if any of them changed. `running`: 1 if the daemon is
  * known to run now (a GetAll reply), 0 to leave it as is. */
-static void read_properties( awl_backlight_t* b, sd_bus_message* m, int running ) {
+static void read_properties( awl_backlight_bus_t* s, sd_bus_message* m, int running ) {
+    awl_backlight_t* b = s->b;
     int changed = running ? set_int( &b->running, 1 ) : 0;
     if (sd_bus_message_enter_container( m, 'a', "{sv}" ) < 0) goto out;
     while (sd_bus_message_enter_container( m, 'e', "sv" ) > 0) {
@@ -94,8 +114,12 @@ static void read_properties( awl_backlight_t* b, sd_bus_message* m, int running 
         int r;
         if (!strcmp( key, "Interval" )) {
             uint64_t interval;
-            if ((r = sd_bus_message_read( m, "v", "t", &interval )) >= 0)
+            if ((r = sd_bus_message_read( m, "v", "t", &interval )) >= 0) {
+                s->interval = interval;
                 changed |= set_int( &b->enabled, interval != 0 );
+            }
+        } else if (!strcmp( key, "ConfigInterval" )) {
+            r = sd_bus_message_read( m, "v", "t", &s->config_interval );
         } else if (!strcmp( key, "ScreenBrightness" ) || !strcmp( key, "WebcamValue" )) {
             double v;
             if ((r = sd_bus_message_read( m, "v", "d", &v )) >= 0)
@@ -117,20 +141,29 @@ static int on_properties( sd_bus_message* m, void* userdata, sd_bus_error* ret_e
     (void)ret_error;
     awl_backlight_bus_t* s = userdata;
     if (!sd_bus_message_is_method_error( m, NULL ))
-        read_properties( s->b, m, 1 );
+        read_properties( s, m, 1 );
     return 0;
 }
 
-static void query_properties( awl_backlight_bus_t* s ) {
-    /* built by hand to turn off auto-start: the bar never starts the daemon */
+/** Calls the daemon's iface.member with the arguments of `types`; the reply
+ * goes to callback, or nowhere if NULL. Built by hand to turn off
+ * auto-start: a call never starts the daemon. */
+static void call_daemon( awl_backlight_bus_t* s, const char* iface, const char* member,
+                         sd_bus_message_handler_t callback, const char* types, ... ) {
     sd_bus_message* m = NULL;
-    if (sd_bus_message_new_method_call( s->bus, &m, BUS_NAME, BUS_PATH,
-                "org.freedesktop.DBus.Properties", "GetAll" ) < 0 ||
+    va_list ap;
+    va_start( ap, types );
+    if (sd_bus_message_new_method_call( s->bus, &m, BUS_NAME, BUS_PATH, iface, member ) < 0 ||
         sd_bus_message_set_auto_start( m, 0 ) < 0 ||
-        sd_bus_message_append( m, "s", BUS_IFACE ) < 0 ||
-        sd_bus_call_async( s->bus, NULL, m, on_properties, s, 0 ) < 0)
+        (types && sd_bus_message_appendv( m, types, ap ) < 0) ||
+        sd_bus_call_async( s->bus, NULL, m, callback, s, 0 ) < 0)
         s->failed = 1;
+    va_end( ap );
     sd_bus_message_unref( m );
+}
+
+static void query_properties( awl_backlight_bus_t* s ) {
+    call_daemon( s, "org.freedesktop.DBus.Properties", "GetAll", on_properties, "s", BUS_IFACE );
 }
 
 /** PropertiesChanged(s interface, a{sv} changed, as invalidated), only the
@@ -142,7 +175,7 @@ static int on_properties_changed( sd_bus_message* m, void* userdata, sd_bus_erro
     /* not `running` yet: a signal can come before the GetAll reply that
      * follows the daemon's start, and alone would flash a running daemon
      * with its updates off */
-    read_properties( s->b, m, 0 );
+    read_properties( s, m, 0 );
     /* read_properties() stops early on a malformed message; then this fails */
     char** invalidated = NULL;
     if (sd_bus_message_read_strv( m, &invalidated ) >= 0 && invalidated) {
@@ -164,7 +197,7 @@ static int on_owner_changed( sd_bus_message* m, void* userdata, sd_bus_error* re
     if (new_owner[0])
         query_properties( s );
     else
-        set_gone( s->b );
+        set_gone( s );
     return 0;
 }
 
@@ -174,7 +207,7 @@ static int on_owner( sd_bus_message* m, void* userdata, sd_bus_error* ret_error 
     awl_backlight_bus_t* s = userdata;
     const sd_bus_error* e = sd_bus_message_get_error( m );
     if (e && sd_bus_error_has_name( e, SD_BUS_ERROR_NAME_HAS_NO_OWNER ))
-        set_gone( s->b );
+        set_gone( s );
     else if (reply_ok( m, s ))
         query_properties( s );
     return 0;
@@ -285,32 +318,110 @@ static void bus_update( awl_backlight_bus_t* s ) {
         s->timeout = s->api->time_new( s->api, &tv, bus_timeout, s );
 }
 
+/** Properties.Set(Interval): refused (a daemon without a writable Interval,
+ * an interval it won't take) or not answered, so the toggle's guess is
+ * wrong; back to what the daemon says. */
+static int on_set( sd_bus_message* m, void* userdata, sd_bus_error* ret_error ) {
+    (void)ret_error;
+    awl_backlight_bus_t* s = userdata;
+    if (sd_bus_message_is_method_error( m, NULL )) query_properties( s );
+    return 0;
+}
+
+/** the daemon's user unit; it updates once when it starts */
+static void start_unit( awl_backlight_bus_t* s ) {
+    if (sd_bus_call_method_async( s->bus, NULL, "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
+                "org.freedesktop.systemd1.Manager", "StartUnit", NULL, NULL, "ss", UNIT, "replace" ) < 0)
+        s->failed = 1;
+}
+
+static void do_toggle( awl_backlight_bus_t* s ) {
+    if (!atomic_load( &s->b->running )) {
+        start_unit( s );
+        return;
+    }
+    uint64_t target = s->interval ? 0 : s->config_interval;
+    /* off, and nothing to turn on: [daemon] interval=0, or an old daemon */
+    if (target == s->interval) return;
+    call_daemon( s, "org.freedesktop.DBus.Properties", "Set", on_set, "ssv",
+            BUS_IFACE, "Interval", "t", target );
+    /* back on: catch up now rather than one interval from now */
+    if (target) call_daemon( s, BUS_IFACE, "Update", NULL, NULL );
+    /* so that the next toggle undoes this one even before the daemon's
+     * PropertiesChanged is in */
+    s->interval = target;
+}
+
+static void do_update( awl_backlight_bus_t* s ) {
+    if (atomic_load( &s->b->running ))
+        call_daemon( s, BUS_IFACE, "Update", NULL, NULL );
+    else
+        start_unit( s );
+}
+
+static void wake_callback( pa_mainloop_api* a, pa_io_event* e, int fd, pa_io_event_flags_t f, void* userdata ) {
+    (void)a; (void)e; (void)f;
+    awl_backlight_bus_t* s = userdata;
+    uint64_t count;
+    if (read( fd, &count, sizeof count ) < 0) {}
+    int req = atomic_exchange( &s->b->requests, 0 );
+    if (!req || !s->bus) return;
+    if (req & REQ_TOGGLE) do_toggle( s );
+    if (req & REQ_UPDATE) do_update( s );
+    bus_update( s );
+}
+
+static void request( awl_backlight_t* b, int req ) {
+    if (!b) return;
+    if (req == REQ_TOGGLE)
+        atomic_fetch_xor( &b->requests, req );
+    else
+        atomic_fetch_or( &b->requests, req );
+    uint64_t one = 1;
+    /* EAGAIN only if the counter would overflow: the loop is due anyway */
+    if (write( b->wake_fd, &one, sizeof one ) < 0) {}
+}
+
+void backlight_toggle( awl_backlight_t* b ) {
+    request( b, REQ_TOGGLE );
+}
+
+void backlight_update( awl_backlight_t* b ) {
+    request( b, REQ_UPDATE );
+}
+
 awl_backlight_t* backlight_init( pa_mainloop_api* api ) {
     awl_backlight_t* b = calloc(1, sizeof *b);
     if (!b) return NULL;
     atomic_init( &b->running, 0 );
     atomic_init( &b->enabled, 0 );
-    atomic_init( &b->screen, -1 );
-    atomic_init( &b->webcam, -1 );
-    if (!(b->bus = calloc(1, sizeof *b->bus))) {
-        free( b );
-        return NULL;
-    }
+    atomic_init( &b->screen, BACKLIGHT_UNKNOWN );
+    atomic_init( &b->webcam, BACKLIGHT_UNKNOWN );
+    atomic_init( &b->requests, 0 );
+    b->wake_fd = eventfd( 0, EFD_CLOEXEC | EFD_NONBLOCK );
+    if (b->wake_fd < 0 || !(b->bus = calloc(1, sizeof *b->bus)))
+        goto fail;
     b->bus->b = b;
     b->bus->api = api;
+    b->bus->wake = api->io_new( api, b->wake_fd, PA_IO_EVENT_INPUT, wake_callback, b->bus );
+    if (!b->bus->wake) goto fail;
     schedule_retry( b->bus, 0 );
-    if (!b->bus->retry) {
-        free( b->bus );
-        free( b );
-        return NULL;
-    }
+    if (!b->bus->retry) goto fail;
     return b;
+fail:
+    if (b->bus && b->bus->wake) api->io_free( b->bus->wake );
+    if (b->wake_fd >= 0) close( b->wake_fd );
+    free( b->bus );
+    free( b );
+    return NULL;
 }
 
 void backlight_free( awl_backlight_t* b ) {
     if (!b) return;
     drop_bus( b->bus );
     if (b->bus->retry) b->bus->api->time_free( b->bus->retry );
+    b->bus->api->io_free( b->bus->wake );
+    close( b->wake_fd );
     free( b->bus );
     free( b );
 }

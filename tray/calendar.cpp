@@ -239,7 +239,7 @@ Popup *g_popup = nullptr;
 // viewport -- the wildcard clears all of them (and borders/shadows) at once,
 // then the few states that need a background get a translucent one back.
 // Scoped to #awl-calendar: the provider is screen-wide and the tray windows
-// live in the same process. The colors and sizes are config.h's
+// live in the same process. The colors and sizes are config_plugins.h's
 // (tray_config.calendar).
 
 // 0xRRGGBBAA as CSS. Not printf's %f: GTK sets the user's locale, whose

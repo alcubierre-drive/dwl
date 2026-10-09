@@ -7,7 +7,7 @@
 #include "awl_plugin_abi.h"
 #include "background.h"
 #include "desktop.h"
-#include "plugins/colors.h" /* config.h */
+#include "plugins/colors.h" /* config_plugins.h */
 #include "plugins/redraw.h"
 #include "tray/awl_tray.h"
 #include <limits.h>
@@ -311,9 +311,10 @@ static struct wl_listener xwayland_ready = {.notify = xwaylandready};
 static struct wlr_xwayland *xwayland;
 #endif
 
-#define notifyconfig NULL
 /* configuration, allows nested code to access above variables */
-#include "config.h"
+#include "config_awl.h"
+/* the defaults, for while no library (and so no config_plugins.h) is loaded */
+#include "config_plugins.def.h"
 
 /* attempt to encapsulate suck into one file */
 #include "client.h"
@@ -323,8 +324,8 @@ const awl_actions_t awl_actions = { AWL_ACTIONS(AWL_ACTION_INIT) };
 const awl_arranges_t awl_arranges = { AWL_ARRANGES(AWL_ACTION_INIT) };
 #undef AWL_ACTION_INIT
 
-/** The reloadable half of config.h in effect: the library's, or while none is
- * loaded the one awl was built with. It points into the library, so it's only
+/** config_plugins.h in effect: the library's, or while none is
+ * loaded config_plugins.def.h. It points into the library, so it's only
  * good until the next reload; `pluginsdetach()` falls back to builtinconfig(). */
 static const awl_config_t *cfg;
 /** The config values that can change while awl runs, by name, for awl and the
@@ -345,7 +346,7 @@ static struct {
     int wallpaper_mode_dict; /* cfgdict's "wallpaper_mode", -1: none */
 } applied = { .wallpaper_mode_dict = -1 };
 
-/** the keyboards and pointers, to apply a reloaded config.h to */
+/** the keyboards and pointers, to apply a reloaded config_plugins.h to */
 typedef struct {
     struct wlr_input_device *device;
     struct wl_listener destroy;
@@ -369,7 +370,7 @@ static void cfgdict_defaults(awl_dict_t* cfgdict)
     awl_dict_set(cfgdict, "desktop_dir", &AWL_DICT_STR(dir));
 
     /* "wallpaper_dir": the folder the wallpapers come from, the built-in
-     * config.h's wallpaper_config.dir, relative to $HOME unless absolute;
+     * config_plugins.h's wallpaper_config.dir, relative to $HOME unless absolute;
      * none for a NULL one, then there's no wallpaper */
     const char *wp = cfg->wallpaper->dir;
     if (wp) {
@@ -398,7 +399,7 @@ static void cfgdict_defaults(awl_dict_t* cfgdict)
     awl_dict_set(cfgdict, "state_home", &AWL_DICT_STR(dir));
 
     /* "wallpaper_mode": the timer's mode by name (wallpaper_mode_names),
-     * config.h's to begin with; awl keeps it current, and a plugin may set
+     * config_plugins.h's to begin with; awl keeps it current, and a plugin may set
      * it. plugins/wallpaper.c saves it in plugins/persistent.h's file and
      * at the start loads the saved one over this. */
     wallpapermodeset(cfg->wallpaper->mode);
@@ -651,9 +652,9 @@ arrangelayers(Monitor *m)
  * that leave_delay_ms after the pointer left both it and its popup (at once
  * for a delay of 0). */
 static struct wl_event_source *hover_timer, *leave_timer;
-/** config.h's wallpaper_config.interval */
+/** config_plugins.h's wallpaper_config.interval */
 static struct wl_event_source *wallpaper_timer;
-/** what the timer switches to: config.h's mode or cfgdict's "wallpaper_mode",
+/** what the timer switches to: config_plugins.h's mode or cfgdict's "wallpaper_mode",
  * until `wallpapermode()` */
 static WallpaperMode wallpaper_mode;
 static widget_t *hover_widget, *hover_active;
@@ -1610,7 +1611,7 @@ createkeyboardgroup(void)
     group->wlr_group->data = group;
 
     /* Prepare an XKB keymap and assign it to the keyboard group: the one in
-     * effect, which is config.h's unless a reload brought a broken one */
+     * effect, which is config_plugins.h's unless a reload brought a broken one */
     if (kb_group)
         keymap = xkb_keymap_ref(kb_group->wlr_group->keyboard.keymap);
     else if (!(keymap = compilekeymap()))
@@ -3514,7 +3515,7 @@ setfullscreen(Client *c, int fullscreen)
     drawbars();
 }
 
-/** l's index in config.h's layouts, -1 if it isn't one of them */
+/** l's index in config_plugins.h's layouts, -1 if it isn't one of them */
 static int
 layoutindex(const Layout *l)
 {
@@ -3524,7 +3525,7 @@ layoutindex(const Layout *l)
     return (int)((p - first) / sizeof(Layout));
 }
 
-/** the next (arg->i > 0) or previous (< 0) of config.h's layouts on selmon */
+/** the next (arg->i > 0) or previous (< 0) of config_plugins.h's layouts on selmon */
 void
 cycle_layout(const Arg* arg)
 {
@@ -3535,7 +3536,7 @@ cycle_layout(const Arg* arg)
     setlayout(&(Arg){.v = &cfg->layouts[(i % n + n) % n]});
 }
 
-/** like dwm: arg->v, one of config.h's layouts (&layouts[n]), for selmon;
+/** like dwm: arg->v, one of config_plugins.h's layouts (&layouts[n]), for selmon;
  * without one (or with the one it has), back to its previous layout */
 void
 setlayout(const Arg *arg)
@@ -4566,7 +4567,7 @@ strdupnull(const char *s)
     return s ? strdup(s) : NULL;
 }
 
-/** Brings everything that was set up from config.h's reloadable half up to
+/** Brings everything that was set up from config_plugins.h up to
  * date with cfg, after it changed. What's only read when it's needed (key
  * and button bindings, rules, focus behaviour, which new layer surfaces get
  * blurred) needs nothing here. */
@@ -4587,7 +4588,7 @@ configapply(void)
     for (i = changed = 0; i < (int)LENGTH(xkb); i++)
         changed |= !streqnull(xkb[i], applied.xkb[i]);
     if (changed && !(keymap = compilekeymap())) {
-        fprintf(stderr, "config.h: can't compile the keymap, keeping the old one\n");
+        fprintf(stderr, "config_plugins.h: can't compile the keymap, keeping the old one\n");
     } else if (changed) {
         wlr_keyboard_set_keymap(&kb_group->wlr_group->keyboard, keymap);
         wl_list_for_each(d, &inputdevices, link)
@@ -4676,7 +4677,7 @@ configapply(void)
         applied.wallpaper_interval = cfg->wallpaper->interval;
         wallpaperarm();
     }
-    /* a new config.h mode replaces wallpapermode()'s, and goes to cfgdict;
+    /* a new config_plugins.h mode replaces wallpapermode()'s, and goes to cfgdict;
      * an unchanged one doesn't. So does a new cfgdict "wallpaper_mode" (the
      * library's init() sets it before this runs), which wins when both
      * change. */
@@ -4694,7 +4695,7 @@ configapply(void)
     drawbars();
 }
 
-/** switches to the loaded library's config.h, or the built-in one */
+/** switches to the loaded library's config_plugins.h, or the built-in one */
 static void
 configuse(void)
 {
@@ -4776,7 +4777,7 @@ pluginrestart(void *data)
      * thread itself (see awl_tray_reload()'s own comment for why: gtkmm's
      * Gtk::Main cannot safely be constructed a second time in one process),
      * so it's fire-and-forget, not a blocking shutdown/join/init cycle.
-     * It also applies the reloaded config.h's tray_config. */
+     * It also applies the reloaded config_plugins.h's tray_config. */
     awl_tray_reload(cfg->tray);
 }
 

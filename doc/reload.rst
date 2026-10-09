@@ -2,8 +2,8 @@ Live reload
 ===========
 
 ``make`` builds ``awl`` and ``libawlplugins.so``. With awl running,
-``plugin_restart`` (MOD+Ctrl+r in config.def.h) swaps in the freshly built
-library: new widgets, new plugin code and the reloadable half of config.h,
+``plugin_restart`` (MOD+Ctrl+r in config_plugins.def.h) swaps in the freshly
+built library: new widgets, new plugin code and config_plugins.h,
 without restarting awl or any client.
 
 What a reload picks up
@@ -17,10 +17,10 @@ What a reload picks up
      - Needs a restart of awl
    * - widgets.c, desktop_panel.c, plugins.c, plugins/ (except redraw.c)
      - awl.c, awl_draw.c, desktop.c, background.c, plugin_host.c, the tray
-   * - config.h below the "reloadable" line: keys, buttons, rules, layouts,
+   * - config_plugins.h: keys, buttons, rules, layouts,
        colors, font, borders, blur, input devices, keymap, tray and
        wallpaper settings
-     - config.h above it: tags, the bar's position, autostarts, logging
+     - config_awl.h: tags, the bar's position, autostarts, logging
    * -
      - any change to `awl_host_t`, `awl_plugin_api_t` or to a struct both
        sides read (`Monitor`, `Client`, `awl_draw_t`, `widget_t`, `Arg`), i.e.
@@ -138,13 +138,20 @@ the poller is joined without a limit.
 The config split
 ----------------
 
-config.h is included twice. awl.c includes all of it. awl_config.c defines
-``AWL_CONFIG_RELOADABLE_ONLY`` first, which skips the startup half, and turns
-the rest into an `awl_config_t` with `AWL_CONFIG_TABLE`. The functions
-config.h binds keys to are awl's; in the library, they are same-named
-wrappers that call awl through `awl_host_t.actions`, so config.h reads the
-same in both places. A function config.h binds has to be listed in
-`AWL_ACTIONS` (or `AWL_ARRANGES` for layouts).
+awl.c includes config_awl.h, and config_plugins.def.h as the fallback for
+while no library is loaded. awl_config.c includes config_plugins.h and turns
+it into an `awl_config_t` with `AWL_CONFIG_TABLE`; awl.c does the same with
+config_plugins.def.h. Only the library ever sees config_plugins.h.
+
+The functions config_plugins.h binds keys to are awl's; in the library, they
+are same-named wrappers that call awl through `awl_host_t.actions`, so the
+file reads like a dwl config.h. A function it binds has to be listed in
+`AWL_ACTIONS` (or `AWL_ARRANGES` for layouts), or be one of the library's own
+actions, which awl_config.c defines next to the wrappers (``notifyconfig``,
+``backlighttoggle``). The wrappers and those actions aren't static, so any
+of them may stay unbound without a warning, and the library exports none of
+them. config_plugins.def.h, which awl itself is built with, can bind only
+`AWL_ACTIONS`.
 
 Adding to the ABI
 -----------------

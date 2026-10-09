@@ -17,7 +17,7 @@ awl is three binaries:
 ``libawlplugins.so``
    Everything that is meant to change often: the plugin threads that collect
    what the bar shows, the bar widgets, the desktop panel's contents, picking
-   and decoding the wallpaper, and the reloadable half of config.h. awl loads
+   and decoding the wallpaper, and config_plugins.h. awl loads
    it at startup and swaps in a rebuilt one on ``plugin_restart``. See
    :doc:`reload` and :doc:`api/plugin-abi`.
 
@@ -45,9 +45,9 @@ What lives where
      - scene nodes, buffers, placement (desktop.c)
      - scans ``desktop_dir``, lays out and draws the list, handles
        clicks on the bare desktop (desktop_panel.c)
-   * - config.h
-     - the startup half, and the reloadable half as a fallback
-     - the reloadable half (awl_config.c)
+   * - Config
+     - config_awl.h, and config_plugins.def.h as a fallback
+     - config_plugins.h (awl_config.c)
    * - Notifications
      -
      - spawns ``notify-send`` (plugins.c)
@@ -79,4 +79,5 @@ Where to start reading
 * plugins/thread.h and plugins/redraw.h: how every background thread starts,
   stops and reports.
 * awl_draw.h: `widget_t`, the unit the bar is made of.
-* config.def.h: the two halves of the configuration.
+* config_awl.def.h and config_plugins.def.h: the configuration, read at
+  startup and reloadable.
