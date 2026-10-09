@@ -231,8 +231,8 @@ static const char *docked_d[] = { "docked", "dock", NULL };
 static const char *docked_z[] = { "docked", "zoom", NULL };
 static const char *notification_action[] = { "fnottctl", "actions", NULL };
 // static const char *garfield[] = { "garfield", NULL };
-static const char *backlight_tooler_disable_cmd[] = {"systemctl", "--user", "stop", "backlight-tooler.timer", NULL};
-static const char *backlight_tooler_enable_cmd[] = {"systemctl", "--user", "--no-block", "start", "backlight-tooler.timer", "backlight-tooler.service", NULL};
+static const char *backlight_tooler_disable_cmd[] = {"systemctl", "--user", "stop", "backlight-tooler.service", NULL};
+static const char *backlight_tooler_enable_cmd[] = {"systemctl", "--user", "--no-block", "start", "backlight-tooler.service", NULL};
 
 static void tagmonf( const Arg* arg ) { tagmon(arg); focusmon(arg); }
 

@@ -8,31 +8,36 @@
 #include <sys/time.h>
 #include <systemd/sd-bus.h>
 
-/** Tracks whether backlight-tooler.timer is active by listening to systemd's
- * PropertiesChanged signals on the user bus, instead of spawning
- * ``systemctl --user is-active`` every second. Runs on the plugins' shared
- * loop (poller.h): the bus fd and its timeout are event sources there, and
- * every call is asynchronous, so a slow bus never holds up the other
- * plugins. Everything but `enabled` is only touched on the loop thread, or
- * before it starts and after it has stopped; the first connection is made
- * from the loop too. If the bus is unavailable or the connection drops, the
- * last known state is kept and a reconnect is attempted every RETRY_USEC. */
+/** Tracks the backlight-tooler daemon (``backlight-tooler -D``) through its
+ * D-Bus interface: whether it owns ``org.BacklightTooler`` on the user bus,
+ * whether its automatic updates are on (``Interval`` > 0), and the last
+ * screen and webcam brightness it saw. All of it is followed by signals,
+ * NameOwnerChanged and the daemon's PropertiesChanged, so nothing is
+ * polled. Runs on the plugins' shared loop (poller.h): the bus
+ * fd and its timeout are event sources there, and every call is
+ * asynchronous, so a slow bus never holds up the other plugins. Nothing ever
+ * starts the daemon. Everything but the atomics is only touched on the loop
+ * thread, or before it starts and after it has stopped; the first
+ * connection is made from the loop too. If the bus is unavailable or the
+ * connection drops, the last known state is kept and a reconnect is
+ * attempted every RETRY_USEC. */
 
-/** the systemd user unit whose state the bar shows */
-static const char unit_name[] = "backlight-tooler.timer";
+#define BUS_NAME  "org.BacklightTooler"
+#define BUS_PATH  "/org/BacklightTooler"
+#define BUS_IFACE "org.BacklightTooler"
 #define RETRY_USEC (30 * 1000000ull)
-/** how long a call may go unanswered before the connection counts as broken */
+/** how long a call may go unanswered before it counts as failed */
 #define CALL_TIMEOUT_USEC (2 * 1000000ull)
 
 struct awl_backlight_bus_t {
     awl_backlight_t* b;
     pa_mainloop_api* api;
     sd_bus* bus;
-    sd_bus_slot* match;
+    sd_bus_slot* owner_match;
+    sd_bus_slot* props_match;
     pa_io_event* io;
     pa_time_event* timeout; /* the bus's next timeout, NULL if none */
     pa_time_event* retry;   /* the next connection attempt, NULL if none */
-    char* path;             /* the unit's object path */
     int failed;             /* set by callbacks, which can't drop the bus */
 };
 
@@ -51,12 +56,22 @@ static struct timeval in_usec( uint64_t usec ) {
     return tv;
 }
 
-static void set_from_state( awl_backlight_t* b, const char* state ) {
-    /* same semantics as `systemctl is-active`'s first byte: only "inactive"
-     * counts as disabled */
-    int enabled = (state && state[0] == 'i') ? 0 : 1;
-    if (atomic_exchange( &b->enabled, enabled ) != enabled)
-        awl_redraw_request();
+static int set_int( atomic_int* a, int v ) {
+    return atomic_exchange( a, v ) != v;
+}
+
+/** brightness in [0,1] (or -1 for none) as per mille, -1 if unknown */
+static int to_permille( double v ) {
+    return (v >= 0 && v <= 1) ? (int)(v * 1000 + 0.5) : -1;
+}
+
+/** the daemon went away: nothing is known anymore */
+static void set_gone( awl_backlight_t* b ) {
+    int changed = set_int( &b->running, 0 );
+    changed |= set_int( &b->enabled, 0 );
+    changed |= set_int( &b->screen, -1 );
+    changed |= set_int( &b->webcam, -1 );
+    if (changed) awl_redraw_request();
 }
 
 /** a method reply: whether it is a proper one; marks the connection as
@@ -67,93 +82,107 @@ static int reply_ok( sd_bus_message* m, awl_backlight_bus_t* s ) {
     return 0;
 }
 
-/** Properties.Get(ActiveState) -> v */
-static int on_state( sd_bus_message* m, void* userdata, sd_bus_error* ret_error ) {
+/** Reads an a{sv} of the daemon's properties, keeps those we track and
+ * requests a redraw if any of them changed. `running`: 1 if the daemon is
+ * known to run now (a GetAll reply), 0 to leave it as is. */
+static void read_properties( awl_backlight_t* b, sd_bus_message* m, int running ) {
+    int changed = running ? set_int( &b->running, 1 ) : 0;
+    if (sd_bus_message_enter_container( m, 'a', "{sv}" ) < 0) goto out;
+    while (sd_bus_message_enter_container( m, 'e', "sv" ) > 0) {
+        const char* key = NULL;
+        if (sd_bus_message_read( m, "s", &key ) < 0) goto out;
+        int r;
+        if (!strcmp( key, "Interval" )) {
+            uint64_t interval;
+            if ((r = sd_bus_message_read( m, "v", "t", &interval )) >= 0)
+                changed |= set_int( &b->enabled, interval != 0 );
+        } else if (!strcmp( key, "ScreenBrightness" ) || !strcmp( key, "WebcamValue" )) {
+            double v;
+            if ((r = sd_bus_message_read( m, "v", "d", &v )) >= 0)
+                changed |= set_int( key[0] == 'S' ? &b->screen : &b->webcam, to_permille( v ) );
+        } else {
+            r = sd_bus_message_skip( m, "v" );
+        }
+        if (r < 0 || sd_bus_message_exit_container( m ) < 0) goto out;
+    }
+    sd_bus_message_exit_container( m );
+out:
+    if (changed) awl_redraw_request();
+}
+
+/** Properties.GetAll(BUS_IFACE) -> a{sv}. An error means the daemon went
+ * away or hangs; the former is told by NameOwnerChanged, which follows, and
+ * the latter is no reason to drop the connection. */
+static int on_properties( sd_bus_message* m, void* userdata, sd_bus_error* ret_error ) {
     (void)ret_error;
     awl_backlight_bus_t* s = userdata;
-    const char* state = NULL;
-    if (!reply_ok( m, s )) return 0;
-    if (sd_bus_message_read( m, "v", "s", &state ) < 0) {
-        s->failed = 1;
-        return 0;
-    }
-    set_from_state( s->b, state );
+    if (!sd_bus_message_is_method_error( m, NULL ))
+        read_properties( s->b, m, 1 );
     return 0;
 }
 
-static void query_state( awl_backlight_bus_t* s ) {
-    if (sd_bus_call_method_async( s->bus, NULL, "org.freedesktop.systemd1", s->path,
-                "org.freedesktop.DBus.Properties", "Get", on_state, s,
-                "ss", "org.freedesktop.systemd1.Unit", "ActiveState" ) < 0)
+static void query_properties( awl_backlight_bus_t* s ) {
+    /* built by hand to turn off auto-start: the bar never starts the daemon */
+    sd_bus_message* m = NULL;
+    if (sd_bus_message_new_method_call( s->bus, &m, BUS_NAME, BUS_PATH,
+                "org.freedesktop.DBus.Properties", "GetAll" ) < 0 ||
+        sd_bus_message_set_auto_start( m, 0 ) < 0 ||
+        sd_bus_message_append( m, "s", BUS_IFACE ) < 0 ||
+        sd_bus_call_async( s->bus, NULL, m, on_properties, s, 0 ) < 0)
         s->failed = 1;
+    sd_bus_message_unref( m );
 }
 
-/** PropertiesChanged(s interface, a{sv} changed, as invalidated) */
+/** PropertiesChanged(s interface, a{sv} changed, as invalidated), only the
+ * daemon's interface (arg0 in the match) */
 static int on_properties_changed( sd_bus_message* m, void* userdata, sd_bus_error* ret_error ) {
     (void)ret_error;
     awl_backlight_bus_t* s = userdata;
-    const char* iface = NULL;
-    if (sd_bus_message_read( m, "s", &iface ) < 0) return 0;
-    if (strcmp( iface, "org.freedesktop.systemd1.Unit" )) return 0;
-
-    if (sd_bus_message_enter_container( m, 'a', "{sv}" ) < 0) return 0;
-    while (sd_bus_message_enter_container( m, 'e', "sv" ) > 0) {
-        const char* key = NULL;
-        if (sd_bus_message_read( m, "s", &key ) < 0) return 0;
-        if (!strcmp( key, "ActiveState" )) {
-            const char* state = NULL;
-            if (sd_bus_message_read( m, "v", "s", &state ) < 0) return 0;
-            set_from_state( s->b, state );
-        } else if (sd_bus_message_skip( m, "v" ) < 0) {
-            return 0;
-        }
-        if (sd_bus_message_exit_container( m ) < 0) return 0;
-    }
-    if (sd_bus_message_exit_container( m ) < 0) return 0;
-
+    if (sd_bus_message_skip( m, "s" ) < 0) return 0;
+    /* not `running` yet: a signal can come before the GetAll reply that
+     * follows the daemon's start, and alone would flash a running daemon
+     * with its updates off */
+    read_properties( s->b, m, 0 );
+    /* read_properties() stops early on a malformed message; then this fails */
     char** invalidated = NULL;
     if (sd_bus_message_read_strv( m, &invalidated ) >= 0 && invalidated) {
-        int requery = 0;
-        for (char** i = invalidated; *i; ++i) {
-            if (!strcmp( *i, "ActiveState" )) requery = 1;
-            free( *i );
-        }
+        int requery = invalidated[0] != NULL;
+        for (char** i = invalidated; *i; ++i) free( *i );
         free( invalidated );
-        if (requery) query_state( s );
+        if (requery) query_properties( s );
     }
+    return 0;
+}
+
+/** NameOwnerChanged(s name, s old_owner, s new_owner), only for BUS_NAME
+ * (arg0 in the match) */
+static int on_owner_changed( sd_bus_message* m, void* userdata, sd_bus_error* ret_error ) {
+    (void)ret_error;
+    awl_backlight_bus_t* s = userdata;
+    const char *name = NULL, *old_owner = NULL, *new_owner = NULL;
+    if (sd_bus_message_read( m, "sss", &name, &old_owner, &new_owner ) < 0) return 0;
+    if (new_owner[0])
+        query_properties( s );
+    else
+        set_gone( s->b );
+    return 0;
+}
+
+/** GetNameOwner(s) -> s; NameHasNoOwner if the daemon isn't running */
+static int on_owner( sd_bus_message* m, void* userdata, sd_bus_error* ret_error ) {
+    (void)ret_error;
+    awl_backlight_bus_t* s = userdata;
+    const sd_bus_error* e = sd_bus_message_get_error( m );
+    if (e && sd_bus_error_has_name( e, SD_BUS_ERROR_NAME_HAS_NO_OWNER ))
+        set_gone( s->b );
+    else if (reply_ok( m, s ))
+        query_properties( s );
     return 0;
 }
 
 static int on_subscribed( sd_bus_message* m, void* userdata, sd_bus_error* ret_error ) {
     (void)ret_error;
     reply_ok( m, userdata );
-    return 0;
-}
-
-/** LoadUnit(s) -> o */
-static int on_unit( sd_bus_message* m, void* userdata, sd_bus_error* ret_error ) {
-    (void)ret_error;
-    awl_backlight_bus_t* s = userdata;
-    const char* path = NULL;
-    if (!reply_ok( m, s )) return 0;
-    if (sd_bus_message_read( m, "o", &path ) < 0 || !(s->path = strdup( path ))) {
-        s->failed = 1;
-        return 0;
-    }
-    /* The bus handles these in order, so the match is in place before the
-     * state is read and no change can slip through in between. systemd
-     * only emits unit PropertiesChanged signals while at least one client
-     * is subscribed; the subscription ends with our connection. */
-    if (sd_bus_match_signal_async( s->bus, &s->match, "org.freedesktop.systemd1", s->path,
-                "org.freedesktop.DBus.Properties", "PropertiesChanged",
-                on_properties_changed, NULL, s ) < 0 ||
-        sd_bus_call_method_async( s->bus, NULL, "org.freedesktop.systemd1",
-                "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager",
-                "Subscribe", on_subscribed, s, "" ) < 0) {
-        s->failed = 1;
-        return 0;
-    }
-    query_state( s );
     return 0;
 }
 
@@ -164,12 +193,11 @@ static void drop_bus( awl_backlight_bus_t* s ) {
     if (s->timeout) s->api->time_free( s->timeout );
     s->io = NULL;
     s->timeout = NULL;
-    s->match = sd_bus_slot_unref( s->match );
+    s->owner_match = sd_bus_slot_unref( s->owner_match );
+    s->props_match = sd_bus_slot_unref( s->props_match );
     /* not sd_bus_flush_close_unref(): that blocks until the queue is out */
     if (s->bus) sd_bus_close( s->bus );
     s->bus = sd_bus_unref( s->bus );
-    free( s->path );
-    s->path = NULL;
     s->failed = 0;
 }
 
@@ -187,12 +215,22 @@ static void bus_timeout( pa_mainloop_api* a, pa_time_event* e, const struct time
 }
 
 static void connect_bus( awl_backlight_bus_t* s ) {
+    /* The bus handles these in order, so both matches are in place before
+     * the owner is asked for, and no change can slip through in between. */
     if (sd_bus_open_user( &s->bus ) < 0 ||
         sd_bus_set_method_call_timeout( s->bus, CALL_TIMEOUT_USEC ) < 0 ||
         !(s->io = s->api->io_new( s->api, sd_bus_get_fd( s->bus ), PA_IO_EVENT_INPUT, bus_io, s )) ||
-        sd_bus_call_method_async( s->bus, NULL, "org.freedesktop.systemd1",
-                "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager",
-                "LoadUnit", on_unit, s, "s", unit_name ) < 0) {
+        sd_bus_add_match_async( s->bus, &s->owner_match,
+                "type='signal',sender='org.freedesktop.DBus',path='/org/freedesktop/DBus',"
+                "interface='org.freedesktop.DBus',member='NameOwnerChanged',arg0='" BUS_NAME "'",
+                on_owner_changed, on_subscribed, s ) < 0 ||
+        sd_bus_add_match_async( s->bus, &s->props_match,
+                "type='signal',sender='" BUS_NAME "',path='" BUS_PATH "',"
+                "interface='org.freedesktop.DBus.Properties',member='PropertiesChanged',"
+                "arg0='" BUS_IFACE "'",
+                on_properties_changed, on_subscribed, s ) < 0 ||
+        sd_bus_call_method_async( s->bus, NULL, "org.freedesktop.DBus", "/org/freedesktop/DBus",
+                "org.freedesktop.DBus", "GetNameOwner", on_owner, s, "s", BUS_NAME ) < 0) {
         drop_bus( s );
         schedule_retry( s, RETRY_USEC );
         return;
@@ -220,7 +258,7 @@ static void bus_update( awl_backlight_bus_t* s ) {
     while ((r = sd_bus_process( s->bus, NULL )) > 0)
         ;
     if (r < 0 || s->failed) {
-        /* connection lost or the unit can't be watched */
+        /* connection lost or the daemon can't be watched */
         drop_bus( s );
         schedule_retry( s, RETRY_USEC );
         return;
@@ -250,7 +288,10 @@ static void bus_update( awl_backlight_bus_t* s ) {
 awl_backlight_t* backlight_init( pa_mainloop_api* api ) {
     awl_backlight_t* b = calloc(1, sizeof *b);
     if (!b) return NULL;
-    atomic_init( &b->enabled, 1 );
+    atomic_init( &b->running, 0 );
+    atomic_init( &b->enabled, 0 );
+    atomic_init( &b->screen, -1 );
+    atomic_init( &b->webcam, -1 );
     if (!(b->bus = calloc(1, sizeof *b->bus))) {
         free( b );
         return NULL;

@@ -165,7 +165,7 @@ static uint32_t tagwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {
         }
         TEXT( ww, num, fg_color, bg_color );
         /* the selected monitor: a bar under the "1", where TEXT() put it */
-        if (t == 0 && w->bar->selmon) {
+        if (t == 0 && w->bar->selmon && w->bar->selmon != -1) {
             int hh = w->bar->m->b.height;
             int h = hh / 8;
             if (h < 2) h = 2;
@@ -589,10 +589,16 @@ static uint32_t backlightwidget_measure( widget_t* w ) {
 
 static void backlightwidget_click( widget_t* w, uint32_t x, int button ) {
     (void)w; (void)x;
-    if (button == BTN_LEFT)
-        // the timer only fires on the quarter hour; run the service once now
-        awl_host->actions->spawn( &(Arg){.v=(const char*[]){"systemctl", "--user", "--no-block", "start",
-                "backlight-tooler.timer", "backlight-tooler.service", NULL}} );
+    awl_plugin_data_t* P = awl_plugin_get();
+    if (!P || !P->backlight) return;
+    if (button != BTN_LEFT)
+        awl_host->actions->spawn( &(Arg){.v=(const char*[]){"systemctl", "--user", "stop",
+                "backlight-tooler.service", NULL}} );
+    else if (atomic_load( &P->backlight->running ))
+        // forwarded to the daemon as Update(): measure and set now
+        awl_host->actions->spawn( &(Arg){.v=(const char*[]){"backlight-tooler", NULL}} );
     else
-        awl_host->actions->spawn( &(Arg){.v=(const char*[]){"systemctl", "--user", "stop",  "backlight-tooler.timer", NULL}} );
+        // the daemon updates once right after it starts
+        awl_host->actions->spawn( &(Arg){.v=(const char*[]){"systemctl", "--user", "--no-block", "start",
+                "backlight-tooler.service", NULL}} );
 }

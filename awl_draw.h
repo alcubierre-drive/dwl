@@ -107,7 +107,7 @@ struct awl_draw_t {
      * tags */
     uint32_t occ, urg, sel;
     int ntags;
-    /** nonzero on the bar of the selected monitor */
+    /** nonzero on the bar of the selected monitor, -1 if only one monitor exists */
     int selmon;
 
     Monitor* m;

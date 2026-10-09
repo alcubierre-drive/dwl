@@ -410,7 +410,6 @@ static void cfgdict_defaults(awl_dict_t* cfgdict)
     awl_dict_set(cfgdict, "desktop_file_mode", &AWL_DICT_STR("on"));
 }
 
-
 static const awl_config_t *
 builtinconfig(void)
 {
@@ -2199,6 +2198,7 @@ drawbar(Monitor *m)
     m->drw->sel = m->tagset[m->seltags];
     m->drw->ntags = LENGTH(tags);
     m->drw->selmon = (m == selmon);
+    if (wl_list_length(&mons) == 1) m->drw->selmon = -1;
 
     for (int ww=0; ww<m->drw->n_widgets_left; ++ww) {
         if (m->drw->widgets_left[ww].draw)

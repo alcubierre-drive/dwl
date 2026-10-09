@@ -23,7 +23,7 @@ The threads
      - plugins/poller.c
      - one PulseAudio main loop for all status plugins: CPU, memory,
        temperature and clock once per second; battery and IP address on
-       kernel events; volume and the backlight timer on their own events
+       kernel events; volume and the backlight-tooler daemon on their own events
    * - ``desktop``
      - desktop_panel.c
      - watches ``desktop_dir`` with inotify and lists it
