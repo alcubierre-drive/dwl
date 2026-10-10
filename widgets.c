@@ -578,21 +578,49 @@ static void clockwidget_scroll( widget_t* w, uint32_t x, int amount ) {
 
 /** how close (per mille) the screen brightness has to come to full or empty
  * for the moon to pass through it and swap sides */
-static const int backlight_moon_swap = 50;
+static const int backlight_moon_swap = 100;
 
 /** The screen brightness (per mille) as a moon, new at 0 and full at 1000:
  * waxing (lit on the right) on the way up, waning (lit on the left) on the
  * way down, like the real one. The side only swaps when the brightness comes
  * within backlight_moon_swap of full or empty, so going back and forth in
- * between doesn't flip it. Shared by all bars. */
-static const char* backlight_moon( int permille ) {
-    static const char* waxing[] = { "🌑", "🌒", "🌓", "🌔", "🌕" };
-    static const char* waning[] = { "🌑", "🌘", "🌗", "🌖", "🌕" };
-    static int is_waning;
-    if (permille >= 1000 - backlight_moon_swap) is_waning = 1;
-    else if (permille <= backlight_moon_swap) is_waning = 0;
-    int i = (permille * 4 + 500) / 1000;
-    return (is_waning ? waning : waxing)[i < 0 ? 0 : i > 4 ? 4 : i];
+ * between doesn't flip it. In between two phases, m2 is faded in over m1 by
+ * alpha_m2. Shared by all bars. */
+typedef struct {
+    const char *m1, *m2;
+    double alpha_m2;
+} backlight_moons_t;
+static backlight_moons_t backlight_moons( int permille ) {
+    static const char* moons_r[] = { "🌑", "🌒", "🌓", "🌔", "🌕" };
+    static const char* moons_l[] = { "🌑", "🌘", "🌗", "🌖", "🌕" };
+    static const int n = sizeof(moons_r) / sizeof(*moons_r);
+    static int lr_sel = 0;
+    static int permille_prev = 0;
+    static int dir_prev = 0;
+
+    // every bar measures on every redraw, mostly with the brightness
+    // unchanged: only a change has a direction
+    permille = permille < 0 ? 0 : permille > 1000 ? 1000 : permille;
+    if (permille != permille_prev) {
+        int dir = permille > permille_prev;
+        if ((abs(permille - 500) - (500 - backlight_moon_swap) > 0) && dir != dir_prev)
+            lr_sel = !lr_sel;
+        permille_prev = permille;
+        dir_prev = dir;
+    }
+    const char** moons = lr_sel ? moons_l : moons_r;
+
+    // n moons, n-1 steps between them over 0..1000
+    double pval = permille * (n - 1) / 1000.;
+    int i1 = (int)pval;
+    if (i1 > n - 2) i1 = n - 2;
+    double alpha_m2 = pval - i1;
+    alpha_m2 = alpha_m2 < 0.0 ? 0.0 : alpha_m2 > 1.0 ? 1.0 : alpha_m2;
+    return (backlight_moons_t) {
+        .m1 = moons[i1],
+        .m2 = moons[i1 + 1],
+        .alpha_m2 = alpha_m2,
+    };
 }
 
 /** Whether the bar font of w's monitor draws all of the backlight widget's
@@ -621,7 +649,7 @@ static const float backlight_emoji_rpad = 5.0f;
  * it makes no sense) and mode */
 typedef struct {
     textsnap_t text;
-    const char* moon;
+    backlight_moons_t moons;
     const char* mode;
     int gap, rpad;
 } backlightsnap_t;
@@ -638,7 +666,7 @@ static uint32_t backlightwidget_measure( widget_t* w ) {
     s->text.fg = enabled ? P->awl_colors.fg_status : color_8bit_to_16bit(molokai_orange);
     s->text.bg = P->awl_colors.bg_status;
     if (!backlight_emoji( w )) {
-        s->moon = s->mode = NULL;
+        s->mode = NULL;
         strcpy( s->text.text, enabled ? "BR" : "DK" );
         return textsnap_width( w );
     }
@@ -648,13 +676,36 @@ static uint32_t backlightwidget_measure( widget_t* w ) {
     // manual brightness
     Monitor* m = w->bar->m;
     float scale = m->wlr_output->scale;
-    s->moon = screen >= 0 ? backlight_moon( screen ) :
-              screen == BACKLIGHT_INVALID ? "🛑" : "";
+    if (screen >= 0) {
+        s->moons = backlight_moons(screen);
+    } else if (screen == BACKLIGHT_INVALID) {
+        s->moons = (backlight_moons_t){ "🛑", "🛑", 0.0 };
+    } else {
+        s->moons = (backlight_moons_t){ "", "", 0.0 };
+    }
     s->mode = enabled ? "👀" : "🌞";
-    s->gap = *s->moon ? (int)(backlight_emoji_gap * scale + 0.5f) : 0;
+    s->gap = *s->moons.m1 ? (int)(backlight_emoji_gap * scale + 0.5f) : 0;
     s->rpad = (int)(backlight_emoji_rpad * scale + 0.5f);
     if (s->rpad > m->lrpad/2) s->rpad = m->lrpad/2;
-    return TEXTW( m, s->moon ) + s->gap + TEXTW( m, s->mode ) - m->lrpad - s->rpad;
+    uint32_t w1 = TEXTW( m, s->moons.m1 ), w2 = TEXTW( m, s->moons.m2 );
+    return (w1 > w2 ? w1 : w2) + s->gap + TEXTW( m, s->mode ) - m->lrpad - s->rpad;
+}
+
+/** Composites the one-glyph string `text` into dst at alpha (0..1), placed
+ * as awl_draw_text_color() would place it with x being the pen position;
+ * ADD, so two calls with alphas adding up to one crossfade two glyphs. */
+static void backlight_glyph( pixman_image_t* dst, struct fcft_font* font,
+        const char* text, int x, int ty, double alpha ) {
+    uint32_t cp = 0;
+    if (!*text || alpha <= 0.0) return;
+    utf8decode( text, &cp );
+    const struct fcft_glyph* g = fcft_rasterize_char_utf32( font, cp, FCFT_SUBPIXEL_NONE );
+    if (!g || pixman_image_get_format( g->pix ) != PIXMAN_a8r8g8b8) return;
+    pixman_color_t a = { .alpha = (uint16_t)(alpha * 0xffff + 0.5) };
+    pixman_image_t* mask = pixman_image_create_solid_fill( &a );
+    pixman_image_composite32( PIXMAN_OP_ADD, g->pix, mask, dst, 0, 0, 0, 0,
+            x + g->x, ty - g->y, g->width, g->height );
+    pixman_image_unref( mask );
 }
 
 static uint32_t backlightwidget_draw( widget_t* w, uint32_t x, pixman_image_t* pix ) {
@@ -664,9 +715,31 @@ static uint32_t backlightwidget_draw( widget_t* w, uint32_t x, pixman_image_t* p
     // the moon with the left padding and the gap, then the mode filling the
     // rest; TEXT() pads by lrpad/2 on the left
     Monitor* m = w->bar->m;
-    uint32_t mw = m->lrpad/2 + awl_host->font_getwidth( w->bar, s->moon ) + s->gap;
+    uint32_t w1 = awl_host->font_getwidth( w->bar, s->moons.m1 ),
+             w2 = awl_host->font_getwidth( w->bar, s->moons.m2 );
+    uint32_t mw = m->lrpad/2 + (w1 > w2 ? w1 : w2) + s->gap;
     if (mw > w->width) mw = w->width;
-    TEXT( mw, s->moon, s->text.fg, s->text.bg );
+    struct fcft_font* font = w->bar->font;
+    double a2 = s->moons.alpha_m2;
+    if (!font || a2 <= 0.0 || a2 >= 1.0 || !strcmp( s->moons.m1, s->moons.m2 )) {
+        TEXT( mw, a2 >= 1.0 ? s->moons.m2 : s->moons.m1, s->text.fg, s->text.bg );
+    } else {
+        // between two phases: the background, then both moons crossfaded in
+        // a scratch image (m1 at 1-a, m2 at a, added up) laid over it, so
+        // each pixel is the exact mix even where only one of them covers it
+        TEXT( mw, "", s->text.fg, s->text.bg );
+        int h = m->b.height, y = -2;
+        int ty = y + (h - font->height) / 2 + font->ascent;
+        pixman_image_t* tmp = mw ? pixman_image_create_bits( PIXMAN_a8r8g8b8, mw, h, NULL, 0 ) : NULL;
+        if (tmp) {
+            int px = m->lrpad/2;
+            backlight_glyph( tmp, font, s->moons.m1, px, ty, 1.0 - a2 );
+            backlight_glyph( tmp, font, s->moons.m2, px, ty, a2 );
+            pixman_image_composite32( PIXMAN_OP_OVER, tmp, NULL, pix, 0, 0, 0, 0,
+                    x, 0, mw, h );
+            pixman_image_unref( tmp );
+        }
+    }
     awl_host->text( w->bar, x + mw, -2, w->width - mw, m->b.height, 0, s->mode,
             s->text.fg, s->text.bg );
     return w->width;
